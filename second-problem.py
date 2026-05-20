@@ -7,7 +7,14 @@ This problem combines his existing knowledge of while loops for error-checking w
 4. Inside the loop, check if the current number is even. If it is even, use an embedded conditional to check if it is also a multiple of 4. If it is a multiple of 4, print "[Number] is a mega-even number!" If it's just even, print "[Number] is even."
 5. If the number is not even (odd), use an embedded conditional to check if it is a multiple of 3. If it is, print "[Number] is a magic odd number!" Otherwise, just print the number normally.
 """
-def main():
+def is_prime(n):
+    for i in range(2, n):
+        if n % i == 0:
+            return False
+        else:
+            return True
+
+def same_thing_in_both_functions(is_it_prime):
     while True:
         try:
             max_number = int(input("Enter a maximum number: "))
@@ -15,46 +22,27 @@ def main():
         except ValueError:
             continue
     for number in range(1, max_number + 1):
-        if number % 2 == 0:
-            if number % 4 == 0:
+        if number % 4 == 0:
                 print(f"{number} is a mega-even number!")
-            else:
-                print(f"{number} is even.")
+        elif number % 2 == 0:
+            print(f"{number} is an even number!")
+        elif number % 3 == 0 and number % 2 != 0:
+            print(f"{number} is a magic odd number!")
         else:
-            if number % 3 == 0:
-                print(f"{number} is a magic odd number!")
+            print(f"{number} is odd.")
+        if is_it_prime:
+            if is_prime(number):
+                print (f"{number} is a prime number!")
             else:
-                print(number)
-def withprimes():
-    while True:
-        try:
-            max_number = int(input("Enter a maximum number: "))
-            break
-        except ValueError:
-            continue
-    for number in range(1, max_number + 1):
-        if number == 1:
-            print(number)
-        elif number == 2:
-            print(f"{number} is a prime number!")
-        else:
-            for i in range(2, number):
-                if number % i == 0:
-                    break
-            else:
-                print(f"{number} is a prime number!")
-choice = input("Do you want the version with prime numbers (y/n)? ")
-if choice == "y":
-        withprimes()
-elif choice == "n":
-    main()
-else:
+                print (f"{number} is not a prime number.")
+        
+def main():
     while True:
         choice = input("Do you want the version with prime numbers (y/n)? ")
         if choice == "y":
-            withprimes()
+            same_thing_in_both_functions(True)
         elif choice == "n":
-            main()
+            same_thing_in_both_functions(False)
         else:
             continue
 
