@@ -2431,24 +2431,25 @@ function buildWeather() {
   </div>`;
 }
 function initWeather() { weatherGo(); }
+const toF = (c) => Math.round(c * 9 / 5 + 32);
 function weatherGo() {
   const city = document.getElementById('weather-city').value.trim() || 'Unknown';
   // deterministic pseudo-random from city name so it's stable per city
   let seed = 0; for (const ch of city) seed += ch.charCodeAt(0);
   const rng = (n) => { seed = (seed * 9301 + 49297) % 233280; return Math.floor(seed / 233280 * n); };
   const cur = WEATHER_TYPES[rng(WEATHER_TYPES.length)];
-  const temp = cur.min + rng(cur.max - cur.min);
-  const days = ['Mon','Tue','Wed','Thu','Fri'].map(d => { const w = WEATHER_TYPES[rng(WEATHER_TYPES.length)]; return { d, icon: w.icon, t: w.min + rng(w.max - w.min) }; });
+  const temp = toF(cur.min + rng(cur.max - cur.min));
+  const days = ['Mon','Tue','Wed','Thu','Fri'].map(d => { const w = WEATHER_TYPES[rng(WEATHER_TYPES.length)]; return { d, icon: w.icon, t: toF(w.min + rng(w.max - w.min)) }; });
   const content = document.getElementById('weather-content');
   if (!content) return;
   content.innerHTML = `
     <div class="weather-current">
       <div class="weather-icon">${cur.icon}</div>
-      <div class="weather-temp">${temp}°</div>
+      <div class="weather-temp">${temp}°F</div>
       <div class="weather-desc">${cur.desc}</div>
       <div class="weather-city">📍 ${city}</div>
     </div>
-    <div class="weather-days">${days.map(d => `<div class="weather-day"><div class="wd-name">${d.d}</div><div class="wd-icon">${d.icon}</div><div class="wd-temp">${d.t}°</div></div>`).join('')}</div>`;
+    <div class="weather-days">${days.map(d => `<div class="weather-day"><div class="wd-name">${d.d}</div><div class="wd-icon">${d.icon}</div><div class="wd-temp">${d.t}°F</div></div>`).join('')}</div>`;
 }
 
 // ── UNIT CONVERTER ───────────────────────────────────────────────────────────
