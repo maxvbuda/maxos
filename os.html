@@ -561,7 +561,14 @@ function bootOS() {
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
   renderDesktop();
   renderStartApps();
-  startUnreadPolling();
+  checkServer().then(startUnreadPolling);
+  // fade out boot screen + welcome
+  setTimeout(() => {
+    if (!boot || boot.style.display === 'none') return;
+    boot.classList.add('fade');
+    setTimeout(() => boot.remove(), 700);
+    notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
+  }, 2000);
 }
 
 let serverOnline = false;
@@ -570,7 +577,8 @@ async function apiFetch(path, opts = {}) {
   try {
     opts.headers = { ...authHeaders(), ...(opts.headers || {}) };
     const r = await fetch(API + path, opts);
-    if (!r.ok && r.status === 401) { logout(); return { error: 'Session expired' }; }
+    // Only force logout on 401 if we actually had a token (real session expiry)
+    if (!r.ok && r.status === 401) { if (authToken) logout(); return { error: 'Unauthorized' }; }
     if (!r.ok) throw new Error(r.statusText);
     return await r.json();
   } catch (e) {
@@ -676,16 +684,7 @@ let zTop = 200;
 const windows = {};
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-initAuth().then(() => {
-  checkServer();
-  setTimeout(() => {
-    const b = document.getElementById('boot');
-    if (!b || b.style.display === 'none') return;
-    b.classList.add('fade');
-    setTimeout(() => b.remove(), 700);
-    notify('👋', `Welcome back, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
-  }, 2400);
-});
+initAuth();
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
