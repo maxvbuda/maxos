@@ -2456,9 +2456,11 @@ async function weatherGo(preset) {
     if (!geo.results || !geo.results.length) { content.innerHTML = `<div style="text-align:center;color:#ff8a84;padding:30px">City "${city}" not found</div>`; return; }
     const loc = geo.results[0];
     // 2. Fetch live forecast (free, no key)
-    const wx = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max&temperature_unit=fahrenheit&timezone=auto&forecast_days=5`).then(r => r.json());
+    const wx = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max&temperature_unit=fahrenheit&timezone=auto&forecast_days=5`).then(r => r.json());
     const [icon, desc] = wmo(wx.current.weather_code);
     const temp = Math.round(wx.current.temperature_2m);
+    const feels = Math.round(wx.current.apparent_temperature);
+    const humidity = wx.current.relative_humidity_2m;
     const dayNames = wx.daily.time.map(t => new Date(t + 'T00:00').toLocaleDateString([], { weekday: 'short' }));
     content.innerHTML = `
       <div class="weather-current">
@@ -2466,6 +2468,7 @@ async function weatherGo(preset) {
         <div class="weather-temp">${temp}°F</div>
         <div class="weather-desc">${desc}</div>
         <div class="weather-city">📍 ${loc.name}${loc.country ? ', ' + loc.country : ''}</div>
+        <div style="color:rgba(255,255,255,.5);font-size:12px;margin-top:6px">Feels like ${feels}°F · Humidity ${humidity}%</div>
       </div>
       <div class="weather-days">${wx.daily.time.map((t, i) => {
         const [ic] = wmo(wx.daily.weather_code[i]);
