@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MaxOS</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  body { width: 100vw; height: 100vh; overflow: hidden; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
+
+  /* Boot screen */
+  #boot { position:fixed; inset:0; z-index:999999; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; transition:opacity .7s ease; }
+  #boot.fade { opacity:0; pointer-events:none; }
+  .boot-logo { font-size:72px; animation:bootPulse 1.6s ease infinite; }
+  .boot-name { color:#fff; font-size:26px; font-weight:600; letter-spacing:3px; }
+  .boot-bar-bg { width:180px; height:3px; background:rgba(255,255,255,.12); border-radius:2px; overflow:hidden; }
+  .boot-bar { height:100%; background:linear-gradient(90deg,#64b4ff,#bf5af2); border-radius:2px; animation:bootLoad 2.2s cubic-bezier(.4,0,.2,1) forwards; }
+  @keyframes bootPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+  @keyframes bootLoad { from{width:0} to{width:100%} }
+
+  /* Desktop */
+  #desktop {
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    position: relative;
+  }
+
+  /* Wallpaper stars */
+  #desktop::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, white, transparent),
+      radial-gradient(1px 1px at 80% 10%, white, transparent),
+      radial-gradient(1px 1px at 50% 60%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1px 1px at 10% 80%, white, transparent),
+      radial-gradient(1px 1px at 90% 70%, rgba(255,255,255,.8), transparent),
+      radial-gradient(1px 1px at 35% 15%, white, transparent),
+      radial-gradient(1px 1px at 65% 85%, rgba(255,255,255,.5), transparent);
+    pointer-events: none;
+  }
+
+  /* Taskbar */
+  #taskbar { position:fixed; bottom:0; left:0; right:0; height:50px; background:rgba(8,8,20,.72); backdrop-filter:blur(32px) saturate(180%); border-top:1px solid rgba(255,255,255,.07); display:flex; align-items:center; gap:4px; padding:0 12px; z-index:9999; }
+  #taskbar-apps { display:flex; gap:4px; flex:1; overflow:hidden; }
+  .taskbar-btn { height:34px; padding:0 12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); border-radius:9px; color:#fff; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; transition:background .12s,border-color .12s; white-space:nowrap; }
+  .taskbar-btn:hover { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.2); }
+  .taskbar-btn.active { background:rgba(100,180,255,.22); border-color:rgba(100,180,255,.38); }
+  #spotlight-btn { width:32px; height:32px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:rgba(255,255,255,.6); cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; transition:background .12s; margin-right:6px; flex-shrink:0; }
+  #spotlight-btn:hover { background:rgba(255,255,255,.16); color:#fff; }
+  #clock { margin-left:6px; color:#fff; font-size:12px; font-weight:500; text-align:right; line-height:1.35; min-width:60px; flex-shrink:0; }
+  #clock .ct { font-size:13px; }
+  #clock .cd { font-size:10px; color:rgba(255,255,255,.5); }
+
+  /* Start menu */
+  #start-menu { position:fixed; bottom:58px; left:12px; width:300px; background:rgba(12,12,28,.95); backdrop-filter:blur(40px) saturate(200%); border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:16px; z-index:9998; display:none; box-shadow:0 24px 70px rgba(0,0,0,.75); animation:menuOpen .18s ease; }
+  @keyframes menuOpen { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  #start-menu h3 { color:rgba(255,255,255,.38); font-size:10px; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; font-weight:600; }
+  .start-item { display:flex; align-items:center; gap:12px; padding:9px 12px; border-radius:10px; color:#fff; font-size:14px; cursor:pointer; transition:background .1s; }
+  .start-item:hover { background:rgba(255,255,255,.1); }
+  .start-item .icon { font-size:20px; width:28px; text-align:center; }
+
+  /* Desktop icons */
+  .desktop-icon { position:absolute; width:78px; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; padding:8px 4px; border-radius:12px; transition:background .12s,transform .1s; }
+  .desktop-icon:hover { background:rgba(255,255,255,.12); transform:scale(1.05); }
+  .desktop-icon:active { transform:scale(.95); }
+  .desktop-icon .icon { font-size:38px; filter:drop-shadow(0 2px 8px rgba(0,0,0,.5)); }
+  .desktop-icon span { color:#fff; font-size:11px; text-align:center; text-shadow:0 1px 4px rgba(0,0,0,.9); font-weight:500; }
+
+  /* Windows */
+  @keyframes winOpen { from{opacity:0;transform:scale(.9) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+  @keyframes winClose { from{opacity:1;transform:scale(1)} to{opacity:0;transform:scale(.9)} }
+  .window { position:absolute; background:rgba(16,16,34,.96); backdrop-filter:blur(28px) saturate(200%); border:1px solid rgba(255,255,255,.11); border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,.4),0 32px 80px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.06); min-width:300px; min-height:200px; display:flex; flex-direction:column; overflow:hidden; z-index:100; animation:winOpen .22s cubic-bezier(.34,1.3,.64,1); }
+  .window.focused { border-color:rgba(100,180,255,.28); box-shadow:0 8px 32px rgba(0,0,0,.5),0 32px 80px rgba(0,0,0,.7),0 0 0 1px rgba(100,180,255,.12),inset 0 1px 0 rgba(255,255,255,.08); }
+  .window.closing { animation:winClose .16s ease forwards; pointer-events:none; }
+  .title-bar { height:40px; background:rgba(255,255,255,.035); border-bottom:1px solid rgba(255,255,255,.06); display:flex; align-items:center; gap:8px; padding:0 14px; cursor:grab; flex-shrink:0; }
+  .title-bar:active { cursor:grabbing; }
+  .win-btn { width:13px; height:13px; border-radius:50%; border:none; cursor:pointer; transition:filter .1s; }
+  .win-btn:hover { filter:brightness(1.18); }
+  .win-close { background:#ff5f57; } .win-min { background:#febc2e; } .win-max { background:#28c840; }
+  .win-title { color:rgba(255,255,255,.75); font-size:13px; margin-left:4px; font-weight:500; }
+  .window-body { flex:1; overflow:auto; color:#fff; }
+  .resize-handle { position:absolute; right:0; bottom:0; width:20px; height:20px; cursor:se-resize; }
+  .resize-handle::after { content:''; position:absolute; right:4px; bottom:4px; width:9px; height:9px; border-right:2px solid rgba(255,255,255,.22); border-bottom:2px solid rgba(255,255,255,.22); }
+
+  /* Spotlight */
+  #spotlight { position:fixed; top:25%; left:50%; transform:translateX(-50%); width:520px; background:rgba(12,12,26,.96); backdrop-filter:blur(40px); border:1px solid rgba(255,255,255,.16); border-radius:18px; overflow:hidden; z-index:99999; display:none; box-shadow:0 32px 90px rgba(0,0,0,.8); }
+  @keyframes spotOpen { from{opacity:0;transform:translateX(-50%) scale(.96)} to{opacity:1;transform:translateX(-50%) scale(1)} }
+  .spotlight-open { animation:spotOpen .16s ease; }
+  #spot-input-row { display:flex; align-items:center; gap:12px; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,.07); }
+  #spot-input { flex:1; background:none; border:none; outline:none; color:#fff; font-size:19px; font-family:inherit; }
+  #spot-input::placeholder { color:rgba(255,255,255,.28); }
+  #spot-results { padding:8px; max-height:300px; overflow-y:auto; }
+  .spot-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; cursor:pointer; color:#fff; font-size:14px; transition:background .1s; }
+  .spot-row:hover,.spot-row.sel { background:rgba(100,180,255,.2); }
+  .spot-row small { color:rgba(255,255,255,.4); font-size:12px; margin-left:auto; }
+
+  /* Notifications */
+  #notif-stack { position:fixed; top:14px; right:14px; display:flex; flex-direction:column; gap:8px; z-index:99998; pointer-events:none; }
+  .notif { background:rgba(18,18,38,.94); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.13); border-radius:14px; padding:12px 14px; min-width:260px; max-width:310px; display:flex; gap:10px; align-items:flex-start; box-shadow:0 8px 32px rgba(0,0,0,.5); pointer-events:all; animation:notifIn .3s cubic-bezier(.34,1.26,.64,1); transition:opacity .35s,transform .35s; }
+  .notif.out { opacity:0; transform:translateX(110%); }
+  @keyframes notifIn { from{opacity:0;transform:translateX(110%)} to{opacity:1;transform:translateX(0)} }
+  .notif-icon { font-size:22px; flex-shrink:0; }
+  .notif-body { flex:1; }
+  .notif-title { color:#fff; font-size:13px; font-weight:600; }
+  .notif-msg { color:rgba(255,255,255,.58); font-size:12px; margin-top:2px; }
+  .notif-x { color:rgba(255,255,255,.38); cursor:pointer; font-size:16px; line-height:1; flex-shrink:0; }
+  .notif-x:hover { color:#fff; }
+
+  /* Context menu */
+  #ctx-menu { position:fixed; background:rgba(18,18,38,.96); backdrop-filter:blur(30px); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:6px; z-index:99997; min-width:180px; display:none; box-shadow:0 16px 48px rgba(0,0,0,.65); animation:ctxOpen .12s ease; }
+  @keyframes ctxOpen { from{opacity:0;transform:scale(.94)} to{opacity:1;transform:scale(1)} }
+  .ctx-item { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:7px; color:#fff; font-size:13px; cursor:pointer; transition:background .1s; }
+  .ctx-item:hover { background:rgba(100,180,255,.2); }
+  .ctx-sep { height:1px; background:rgba(255,255,255,.08); margin:4px 8px; }
+  .ctx-item kbd { color:rgba(255,255,255,.38); font-size:11px; margin-left:auto; }
+
+  /* ── App styles ── */
+  .filemanager { padding:14px; height:100%; display:flex; flex-direction:column; }
+  .fm-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .fm-path { flex:1; background:rgba(255,255,255,.07); border-radius:8px; padding:5px 12px; font-size:12px; color:rgba(255,255,255,.6); }
+  .fm-grid { flex:1; display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); gap:8px; overflow-y:auto; content-visibility:auto; }
+  .fm-item { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px; border-radius:10px; cursor:pointer; transition:background .1s; }
+  .fm-item:hover { background:rgba(255,255,255,.1); }
+  .fm-item.selected { background:rgba(100,180,255,.2); }
+  .fm-nav-btn { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:#fff; border-radius:7px; padding:5px 11px; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .fm-nav-btn:hover { background:rgba(255,255,255,.18); }
+  .fm-item .icon { font-size:30px; }
+  .fm-item span { font-size:11px; color:rgba(255,255,255,.8); text-align:center; word-break:break-word; }
+
+  .editor-toolbar { display:flex; gap:6px; padding:8px 12px; background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.07); flex-wrap:wrap; align-items:center; }
+  .editor-toolbar button { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.85); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; transition:background .1s; }
+  .editor-toolbar button:hover { background:rgba(255,255,255,.18); }
+  #editor-area { width:100%; height:calc(100% - 46px); background:transparent; border:none; outline:none; color:#d4d4d8; font-size:14px; line-height:1.7; padding:16px 20px; resize:none; font-family:'Menlo','Cascadia Code','Courier New',monospace; tab-size:2; }
+
+  .calc { padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .calc-display { background:rgba(0,0,0,.45); border-radius:12px; padding:16px 18px; text-align:right; font-size:36px; font-weight:200; color:#fff; min-height:72px; word-break:break-all; overflow:hidden; border:1px solid rgba(255,255,255,.06); }
+  .calc-expr { font-size:13px; color:rgba(255,255,255,.35); min-height:18px; margin-bottom:4px; }
+  .calc-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .calc-btn { padding:16px 0; border:none; border-radius:12px; font-size:17px; cursor:pointer; color:#fff; font-weight:500; transition:filter .08s,transform .08s; border:1px solid rgba(255,255,255,.04); }
+  .calc-btn:hover { filter:brightness(1.18); } .calc-btn:active { filter:brightness(.82); transform:scale(.94); }
+  .calc-btn.op { background:rgba(100,160,255,.38); } .calc-btn.fn { background:rgba(255,255,255,.14); }
+  .calc-btn.num { background:rgba(255,255,255,.09); } .calc-btn.eq { background:rgba(80,210,130,.5); }
+  .calc-btn.wide { grid-column:span 2; }
+
+  .terminal { padding:14px 16px; font-family:'Menlo','Cascadia Code','Courier New',monospace; font-size:13px; line-height:1.65; height:100%; display:flex; flex-direction:column; }
+  .term-output { flex:1; overflow-y:auto; color:#a8f0c0; white-space:pre-wrap; margin-bottom:8px; }
+  .term-input-row { display:flex; align-items:center; gap:6px; border-top:1px solid rgba(255,255,255,.06); padding-top:8px; }
+  .term-prompt { color:#64b4ff; white-space:nowrap; }
+  #term-input { flex:1; background:transparent; border:none; outline:none; color:#a8f0c0; font-family:inherit; font-size:13px; caret-color:#64b4ff; }
+
+  .settings { padding:22px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; height:100%; }
+  .settings h2 { font-size:17px; color:#fff; font-weight:600; }
+  .settings h3 { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,255,255,.38); font-weight:600; }
+  .setting-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:2px 14px; }
+  .setting-row { display:flex; align-items:center; justify-content:space-between; padding:11px 0; }
+  .setting-row+.setting-row { border-top:1px solid rgba(255,255,255,.06); }
+  .setting-row label { color:rgba(255,255,255,.85); font-size:14px; }
+  .toggle { width:44px; height:24px; background:rgba(255,255,255,.14); border-radius:12px; cursor:pointer; position:relative; transition:background .2s; flex-shrink:0; }
+  .toggle.on { background:rgba(52,199,89,.68); }
+  .toggle::after { content:''; position:absolute; left:3px; top:3px; width:18px; height:18px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  .toggle.on::after { left:23px; }
+  .wallpaper-picker { display:flex; gap:8px; flex-wrap:wrap; }
+  .wp-swatch { width:56px; height:38px; border-radius:8px; cursor:pointer; border:2px solid transparent; transition:border-color .15s,transform .1s; }
+  .wp-swatch:hover { transform:scale(1.08); } .wp-swatch.selected { border-color:#64b4ff; }
+
+  /* Browser */
+  .mini-browser { display: flex; flex-direction: column; height: 100%; }
+  .browser-bar { display: flex; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.08); }
+  .browser-bar input { flex: 1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: #fff; padding: 6px 12px; font-size: 13px; outline: none; }
+  .browser-bar button { background: rgba(100,180,255,.3); border: none; color: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  #browser-frame { flex: 1; border: none; background: #fff; }
+
+  /* Paint */
+  .paint-wrap { display:flex; flex-direction:column; height:100%; }
+  .paint-toolbar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(255,255,255,.05); border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+  .paint-toolbar button { background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+  .paint-toolbar button:hover, .paint-toolbar button.active { background:rgba(100,180,255,.35); }
+  .color-swatch { width:22px; height:22px; border-radius:50%; cursor:pointer; border:2px solid transparent; flex-shrink:0; }
+  .color-swatch.active { border-color:#fff; }
+  #paint-canvas { flex:1; cursor:crosshair; display:block; background:#1a1a2e; }
+
+  /* Snake */
+  .snake-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; padding:16px; }
+  #snake-canvas { border:2px solid rgba(255,255,255,.15); border-radius:8px; }
+  .snake-score { color:#fff; font-size:16px; font-weight:600; }
+  .snake-hint { color:rgba(255,255,255,.4); font-size:12px; }
+
+  /* Clock */
+  .clock-wrap { display:flex; flex-direction:column; align-items:center; padding:20px; gap:16px; height:100%; }
+  .clock-tabs { display:flex; gap:6px; }
+  .clock-tab { background:rgba(255,255,255,.08); border:none; color:rgba(255,255,255,.6); border-radius:8px; padding:6px 16px; cursor:pointer; font-size:13px; }
+  .clock-tab.active { background:rgba(100,180,255,.3); color:#fff; }
+  .clock-panel { display:none; flex-direction:column; align-items:center; gap:12px; flex:1; }
+  .clock-panel.active { display:flex; }
+  #analog-clock { }
+  .big-time { font-size:52px; font-weight:200; color:#fff; letter-spacing:2px; }
+  .sw-btn { background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:10px; padding:10px 24px; font-size:14px; cursor:pointer; }
+  .sw-btn:hover { background:rgba(255,255,255,.2); }
+  .sw-laps { max-height:100px; overflow-y:auto; width:100%; }
+  .sw-lap { color:rgba(255,255,255,.6); font-size:12px; padding:2px 0; border-bottom:1px solid rgba(255,255,255,.06); font-family:monospace; }
+
+  /* System Monitor */
+  .sysmon-wrap { padding:16px; display:flex; flex-direction:column; gap:14px; height:100%; overflow-y:auto; }
+  .sm-row { display:flex; flex-direction:column; gap:6px; }
+  .sm-label { display:flex; justify-content:space-between; color:rgba(255,255,255,.8); font-size:13px; }
+  .sm-bar-bg { height:10px; background:rgba(255,255,255,.08); border-radius:5px; overflow:hidden; }
+  .sm-bar { height:100%; border-radius:5px; transition:width .4s; }
+  .sm-procs { flex:1; overflow-y:auto; }
+  .sm-proc { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06); font-size:12px; color:rgba(255,255,255,.7); }
+
+  /* Calendar */
+  .cal-wrap { padding:16px; display:flex; flex-direction:column; gap:12px; height:100%; }
+  .cal-header { display:flex; align-items:center; justify-content:space-between; }
+  .cal-header h3 { color:#fff; font-size:16px; }
+  .cal-nav { background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:8px; width:30px; height:30px; cursor:pointer; font-size:16px; }
+  .cal-nav:hover { background:rgba(255,255,255,.2); }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal-dow { text-align:center; font-size:11px; color:rgba(255,255,255,.4); padding:4px 0; }
+  .cal-day { text-align:center; padding:7px 4px; border-radius:8px; font-size:13px; color:rgba(255,255,255,.7); cursor:pointer; }
+  .cal-day:hover { background:rgba(255,255,255,.1); }
+  .cal-day.today { background:rgba(100,180,255,.35); color:#fff; font-weight:700; }
+  .cal-day.other-month { color:rgba(255,255,255,.2); }
+  .cal-day.has-event::after { content:''; display:block; width:4px; height:4px; background:#64b4ff; border-radius:50%; margin:2px auto 0; }
+
+  /* Music */
+  .music-wrap { display:flex; flex-direction:column; height:100%; padding:16px; gap:12px; }
+  .music-art { width:120px; height:120px; border-radius:16px; margin:0 auto; display:flex; align-items:center; justify-content:center; font-size:60px; flex-shrink:0; }
+  .music-title { text-align:center; }
+  .music-title h3 { color:#fff; font-size:15px; }
+  .music-title p { color:rgba(255,255,255,.5); font-size:12px; }
+  .music-progress { display:flex; flex-direction:column; gap:4px; }
+  .music-seek { width:100%; height:4px; background:rgba(255,255,255,.15); border-radius:2px; cursor:pointer; appearance:none; }
+  .music-seek::-webkit-slider-thumb { appearance:none; width:12px; height:12px; background:#64b4ff; border-radius:50%; }
+  .music-times { display:flex; justify-content:space-between; font-size:11px; color:rgba(255,255,255,.4); }
+  .music-controls { display:flex; align-items:center; justify-content:center; gap:16px; }
+  .music-btn { background:none; border:none; color:#fff; font-size:24px; cursor:pointer; transition:transform .1s; }
+  .music-btn:hover { transform:scale(1.15); }
+  .music-btn.play-btn { font-size:38px; }
+  .music-playlist { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+  .music-track { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+  .music-track:hover { background:rgba(255,255,255,.08); }
+  .music-track.active { background:rgba(100,180,255,.2); }
+  .music-track span { font-size:12px; color:rgba(255,255,255,.8); }
+  .music-track .dur { margin-left:auto; color:rgba(255,255,255,.4); font-size:11px; }
+  #vis-canvas { width:100%; height:40px; border-radius:6px; }
+</style>
+</head>
+<body>
+
+<!-- Boot screen -->
+<div id="boot">
+  <div class="boot-logo">🖥️</div>
+  <div class="boot-name">MaxOS</div>
+  <div class="boot-bar-bg"><div class="boot-bar"></div></div>
+</div>
+
+<!-- Spotlight -->
+<div id="spotlight">
+  <div id="spot-input-row"><span>🔍</span><input id="spot-input" placeholder="Search apps, files…" oninput="spotSearch(this.value)" onkeydown="spotKey(event)"></div>
+  <div id="spot-results"></div>
+</div>
+
+<!-- Notifications -->
+<div id="notif-stack"></div>
+
+<!-- Context menu -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxNewFile()">📄 New File <kbd>⌘N</kbd></div>
+  <div class="ctx-item" onclick="ctxNewFolder()">📁 New Folder</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="openApp('settings');hideCtx()">⚙️ Settings</div>
+  <div class="ctx-item" onclick="changeWallpaperNext();hideCtx()">🎨 Change Wallpaper</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="openApp('terminal');hideCtx()">💻 Terminal <kbd>⌘T</kbd></div>
+</div>
+
+<div id="desktop">
+
+  <!-- Desktop icons -->
+  <div class="desktop-icon" style="top:30px;left:30px" ondblclick="openApp('files')">
+    <div class="icon">📁</div><span>Files</span>
+  </div>
+  <div class="desktop-icon" style="top:130px;left:30px" ondblclick="openApp('editor')">
+    <div class="icon">📝</div><span>Editor</span>
+  </div>
+  <div class="desktop-icon" style="top:230px;left:30px" ondblclick="openApp('calc')">
+    <div class="icon">🧮</div><span>Calculator</span>
+  </div>
+  <div class="desktop-icon" style="top:330px;left:30px" ondblclick="openApp('terminal')">
+    <div class="icon">💻</div><span>Terminal</span>
+  </div>
+  <div class="desktop-icon" style="top:430px;left:30px" ondblclick="openApp('browser')">
+    <div class="icon">🌐</div><span>Browser</span>
+  </div>
+  <div class="desktop-icon" style="top:30px;left:120px" ondblclick="openApp('settings')">
+    <div class="icon">⚙️</div><span>Settings</span>
+  </div>
+  <div class="desktop-icon" style="top:130px;left:120px" ondblclick="openApp('paint')">
+    <div class="icon">🎨</div><span>Paint</span>
+  </div>
+  <div class="desktop-icon" style="top:230px;left:120px" ondblclick="openApp('snake')">
+    <div class="icon">🐍</div><span>Snake</span>
+  </div>
+  <div class="desktop-icon" style="top:330px;left:120px" ondblclick="openApp('clock')">
+    <div class="icon">🕐</div><span>Clock</span>
+  </div>
+  <div class="desktop-icon" style="top:430px;left:120px" ondblclick="openApp('sysmon')">
+    <div class="icon">📊</div><span>System</span>
+  </div>
+  <div class="desktop-icon" style="top:30px;left:210px" ondblclick="openApp('calendar')">
+    <div class="icon">📅</div><span>Calendar</span>
+  </div>
+  <div class="desktop-icon" style="top:130px;left:210px" ondblclick="openApp('music')">
+    <div class="icon">🎵</div><span>Music</span>
+  </div>
+
+</div>
+
+<!-- Taskbar -->
+<div id="taskbar">
+  <button class="taskbar-btn" id="start-btn" onclick="toggleStartMenu()">🖥️ MaxOS</button>
+  <div id="taskbar-apps"></div>
+  <button id="spotlight-btn" onclick="toggleSpotlight()" title="Spotlight (Ctrl+Space)">⌕</button>
+  <span id="server-badge" title="Checking server…" style="font-size:12px;cursor:default">⚪</span>
+  <div id="clock"><div class="ct"></div><div class="cd"></div></div>
+</div>
+
+<!-- Start Menu -->
+<div id="start-menu">
+  <h3>Apps</h3>
+  <div class="start-item" onclick="openApp('files');toggleStartMenu()"><span class="icon">📁</span> File Manager</div>
+  <div class="start-item" onclick="openApp('editor');toggleStartMenu()"><span class="icon">📝</span> Text Editor</div>
+  <div class="start-item" onclick="openApp('calc');toggleStartMenu()"><span class="icon">🧮</span> Calculator</div>
+  <div class="start-item" onclick="openApp('terminal');toggleStartMenu()"><span class="icon">💻</span> Terminal</div>
+  <div class="start-item" onclick="openApp('browser');toggleStartMenu()"><span class="icon">🌐</span> Browser</div>
+  <div class="start-item" onclick="openApp('settings');toggleStartMenu()"><span class="icon">⚙️</span> Settings</div>
+  <div class="start-item" onclick="openApp('paint');toggleStartMenu()"><span class="icon">🎨</span> Paint</div>
+  <div class="start-item" onclick="openApp('snake');toggleStartMenu()"><span class="icon">🐍</span> Snake</div>
+  <div class="start-item" onclick="openApp('clock');toggleStartMenu()"><span class="icon">🕐</span> Clock</div>
+  <div class="start-item" onclick="openApp('sysmon');toggleStartMenu()"><span class="icon">📊</span> System Monitor</div>
+  <div class="start-item" onclick="openApp('calendar');toggleStartMenu()"><span class="icon">📅</span> Calendar</div>
+  <div class="start-item" onclick="openApp('music');toggleStartMenu()"><span class="icon">🎵</span> Music Player</div>
+</div>
+
+<script>
+// ── API ──────────────────────────────────────────────────────────────────────
+const API = 'https://YOUR_RENDER_URL'; // ← swap after deploying to Render
+
+let serverOnline = false;
+
+async function apiFetch(path, opts = {}) {
+  try {
+    const r = await fetch(API + path, opts);
+    if (!r.ok) throw new Error(r.statusText);
+    return await r.json();
+  } catch (e) {
+    return { error: 'offline' };
+  }
+}
+
+// Check server connection on boot
+async function checkServer() {
+  const res = await apiFetch('/api/ls?path=/home/max');
+  serverOnline = !res.error;
+  const badge = document.getElementById('server-badge');
+  if (badge) {
+    badge.textContent = serverOnline ? '🟢' : '🔴';
+    badge.title = serverOnline ? 'MongoDB connected' : 'Offline mode — deploy backend to enable persistence';
+  }
+}
+
+// ── Local in-memory filesystem (fallback when server is offline) ──────────────
+const localFs = {
+  dirs: {
+    '/':                    [],
+    '/home':                ['max'],
+    '/home/max':            ['documents','pictures','readme.txt','notes.md'],
+    '/home/max/documents':  ['report.txt','ideas.md'],
+    '/home/max/pictures':   [],
+  },
+  files: {
+    '/home/max/readme.txt':           'Welcome to MaxOS!\n\nRunning in offline mode.\nDeploy the backend to Render to enable real file persistence.',
+    '/home/max/notes.md':             '# Notes\n- Build something cool\n- Deploy backend for MongoDB persistence\n- Ship it!',
+    '/home/max/documents/report.txt': 'MaxOS Status Report\n===================\nAll systems operational.',
+    '/home/max/documents/ideas.md':   '# Ideas\n- Add more apps\n- Multi-user support\n- File drag & drop',
+  },
+};
+
+function localLs(path) {
+  const entries = localFs.dirs[path];
+  if (!entries) return { error: `No such directory: ${path}` };
+  return entries.map(name => {
+    const full = path === '/' ? '/' + name : path + '/' + name;
+    const isDir = localFs.dirs[full] !== undefined;
+    return { name, path: full, type: isDir ? 'directory' : 'file' };
+  });
+}
+
+function localStat(path) {
+  if (localFs.dirs[path] !== undefined) return { path, type: 'directory', name: path.split('/').pop() || '/' };
+  if (localFs.files[path] !== undefined) return { path, type: 'file', name: path.split('/').pop() };
+  return { error: 'Not found' };
+}
+
+function localCat(path) {
+  const content = localFs.files[path];
+  if (content === undefined) return { error: `cat: ${path}: No such file` };
+  return { content, name: path.split('/').pop(), path };
+}
+
+function localMkdir(path, name, parent) {
+  if (localFs.dirs[path]) return { error: `mkdir: ${name}: Already exists` };
+  localFs.dirs[path] = [];
+  if (localFs.dirs[parent] && !localFs.dirs[parent].includes(name)) localFs.dirs[parent].push(name);
+  return { path, name, type: 'directory' };
+}
+
+function localTouch(path, name, parent) {
+  if (localFs.files[path] !== undefined) return { error: `touch: ${name}: Already exists` };
+  localFs.files[path] = '';
+  if (localFs.dirs[parent] && !localFs.dirs[parent].includes(name)) localFs.dirs[parent].push(name);
+  return { path, name, type: 'file' };
+}
+
+function localWrite(path, content) {
+  if (localFs.files[path] === undefined) return { error: 'File not found' };
+  localFs.files[path] = content;
+  return { ok: true, path };
+}
+
+function localRm(path) {
+  const parent = path.substring(0, path.lastIndexOf('/')) || '/';
+  const name = path.split('/').pop();
+  if (localFs.dirs[path]) {
+    delete localFs.dirs[path];
+  } else if (localFs.files[path] !== undefined) {
+    delete localFs.files[path];
+  } else {
+    return { error: `rm: ${name}: No such file or directory` };
+  }
+  if (localFs.dirs[parent]) localFs.dirs[parent] = localFs.dirs[parent].filter(n => n !== name);
+  return { ok: true };
+}
+
+// Unified API — tries server first, falls back to local
+async function fsLs(path)              { if (serverOnline) { const r=await apiFetch('/api/ls?path='+encodeURIComponent(path)); if (!r.error) return r; } return localLs(path); }
+async function fsStat(path)            { if (serverOnline) { const r=await apiFetch('/api/stat?path='+encodeURIComponent(path)); if (!r.error) return r; } return localStat(path); }
+async function fsCat(path)             { if (serverOnline) { const r=await apiFetch('/api/cat?path='+encodeURIComponent(path)); if (!r.error) return r; } return localCat(path); }
+async function fsMkdir(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localMkdir(path,name,par); }
+async function fsTouch(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/touch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localTouch(path,name,par); }
+async function fsWrite(path,content)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content})}); if (!r.error) return r; } return localWrite(path,content); }
+async function fsRm(path)              { if (serverOnline) { const r=await apiFetch('/api/rm?path='+encodeURIComponent(path),{method:'DELETE'}); if (!r.error) return r; } return localRm(path); }
+
+// ── State ───────────────────────────────────────────────────────────────────
+let zTop = 200;
+const windows = {};
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+checkServer();
+setTimeout(() => {
+  const b = document.getElementById('boot');
+  b.classList.add('fade');
+  setTimeout(() => b.remove(), 700);
+  notify('👋', 'Welcome to MaxOS', 'Double-click icons · Ctrl+Space for Spotlight');
+}, 2400);
+
+// ── Clock ────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const ct = document.querySelector('#clock .ct');
+  const cd = document.querySelector('#clock .cd');
+  if (ct) ct.textContent = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  if (cd) cd.textContent = now.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+}
+updateClock(); setInterval(updateClock, 1000);
+
+// ── Notifications ────────────────────────────────────────────────────────────
+function notify(icon, title, msg, duration=4000) {
+  const stack = document.getElementById('notif-stack');
+  const el = document.createElement('div');
+  el.className = 'notif';
+  el.innerHTML = `<div class="notif-icon">${icon}</div><div class="notif-body"><div class="notif-title">${title}</div><div class="notif-msg">${msg}</div></div><div class="notif-x" onclick="dismissNotif(this.parentElement)">✕</div>`;
+  stack.appendChild(el);
+  setTimeout(() => dismissNotif(el), duration);
+}
+function dismissNotif(el) {
+  if (!el || !el.parentElement) return;
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 380);
+}
+
+// ── Context menu ─────────────────────────────────────────────────────────────
+const ctxMenu = document.getElementById('ctx-menu');
+document.getElementById('desktop').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  ctxMenu.style.cssText = `display:block;left:${Math.min(e.clientX, innerWidth-190)}px;top:${Math.min(e.clientY, innerHeight-180)}px`;
+});
+document.addEventListener('click', () => hideCtx());
+document.addEventListener('keydown', e => { if(e.key==='Escape'){ hideCtx(); hideSpotlight(); } });
+function hideCtx() { ctxMenu.style.display='none'; }
+let wpIdx = 0;
+const wallpapers = [
+  'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)',
+  'linear-gradient(135deg,#0d1117,#161b22,#21262d)',
+  'linear-gradient(135deg,#1a0533,#2d1b69,#11998e)',
+  'linear-gradient(135deg,#fc4a1a,#f7b733)',
+  'linear-gradient(135deg,#0f0c29,#302b63,#24243e)',
+  'linear-gradient(135deg,#134e5e,#71b280)',
+];
+function changeWallpaperNext() { wpIdx=(wpIdx+1)%wallpapers.length; document.getElementById('desktop').style.background=wallpapers[wpIdx]; }
+function ctxNewFile() { hideCtx(); openApp('editor'); notify('📄','New File','Untitled document created'); }
+function ctxNewFolder() { hideCtx(); openApp('files'); }
+
+// ── Spotlight ────────────────────────────────────────────────────────────────
+const spotEl = document.getElementById('spotlight');
+const spotInput = document.getElementById('spot-input');
+const spotApps = [
+  {icon:'📁',name:'File Manager',id:'files',desc:'Browse files'},{icon:'📝',name:'Text Editor',id:'editor',desc:'Write documents'},
+  {icon:'🧮',name:'Calculator',id:'calc',desc:'Math'},{icon:'💻',name:'Terminal',id:'terminal',desc:'Command line'},
+  {icon:'🌐',name:'Browser',id:'browser',desc:'Browse web'},{icon:'⚙️',name:'Settings',id:'settings',desc:'System settings'},
+  {icon:'🎨',name:'Paint',id:'paint',desc:'Draw'},{icon:'🐍',name:'Snake',id:'snake',desc:'Game'},
+  {icon:'🕐',name:'Clock',id:'clock',desc:'Time & timer'},{icon:'📊',name:'System Monitor',id:'sysmon',desc:'CPU & RAM'},
+  {icon:'📅',name:'Calendar',id:'calendar',desc:'Dates'},{icon:'🎵',name:'Music Player',id:'music',desc:'Synthesized music'},
+];
+let spotSel = 0;
+function toggleSpotlight() {
+  if (spotEl.style.display==='block') { hideSpotlight(); return; }
+  spotEl.style.display='block'; spotEl.classList.add('spotlight-open');
+  spotInput.value=''; spotSearch(''); spotInput.focus();
+}
+function hideSpotlight() { spotEl.style.display='none'; spotEl.classList.remove('spotlight-open'); }
+function spotSearch(q) {
+  spotSel=0;
+  const res = document.getElementById('spot-results');
+  const matches = q ? spotApps.filter(a=>a.name.toLowerCase().includes(q.toLowerCase())||a.desc.toLowerCase().includes(q.toLowerCase())) : spotApps;
+  res.innerHTML = matches.map((a,i)=>`<div class="spot-row${i===0?' sel':''}" onclick="spotLaunch('${a.id}')">${a.icon} ${a.name} <small>${a.desc}</small></div>`).join('');
+}
+function spotKey(e) {
+  const rows = document.querySelectorAll('.spot-row');
+  if (e.key==='ArrowDown') { spotSel=Math.min(spotSel+1,rows.length-1); }
+  else if (e.key==='ArrowUp') { spotSel=Math.max(spotSel-1,0); }
+  else if (e.key==='Enter') { const r=rows[spotSel]; if(r) r.click(); return; }
+  else if (e.key==='Escape') { hideSpotlight(); return; }
+  rows.forEach((r,i)=>r.classList.toggle('sel',i===spotSel));
+  rows[spotSel]?.scrollIntoView({block:'nearest'});
+}
+function spotLaunch(id) { hideSpotlight(); openApp(id); }
+document.addEventListener('keydown', e => { if((e.ctrlKey||e.metaKey)&&e.key===' ') { e.preventDefault(); toggleSpotlight(); } });
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if ((e.ctrlKey||e.metaKey) && e.key==='t') { e.preventDefault(); openApp('terminal'); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='n') { e.preventDefault(); openApp('editor'); }
+});
+
+// ── Start menu ───────────────────────────────────────────────────────────────
+function toggleStartMenu() {
+  const m = document.getElementById('start-menu');
+  m.style.display = m.style.display === 'block' ? 'none' : 'block';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#start-menu') && !e.target.closest('#start-btn'))
+    document.getElementById('start-menu').style.display = 'none';
+});
+
+// ── App definitions ──────────────────────────────────────────────────────────
+const apps = {
+  files:    { title: 'File Manager',   icon: '📁', w: 520, h: 380, html: buildFiles },
+  editor:   { title: 'Text Editor',    icon: '📝', w: 600, h: 420, html: buildEditor },
+  calc:     { title: 'Calculator',     icon: '🧮', w: 300, h: 440, html: buildCalc },
+  terminal: { title: 'Terminal',       icon: '💻', w: 560, h: 360, html: buildTerminal },
+  browser:  { title: 'Browser',        icon: '🌐', w: 700, h: 500, html: buildBrowser },
+  settings: { title: 'Settings',       icon: '⚙️', w: 420, h: 380, html: buildSettings },
+  paint:    { title: 'Paint',          icon: '🎨', w: 620, h: 480, html: buildPaint },
+  snake:    { title: 'Snake',          icon: '🐍', w: 420, h: 480, html: buildSnake },
+  clock:    { title: 'Clock',          icon: '🕐', w: 380, h: 320, html: buildClock },
+  sysmon:   { title: 'System Monitor', icon: '📊', w: 480, h: 380, html: buildSysmon },
+  calendar: { title: 'Calendar',       icon: '📅', w: 380, h: 380, html: buildCalendar },
+  music:    { title: 'Music Player',   icon: '🎵', w: 340, h: 460, html: buildMusic },
+};
+
+// ── Open / focus window ──────────────────────────────────────────────────────
+function openApp(id) {
+  if (windows[id]) { focusWindow(id); return; }
+
+  const app = apps[id];
+  const win = document.createElement('div');
+  win.className = 'window focused';
+  win.id = 'win-' + id;
+
+  const cx = Math.max(60, (window.innerWidth - app.w) / 2 + Math.random() * 80 - 40);
+  const cy = Math.max(30, (window.innerHeight - 48 - app.h) / 2 + Math.random() * 60 - 30);
+  win.style.cssText = `left:${cx}px;top:${cy}px;width:${app.w}px;height:${app.h}px`;
+
+  win.innerHTML = `
+    <div class="title-bar" id="tb-${id}">
+      <button class="win-btn win-close" onclick="closeWindow('${id}')"></button>
+      <button class="win-btn win-min"   onclick="minimizeWindow('${id}')"></button>
+      <button class="win-btn win-max"   onclick="maximizeWindow('${id}')"></button>
+      <span class="win-title">${app.icon} ${app.title}</span>
+    </div>
+    <div class="window-body" id="body-${id}">${app.html(id)}</div>
+    <div class="resize-handle" id="rh-${id}"></div>
+  `;
+
+  document.getElementById('desktop').appendChild(win);
+  windows[id] = { el: win, minimized: false, prev: null };
+  makeDraggable(id);
+  makeResizable(id);
+  focusWindow(id);
+  addTaskbarBtn(id);
+  if (id === 'terminal') initTerminal();
+  if (id === 'files') setTimeout(() => fmLoad(fmCwd), 50);
+  if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
+}
+
+function focusWindow(id) {
+  Object.keys(windows).forEach(k => windows[k].el.classList.remove('focused'));
+  const w = windows[id];
+  if (!w) return;
+  w.el.style.zIndex = ++zTop;
+  w.el.classList.add('focused');
+  if (w.minimized) {
+    w.el.style.display = 'flex';
+    w.minimized = false;
+  }
+  document.querySelectorAll('.taskbar-btn').forEach(b => b.classList.remove('active'));
+  const tb = document.getElementById('tb-app-' + id);
+  if (tb) tb.classList.add('active');
+}
+
+function closeWindow(id) {
+  const w = windows[id];
+  if (!w) return;
+  w.el.classList.add('closing');
+  const tb = document.getElementById('tb-app-' + id);
+  if (tb) tb.remove();
+  setTimeout(() => { w.el.remove(); delete windows[id]; }, 160);
+}
+
+function minimizeWindow(id) {
+  const w = windows[id];
+  w.el.style.display = 'none';
+  w.minimized = true;
+  document.getElementById('tb-app-' + id)?.classList.remove('active');
+}
+
+let maximized = {};
+function maximizeWindow(id) {
+  const w = windows[id].el;
+  if (maximized[id]) {
+    Object.assign(w.style, maximized[id]);
+    delete maximized[id];
+  } else {
+    maximized[id] = { left: w.style.left, top: w.style.top, width: w.style.width, height: w.style.height };
+    Object.assign(w.style, { left: '0', top: '0', width: '100vw', height: `calc(100vh - 48px)` });
+  }
+}
+
+function addTaskbarBtn(id) {
+  const app = apps[id];
+  const btn = document.createElement('button');
+  btn.className = 'taskbar-btn active';
+  btn.id = 'tb-app-' + id;
+  btn.innerHTML = `${app.icon} ${app.title}`;
+  btn.onclick = () => {
+    const w = windows[id];
+    if (w.minimized) { focusWindow(id); }
+    else if (w.el.classList.contains('focused')) { minimizeWindow(id); }
+    else { focusWindow(id); }
+  };
+  document.getElementById('taskbar-apps').appendChild(btn);
+}
+
+// ── Drag ────────────────────────────────────────────────────────────────────
+function makeDraggable(id) {
+  const tb = document.getElementById('tb-' + id);
+  const win = document.getElementById('win-' + id);
+  let ox, oy;
+  tb.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('win-btn')) return;
+    focusWindow(id);
+    ox = e.clientX - win.offsetLeft;
+    oy = e.clientY - win.offsetTop;
+    const move = ev => {
+      win.style.left = Math.max(0, ev.clientX - ox) + 'px';
+      win.style.top  = Math.max(0, Math.min(ev.clientY - oy, window.innerHeight - 48 - 38)) + 'px';
+    };
+    const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
+    addEventListener('mousemove', move); addEventListener('mouseup', up);
+  });
+  win.addEventListener('mousedown', () => focusWindow(id));
+}
+
+// ── Resize ──────────────────────────────────────────────────────────────────
+function makeResizable(id) {
+  const rh = document.getElementById('rh-' + id);
+  const win = document.getElementById('win-' + id);
+  rh.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    const sw = win.offsetWidth, sh = win.offsetHeight;
+    const move = ev => {
+      win.style.width  = Math.max(300, sw + ev.clientX - sx) + 'px';
+      win.style.height = Math.max(200, sh + ev.clientY - sy) + 'px';
+    };
+    const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
+    addEventListener('mousemove', move); addEventListener('mouseup', up);
+  });
+}
+
+// ── File Manager ─────────────────────────────────────────────────────────────
+let fmCwd = '/home/max';
+
+function buildFiles() {
+  return `<div class="filemanager">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <button class="fm-nav-btn" onclick="fmUp()">⬆ Up</button>
+      <div class="fm-path" id="fm-path" style="flex:1">📂 ${fmCwd}</div>
+      <button class="fm-nav-btn" onclick="fmRefresh()">↻</button>
+    </div>
+    <div class="fm-grid" id="fm-grid"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
+  </div>`;
+}
+
+async function fmLoad(path) {
+  fmCwd = path;
+  const pathEl = document.getElementById('fm-path');
+  const grid = document.getElementById('fm-grid');
+  if (!grid) return;
+  if (pathEl) pathEl.textContent = '📂 ' + path;
+  grid.innerHTML = '<div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div>';
+
+  const files = await fsLs(path);
+  if (!grid.isConnected) return;
+
+  if (files.error) {
+    grid.innerHTML = `<div style="color:#f87;padding:20px">${files.error}</div>`;
+    return;
+  }
+  if (!files.length) {
+    grid.innerHTML = '<div style="color:rgba(255,255,255,.4);padding:20px">Empty folder</div>';
+    return;
+  }
+
+  grid.innerHTML = files.map(f => {
+    const icon = f.type === 'directory' ? '📁' : fileIcon(f.name);
+    return `<div class="fm-item" ondblclick="fmOpen('${f.path}','${f.type}','${f.name}')">
+      <span class="icon">${icon}</span><span>${f.name}</span>
+    </div>`;
+  }).join('');
+}
+
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { txt:'📄', md:'📄', js:'📜', py:'🐍', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵', mp4:'🎬', csv:'📊', pdf:'📕' };
+  return map[ext] || '📄';
+}
+
+function fmOpen(path, type, name) {
+  if (type === 'directory') { fmLoad(path); return; }
+  // open file in editor
+  openApp('editor');
+  setTimeout(() => editorOpenFile(path, name), 300);
+}
+
+function fmUp() {
+  const parts = fmCwd.split('/').filter(Boolean);
+  if (!parts.length) return;
+  parts.pop();
+  fmLoad('/' + parts.join('/') || '/');
+}
+
+function fmRefresh() { fmLoad(fmCwd); }
+
+// ── Text Editor ──────────────────────────────────────────────────────────────
+let editorCurrentPath = null;
+
+function buildEditor() {
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="editor-toolbar">
+      <span id="editor-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-right:6px">untitled</span>
+      <button onclick="saveEditorToMongo()">💾 Save</button>
+      <button onclick="editorDownload()">⬇ Download</button>
+      <button onclick="clearEditor()">🗑 Clear</button>
+    </div>
+    <textarea id="editor-area" placeholder="Start typing… or open a file from File Manager"></textarea>
+  </div>`;
+}
+
+async function editorOpenFile(path, name) {
+  editorCurrentPath = path;
+  const fn = document.getElementById('editor-filename');
+  if (fn) fn.textContent = name;
+  const res = await fsCat(path);
+  const ta = document.getElementById('editor-area');
+  if (ta) ta.value = res.error ? '(Error: ' + res.error + ')' : res.content;
+}
+
+async function saveEditorToMongo() {
+  const ta = document.getElementById('editor-area');
+  if (!ta) return;
+  if (!editorCurrentPath) { editorDownload(); return; }
+  const res = await fsWrite(editorCurrentPath, ta.value);
+  const fn = document.getElementById('editor-filename');
+  if (fn) fn.textContent = res.ok ? '✅ Saved' : '❌ ' + res.error;
+  setTimeout(() => { if (fn) fn.textContent = editorCurrentPath.split('/').pop(); }, 2000);
+}
+
+function editorDownload() {
+  const text = document.getElementById('editor-area')?.value || '';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = editorCurrentPath ? editorCurrentPath.split('/').pop() : 'document.txt';
+  a.click();
+}
+
+function clearEditor() {
+  editorCurrentPath = null;
+  const ta = document.getElementById('editor-area');
+  if (ta) ta.value = '';
+  const fn = document.getElementById('editor-filename');
+  if (fn) fn.textContent = 'untitled';
+}
+
+// ── Calculator ───────────────────────────────────────────────────────────────
+let calc = { cur: '0', prev: null, op: null, fresh: true };
+
+// Calculator keyboard support
+document.addEventListener('keydown', e => {
+  if (!windows['calc'] || windows['calc'].minimized) return;
+  if (document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA') return;
+  const map = {'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',
+    '+':'+','-':'−','*':'×','/':'÷','Enter':'=','=':'=','Backspace':'AC','.':'.',',':'.','Escape':'AC','%':'%'};
+  if (map[e.key]) { e.preventDefault(); calcPress(map[e.key]); }
+});
+
+function buildCalc() {
+  const btns = [
+    {l:'AC',t:'fn'},{l:'+/-',t:'fn'},{l:'%',t:'fn'},{l:'÷',t:'op'},
+    {l:'7',t:'num'},{l:'8',t:'num'},{l:'9',t:'num'},{l:'×',t:'op'},
+    {l:'4',t:'num'},{l:'5',t:'num'},{l:'6',t:'num'},{l:'−',t:'op'},
+    {l:'1',t:'num'},{l:'2',t:'num'},{l:'3',t:'num'},{l:'+',t:'op'},
+    {l:'0',t:'num wide'},{l:'.',t:'num'},{l:'=',t:'eq'},
+  ];
+  return `<div class="calc">
+    <div class="calc-display">
+      <div class="calc-expr" id="calc-expr"></div>
+      <div id="calc-result">0</div>
+    </div>
+    <div class="calc-grid">${btns.map(b=>`<button class="calc-btn ${b.t}" onclick="calcPress('${b.l}')">${b.l}</button>`).join('')}</div>
+  </div>`;
+}
+
+function calcEval(a, op, b) {
+  a = parseFloat(a); b = parseFloat(b);
+  if (op === '+') return a + b;
+  if (op === '−') return a - b;
+  if (op === '×') return a * b;
+  if (op === '÷') return b === 0 ? 'Error' : a / b;
+  return b;
+}
+
+function calcFmt(n) {
+  if (n === 'Error') return 'Error';
+  const s = String(parseFloat(n.toPrecision(10)));
+  return s;
+}
+
+function calcPress(v) {
+  const c = calc;
+  if (v === 'AC') {
+    calc = { cur: '0', prev: null, op: null, fresh: true };
+  } else if (v === '+/-') {
+    c.cur = String(parseFloat(c.cur) * -1);
+  } else if (v === '%') {
+    c.cur = String(parseFloat(c.cur) / 100);
+  } else if (v === '÷' || v === '×' || v === '−' || v === '+') {
+    if (c.op && !c.fresh) {
+      const r = calcEval(c.prev, c.op, c.cur);
+      c.cur = r === 'Error' ? 'Error' : calcFmt(r);
+    }
+    c.prev = c.cur; c.op = v; c.fresh = true;
+  } else if (v === '=') {
+    if (c.op && c.prev !== null) {
+      const r = calcEval(c.prev, c.op, c.cur);
+      c.cur = r === 'Error' ? 'Error' : calcFmt(r);
+      c.prev = null; c.op = null; c.fresh = true;
+    }
+  } else if (v === '.') {
+    if (c.fresh) { c.cur = '0.'; c.fresh = false; }
+    else if (!c.cur.includes('.')) c.cur += '.';
+  } else {
+    if (c.fresh) { c.cur = v; c.fresh = false; }
+    else { c.cur = c.cur === '0' ? v : c.cur + v; }
+  }
+
+  const rd = document.getElementById('calc-result');
+  const ed = document.getElementById('calc-expr');
+  if (rd) rd.textContent = calc.cur;
+  if (ed) ed.textContent = calc.op ? `${calc.prev} ${calc.op}` : '';
+}
+
+// ── Terminal ─────────────────────────────────────────────────────────────────
+let termCwd = '/home/max', termHistory = [], termHistIdx = -1;
+let termBusy = false;
+
+function buildTerminal() {
+  return `<div class="terminal">
+    <div class="term-output" id="term-out">Welcome to MaxOS Terminal v1.0\nType <span style="color:#ffd">help</span> for available commands.\n\n</div>
+    <div class="term-input-row">
+      <span class="term-prompt">max@maxos:${termCwd}$</span>&nbsp;
+      <input id="term-input" autofocus onkeydown="termKey(event)" spellcheck="false">
+    </div>
+  </div>`;
+}
+
+function initTerminal() {
+  setTimeout(() => document.getElementById('term-input')?.focus(), 100);
+}
+
+function termKey(e) {
+  if (e.key === 'Enter') {
+    if (termBusy) return;
+    const inp = document.getElementById('term-input');
+    const cmd = inp.value.trim();
+    inp.value = '';
+    if (cmd) { termHistory.unshift(cmd); termHistIdx = -1; }
+    termRun(cmd);
+  } else if (e.key === 'ArrowUp') {
+    termHistIdx = Math.min(termHistIdx + 1, termHistory.length - 1);
+    document.getElementById('term-input').value = termHistory[termHistIdx] || '';
+  } else if (e.key === 'ArrowDown') {
+    termHistIdx = Math.max(termHistIdx - 1, -1);
+    document.getElementById('term-input').value = termHistIdx >= 0 ? termHistory[termHistIdx] : '';
+  }
+}
+
+function termPrint(text) {
+  const out = document.getElementById('term-out');
+  if (!out) return;
+  out.textContent += text + '\n';
+  out.scrollTop = out.scrollHeight;
+  // update prompt
+  const prompt = document.querySelector('.term-prompt');
+  if (prompt) prompt.textContent = `max@maxos:${termCwd}$ `;
+}
+
+async function termRun(raw) {
+  const [cmd, ...args] = raw.split(' ').filter(Boolean);
+  termPrint(`$ ${raw}`);
+  if (!cmd) return;
+  termBusy = true;
+
+  const resolvePath = (p) => {
+    if (!p || p === '~') return '/home/max';
+    if (p.startsWith('/')) return p;
+    if (p === '..') {
+      const parts = termCwd.split('/').filter(Boolean);
+      parts.pop();
+      return '/' + parts.join('/') || '/';
+    }
+    return termCwd === '/' ? '/' + p : termCwd + '/' + p;
+  };
+
+  switch (cmd) {
+    case 'help':
+      termPrint('Commands: ls, cd, pwd, cat, mkdir, touch, rm, echo, whoami, date, uname, clear, open');
+      break;
+
+    case 'ls': {
+      const path = args[0] ? resolvePath(args[0]) : termCwd;
+      const files = await fsLs(path);
+      if (files.error) termPrint(files.error);
+      else if (!files.length) termPrint('(empty)');
+      else termPrint(files.map(f => f.type === 'directory' ? f.name + '/' : f.name).join('  '));
+      break;
+    }
+
+    case 'cd': {
+      const target = resolvePath(args[0]);
+      const stat = await fsStat(target);
+      if (stat.error) termPrint(`cd: ${args[0]}: No such directory`);
+      else if (stat.type !== 'directory') termPrint(`cd: ${args[0]}: Not a directory`);
+      else termCwd = target;
+      break;
+    }
+
+    case 'pwd':
+      termPrint(termCwd);
+      break;
+
+    case 'cat': {
+      if (!args[0]) { termPrint('Usage: cat <file>'); break; }
+      const path = resolvePath(args[0]);
+      const res = await fsCat(path);
+      if (res.error) termPrint(res.error);
+      else termPrint(res.content || '(empty file)');
+      break;
+    }
+
+    case 'mkdir': {
+      if (!args[0]) { termPrint('Usage: mkdir <name>'); break; }
+      const name = args[0];
+      const path = resolvePath(name);
+      const res = await fsMkdir(path, name, termCwd);
+      if (res.error) termPrint(res.error);
+      else termPrint(`Directory created: ${name}`);
+      break;
+    }
+
+    case 'touch': {
+      if (!args[0]) { termPrint('Usage: touch <file>'); break; }
+      const name = args[0];
+      const path = resolvePath(name);
+      const res = await fsTouch(path, name, termCwd);
+      if (res.error) termPrint(res.error);
+      else termPrint(`File created: ${name}`);
+      break;
+    }
+
+    case 'rm': {
+      if (!args[0]) { termPrint('Usage: rm <file|dir>'); break; }
+      const path = resolvePath(args[0]);
+      const res = await fsRm(path);
+      if (res.error) termPrint(res.error);
+      else termPrint(`Removed: ${args[0]}`);
+      break;
+    }
+
+    case 'echo':
+      termPrint(args.join(' '));
+      break;
+
+    case 'whoami':
+      termPrint('max');
+      break;
+
+    case 'date':
+      termPrint(new Date().toString());
+      break;
+
+    case 'uname':
+      termPrint('MaxOS 1.0.0 (MongoDB Edition)');
+      break;
+
+    case 'clear': {
+      const o = document.getElementById('term-out');
+      if (o) o.textContent = '';
+      termBusy = false;
+      return;
+    }
+
+    case 'open': {
+      const aliases = { files:'files', fm:'files', editor:'editor', notepad:'editor', calc:'calc', calculator:'calc', terminal:'terminal', term:'terminal', browser:'browser', web:'browser', settings:'settings' };
+      const target = (args[0] || '').toLowerCase();
+      if (!target) { termPrint('Usage: open <app>\nApps: files, editor, calc, terminal, browser, settings'); break; }
+      const appId = aliases[target];
+      if (appId) { openApp(appId); termPrint(`Opening ${apps[appId].title}...`); }
+      else termPrint(`open: "${target}" not found\nAvailable: files, editor, calc, terminal, browser, settings`);
+      break;
+    }
+
+    default:
+      termPrint(`${cmd}: command not found`);
+  }
+
+  termBusy = false;
+  const prompt = document.querySelector('.term-prompt');
+  if (prompt) prompt.textContent = `max@maxos:${termCwd}$ `;
+}
+
+// ── Browser ───────────────────────────────────────────────────────────────────
+function buildBrowser() {
+  return `<div class="mini-browser">
+    <div class="browser-bar">
+      <input id="browser-url" placeholder="Enter URL..." value="https://example.com" onkeydown="if(event.key==='Enter')browserGo()">
+      <button onclick="browserGo()">Go</button>
+    </div>
+    <iframe id="browser-frame" src="https://example.com" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+  </div>`;
+}
+function browserGo() {
+  let url = document.getElementById('browser-url').value.trim();
+  if (!url.startsWith('http')) url = 'https://' + url;
+  document.getElementById('browser-frame').src = url;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function buildSettings() {
+  const swatches = wallpapers.map((w,i)=>`<div class="wp-swatch ${i===0?'selected':''}" style="background:${w}" onclick="setWallpaper(${i},this)"></div>`).join('');
+  return `<div class="settings">
+    <h2>⚙️ Settings</h2>
+    <h3>Appearance</h3>
+    <div class="setting-card">
+      <div class="setting-row"><label>Wallpaper</label></div>
+      <div class="wallpaper-picker" style="padding-bottom:12px">${swatches}</div>
+    </div>
+    <h3>System</h3>
+    <div class="setting-card">
+      <div class="setting-row"><label>Animations</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+      <div class="setting-row"><label>Notifications</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+      <div class="setting-row"><label>Sound effects</label><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+    </div>
+    <h3>About</h3>
+    <div class="setting-card">
+      <div class="setting-row"><label>Version</label><span style="color:rgba(255,255,255,.45);font-size:13px">MaxOS 1.0 Web Edition</span></div>
+      <div class="setting-row"><label>Storage</label><span style="color:rgba(255,255,255,.45);font-size:13px">MongoDB Atlas</span></div>
+      <div class="setting-row"><label>Keyboard shortcut</label><span style="color:rgba(255,255,255,.45);font-size:12px">Ctrl+Space = Spotlight</span></div>
+    </div>
+  </div>`;
+}
+function setWallpaper(i, el) {
+  document.getElementById('desktop').style.background = wallpapers[i];
+  document.querySelectorAll('.wp-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ── PAINT ────────────────────────────────────────────────────────────────────
+function buildPaint() {
+  const colors = ['#ffffff','#ff5f57','#febc2e','#28c840','#64b4ff','#bf5af2','#ff9f0a','#30d158','#000000','#8e8e93'];
+  return `<div class="paint-wrap">
+    <div class="paint-toolbar">
+      <button id="pt-pen" class="active" onclick="ptTool('pen')">✏️ Pen</button>
+      <button id="pt-eraser" onclick="ptTool('eraser')">🧹 Eraser</button>
+      <button id="pt-fill" onclick="ptTool('fill')">🪣 Fill</button>
+      <label style="color:rgba(255,255,255,.6);font-size:12px">Size</label>
+      <input type="range" id="pt-size" min="1" max="40" value="4" style="width:70px">
+      ${colors.map(c=>`<div class="color-swatch" style="background:${c}" onclick="ptColor('${c}')"></div>`).join('')}
+      <button onclick="ptClear()">🗑 Clear</button>
+      <button onclick="ptSave()">💾 Save</button>
+    </div>
+    <canvas id="paint-canvas"></canvas>
+  </div>`;
+}
+
+let ptCtx, ptDrawing=false, ptCurColor='#ffffff', ptCurTool='pen';
+function initPaint() {
+  const canvas = document.getElementById('paint-canvas');
+  if (!canvas) return;
+  const body = canvas.parentElement;
+  canvas.width = body.offsetWidth;
+  canvas.height = body.offsetHeight - 46;
+  ptCtx = canvas.getContext('2d');
+  ptCtx.fillStyle = '#1a1a2e'; ptCtx.fillRect(0,0,canvas.width,canvas.height);
+  ptCtx.lineCap = 'round'; ptCtx.lineJoin = 'round';
+
+  canvas.onmousedown = e => { ptDrawing=true; ptCtx.beginPath(); ptCtx.moveTo(...ptXY(e,canvas)); if(ptCurTool==='fill') ptFill(ptXY(e,canvas)); };
+  canvas.onmousemove = e => {
+    if (!ptDrawing || ptCurTool==='fill') return;
+    const sz = +document.getElementById('pt-size').value;
+    ptCtx.lineWidth = ptCurTool==='eraser' ? sz*3 : sz;
+    ptCtx.strokeStyle = ptCurTool==='eraser' ? '#1a1a2e' : ptCurColor;
+    ptCtx.lineTo(...ptXY(e,canvas)); ptCtx.stroke(); ptCtx.beginPath(); ptCtx.moveTo(...ptXY(e,canvas));
+  };
+  canvas.onmouseup = canvas.onmouseleave = () => { ptDrawing=false; };
+}
+function ptXY(e,c) { const r=c.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+function ptTool(t) {
+  ptCurTool=t;
+  document.querySelectorAll('.paint-toolbar button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('pt-'+t)?.classList.add('active');
+}
+function ptColor(c) {
+  ptCurColor=c; ptCurTool='pen';
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('pt-pen')?.classList.add('active');
+  document.getElementById('pt-eraser')?.classList.remove('active');
+}
+function ptClear() { if(ptCtx) { ptCtx.fillStyle='#1a1a2e'; ptCtx.fillRect(0,0,ptCtx.canvas.width,ptCtx.canvas.height); } }
+function ptSave() {
+  const c=document.getElementById('paint-canvas');
+  if(!c) return;
+  const a=document.createElement('a'); a.download='painting.png'; a.href=c.toDataURL(); a.click();
+}
+function ptFill([x,y]) {
+  const c=document.getElementById('paint-canvas'); if(!c) return;
+  const ctx=ptCtx, w=c.width, h=c.height;
+  const img=ctx.getImageData(0,0,w,h), data=img.data;
+  const idx=(Math.round(y)*w+Math.round(x))*4;
+  const [tr,tg,tb,ta]=[data[idx],data[idx+1],data[idx+2],data[idx+3]];
+  const fc=hexToRgb(ptCurColor);
+  if(tr===fc[0]&&tg===fc[1]&&tb===fc[2]) return;
+  const stack=[[Math.round(x),Math.round(y)]];
+  while(stack.length) {
+    const [cx,cy]=stack.pop();
+    if(cx<0||cx>=w||cy<0||cy>=h) continue;
+    const i=(cy*w+cx)*4;
+    if(data[i]!==tr||data[i+1]!==tg||data[i+2]!==tb) continue;
+    data[i]=fc[0]; data[i+1]=fc[1]; data[i+2]=fc[2]; data[i+3]=255;
+    stack.push([cx+1,cy],[cx-1,cy],[cx,cy+1],[cx,cy-1]);
+  }
+  ctx.putImageData(img,0,0);
+}
+function hexToRgb(hex) { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return [r,g,b]; }
+
+// ── SNAKE ────────────────────────────────────────────────────────────────────
+function buildSnake() {
+  return `<div class="snake-wrap">
+    <div class="snake-score">Score: <span id="snake-score">0</span> &nbsp; Best: <span id="snake-best">0</span></div>
+    <canvas id="snake-canvas" width="360" height="360"></canvas>
+    <div class="snake-hint">Arrow keys or WASD to move · Space to pause</div>
+  </div>`;
+}
+
+let snakeGame = null;
+function initSnake() {
+  const canvas = document.getElementById('snake-canvas');
+  if (!canvas) return;
+  if (snakeGame) { snakeGame.stop(); }
+
+  const ctx = canvas.getContext('2d');
+  const CELL = 20, COLS = 18, ROWS = 18;
+  let snake, dir, next, food, score, best=0, running=false, paused=false, interval;
+
+  function start() {
+    snake = [{x:9,y:9},{x:8,y:9},{x:7,y:9}];
+    dir = {x:1,y:0}; next = {x:1,y:0};
+    score = 0; running = true; paused = false;
+    placeFood(); interval = setInterval(tick, 130);
+    document.getElementById('snake-score').textContent = 0;
+  }
+
+  function placeFood() {
+    let attempts = 0;
+    do {
+      food = {x:Math.floor(Math.random()*COLS), y:Math.floor(Math.random()*ROWS)};
+      attempts++;
+      if (attempts > 500) break; // safety — grid nearly full
+    } while (snake.some(s=>s.x===food.x && s.y===food.y));
+  }
+
+  function tick() {
+    if (paused) return;
+    dir = next;
+    const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
+    if (head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)) {
+      clearInterval(interval); running=false; draw(); return;
+    }
+    snake.unshift(head);
+    if (head.x===food.x&&head.y===food.y) {
+      score++; if(score>best) best=score;
+      document.getElementById('snake-score').textContent = score;
+      document.getElementById('snake-best').textContent = best;
+      placeFood();
+    } else { snake.pop(); }
+    draw();
+  }
+
+  function draw() {
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    // grid
+    ctx.strokeStyle='rgba(255,255,255,.04)';
+    for(let i=0;i<=COLS;i++){ctx.beginPath();ctx.moveTo(i*CELL,0);ctx.lineTo(i*CELL,ROWS*CELL);ctx.stroke();}
+    for(let j=0;j<=ROWS;j++){ctx.beginPath();ctx.moveTo(0,j*CELL);ctx.lineTo(COLS*CELL,j*CELL);ctx.stroke();}
+    // snake drawn first, food on top so it's never hidden
+    if (snake) {
+      snake.forEach((s,i)=>{
+        ctx.fillStyle = i===0?'#28c840':'#30d158';
+        ctx.fillRect(s.x*CELL+2, s.y*CELL+2, CELL-4, CELL-4);
+      });
+    }
+    if (food) {
+      // glow
+      ctx.shadowColor='#ff5f57'; ctx.shadowBlur=10;
+      ctx.fillStyle='#ff5f57';
+      ctx.beginPath(); ctx.arc(food.x*CELL+CELL/2, food.y*CELL+CELL/2, CELL/2-1, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+    }
+    if (!running) {
+      ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#fff'; ctx.font='bold 22px sans-serif'; ctx.textAlign='center';
+      const msg = (!snake || snake.length===3) ? 'Press Space to Start' : 'Game Over';
+      ctx.fillText(msg, canvas.width/2, canvas.height/2-10);
+      ctx.font='14px sans-serif'; ctx.fillStyle='rgba(255,255,255,.6)';
+      ctx.fillText('Score: '+(score||0), canvas.width/2, canvas.height/2+18);
+    }
+    if (paused && running) {
+      ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#fff'; ctx.font='bold 22px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('Paused', canvas.width/2, canvas.height/2);
+    }
+  }
+
+  const keyHandler = e => {
+    const map = {ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},
+                 w:{x:0,y:-1},s:{x:0,y:1},a:{x:-1,y:0},d:{x:1,y:0}};
+    if (e.key===' ') { if(!running){start();}else{paused=!paused;draw();} return; }
+    const d=map[e.key];
+    if(d&&dir&&!(d.x===-dir.x&&d.y===-dir.y)) next=d;
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+  };
+  document.addEventListener('keydown', keyHandler);
+  snakeGame = { stop: ()=>{ clearInterval(interval); document.removeEventListener('keydown',keyHandler); } };
+  // show start screen without crashing
+  running = false; score = 0;
+  draw();
+}
+
+// ── CLOCK ────────────────────────────────────────────────────────────────────
+function buildClock() {
+  return `<div class="clock-wrap">
+    <div class="clock-tabs">
+      <button class="clock-tab active" onclick="clockTab('analog',this)">Clock</button>
+      <button class="clock-tab" onclick="clockTab('stopwatch',this)">Stopwatch</button>
+      <button class="clock-tab" onclick="clockTab('timer',this)">Timer</button>
+    </div>
+    <div class="clock-panel active" id="clock-analog">
+      <canvas id="analog-clock" width="180" height="180"></canvas>
+      <div class="big-time" id="clock-digital">00:00:00</div>
+    </div>
+    <div class="clock-panel" id="clock-stopwatch">
+      <div class="big-time" id="sw-display">00:00.00</div>
+      <div style="display:flex;gap:10px">
+        <button class="sw-btn" onclick="swToggle()">Start</button>
+        <button class="sw-btn" onclick="swLap()">Lap</button>
+        <button class="sw-btn" onclick="swReset()">Reset</button>
+      </div>
+      <div class="sw-laps" id="sw-laps"></div>
+    </div>
+    <div class="clock-panel" id="clock-timer">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="timer-min" type="number" min="0" max="99" value="5" style="width:60px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:8px;font-size:20px;text-align:center">
+        <span style="color:#fff;font-size:24px">:</span>
+        <input id="timer-sec" type="number" min="0" max="59" value="0" style="width:60px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:8px;font-size:20px;text-align:center">
+      </div>
+      <div class="big-time" id="timer-display" style="font-size:42px">5:00</div>
+      <div style="display:flex;gap:10px">
+        <button class="sw-btn" onclick="timerToggle()">Start</button>
+        <button class="sw-btn" onclick="timerReset()">Reset</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+let clockInterval=null, swRunning=false, swStart=0, swElapsed=0, swLaps=[];
+let timerRunning=false, timerRemaining=0, timerInterval=null;
+
+function initClock() {
+  if(clockInterval) clearInterval(clockInterval);
+  clockInterval = setInterval(()=>{ drawAnalogClock(); updateDigitalClock(); }, 1000);
+  drawAnalogClock(); updateDigitalClock();
+}
+function clockTab(id, btn) {
+  document.querySelectorAll('.clock-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.clock-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('clock-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+function drawAnalogClock() {
+  const c=document.getElementById('analog-clock'); if(!c) return;
+  const ctx=c.getContext('2d'), cx=90, cy=90, r=80;
+  ctx.clearRect(0,0,180,180);
+  // face
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,.05)'; ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.2)'; ctx.lineWidth=2; ctx.stroke();
+  // ticks
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6; ctx.beginPath();
+    ctx.moveTo(cx+Math.sin(a)*(r-10),cy-Math.cos(a)*(r-10));
+    ctx.lineTo(cx+Math.sin(a)*(r-4),cy-Math.cos(a)*(r-4));
+    ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=2; ctx.stroke();
+  }
+  const now=new Date(), h=now.getHours()%12, m=now.getMinutes(), s=now.getSeconds();
+  const hand=(angle,len,w,color)=>{
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.sin(angle)*len, cy-Math.cos(angle)*len);
+    ctx.strokeStyle=color; ctx.lineWidth=w; ctx.lineCap='round'; ctx.stroke();
+  };
+  hand((h+m/60)*Math.PI/6, r*0.55, 4, '#fff');
+  hand((m+s/60)*Math.PI/30, r*0.75, 3, '#fff');
+  hand(s*Math.PI/30, r*0.8, 1.5, '#ff5f57');
+  ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fillStyle='#ff5f57'; ctx.fill();
+}
+function updateDigitalClock() {
+  const el=document.getElementById('clock-digital'); if(!el) return;
+  el.textContent=new Date().toLocaleTimeString();
+}
+// Stopwatch
+function swToggle() {
+  swRunning=!swRunning;
+  document.querySelector('#clock-stopwatch .sw-btn').textContent=swRunning?'Stop':'Start';
+  if(swRunning){swStart=Date.now()-swElapsed;requestAnimationFrame(swTick);}
+}
+function swTick() {
+  if(!swRunning) return;
+  swElapsed=Date.now()-swStart;
+  const el=document.getElementById('sw-display'); if(el) el.textContent=fmtSw(swElapsed);
+  requestAnimationFrame(swTick);
+}
+function swLap() {
+  if(!swRunning) return;
+  swLaps.push(swElapsed);
+  const el=document.getElementById('sw-laps'); if(!el) return;
+  el.innerHTML=swLaps.map((l,i)=>`<div class="sw-lap">Lap ${i+1}: ${fmtSw(l)}</div>`).reverse().join('');
+}
+function swReset() { swRunning=false; swElapsed=0; swLaps=[]; const el=document.getElementById('sw-display'); if(el)el.textContent='00:00.00'; const ll=document.getElementById('sw-laps');if(ll)ll.innerHTML=''; document.querySelector('#clock-stopwatch .sw-btn').textContent='Start';}
+function fmtSw(ms) { const m=Math.floor(ms/60000),s=Math.floor((ms%60000)/1000),cs=Math.floor((ms%1000)/10); return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`; }
+// Timer
+function timerToggle() {
+  if(!timerRunning) {
+    const m=+document.getElementById('timer-min').value||0, s=+document.getElementById('timer-sec').value||0;
+    if(!timerRemaining) timerRemaining=(m*60+s)*1000;
+    if(!timerRemaining) return;
+    timerRunning=true;
+    document.querySelector('#clock-timer .sw-btn').textContent='Stop';
+    timerInterval=setInterval(()=>{
+      timerRemaining-=1000;
+      const el=document.getElementById('timer-display');
+      if(el) el.textContent=`${Math.floor(timerRemaining/60000)}:${String(Math.floor((timerRemaining%60000)/1000)).padStart(2,'0')}`;
+      if(timerRemaining<=0){clearInterval(timerInterval);timerRunning=false;timerRemaining=0;if(el)el.textContent='Done!';}
+    },1000);
+  } else { clearInterval(timerInterval); timerRunning=false; document.querySelector('#clock-timer .sw-btn').textContent='Start'; }
+}
+function timerReset() { clearInterval(timerInterval); timerRunning=false; timerRemaining=0; const el=document.getElementById('timer-display'); if(el)el.textContent=''; document.querySelector('#clock-timer .sw-btn').textContent='Start'; }
+
+// ── SYSTEM MONITOR ───────────────────────────────────────────────────────────
+function buildSysmon() {
+  return `<div class="sysmon-wrap">
+    <div class="sm-row">
+      <div class="sm-label"><span>CPU Usage</span><span id="sm-cpu-val">0%</span></div>
+      <div class="sm-bar-bg"><div class="sm-bar" id="sm-cpu" style="width:0%;background:linear-gradient(90deg,#64b4ff,#bf5af2)"></div></div>
+    </div>
+    <div class="sm-row">
+      <div class="sm-label"><span>Memory</span><span id="sm-mem-val">0%</span></div>
+      <div class="sm-bar-bg"><div class="sm-bar" id="sm-mem" style="width:0%;background:linear-gradient(90deg,#28c840,#30d158)"></div></div>
+    </div>
+    <div class="sm-row">
+      <div class="sm-label"><span>Disk</span><span id="sm-disk-val">0%</span></div>
+      <div class="sm-bar-bg"><div class="sm-bar" id="sm-disk" style="width:0%;background:linear-gradient(90deg,#febc2e,#ff9f0a)"></div></div>
+    </div>
+    <div class="sm-row">
+      <div class="sm-label"><span>Network ↑</span><span id="sm-net-val">0 KB/s</span></div>
+      <div class="sm-bar-bg"><div class="sm-bar" id="sm-net" style="width:0%;background:linear-gradient(90deg,#ff5f57,#febc2e)"></div></div>
+    </div>
+    <div style="color:rgba(255,255,255,.5);font-size:12px;margin-top:4px">Processes</div>
+    <div class="sm-procs" id="sm-procs"></div>
+  </div>`;
+}
+
+const smProcs = [
+  'kernel_task','WindowServer','loginwindow','Finder','Safari','node','mongo','nginx','redis-server','python3','claude','Spotify','Slack','Chrome'
+];
+let smInterval=null;
+function initSysmon() {
+  if(smInterval) clearInterval(smInterval);
+  function update() {
+    const cpu=20+Math.random()*60, mem=40+Math.random()*40, disk=55+Math.random()*15, net=Math.random()*100;
+    const set=(id,val,unit='%')=>{
+      const b=document.getElementById('sm-'+id); const v=document.getElementById('sm-'+id+'-val');
+      if(b) b.style.width=val+'%'; if(v) v.textContent=unit==='%'?Math.round(val)+'%':val.toFixed(1)+' KB/s';
+    };
+    set('cpu',cpu); set('mem',mem); set('disk',disk); set('net',net,'kb');
+    const el=document.getElementById('sm-procs'); if(!el) return;
+    el.innerHTML=smProcs.map(p=>`<div class="sm-proc"><span>${p}</span><span style="color:rgba(255,255,255,.4)">${(Math.random()*5).toFixed(1)}%  ${Math.floor(Math.random()*500)}MB</span></div>`).join('');
+  }
+  update(); smInterval=setInterval(update,1500);
+}
+
+// ── CALENDAR ─────────────────────────────────────────────────────────────────
+function buildCalendar() {
+  return `<div class="cal-wrap">
+    <div class="cal-header">
+      <button class="cal-nav" onclick="calNav(-1)">‹</button>
+      <h3 id="cal-title"></h3>
+      <button class="cal-nav" onclick="calNav(1)">›</button>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>`;
+}
+
+let calDate = new Date();
+const calEvents = { [new Date().toDateString()]: true };
+
+function initCalendar() { renderCalendar(); }
+function calNav(dir) { calDate.setMonth(calDate.getMonth()+dir); renderCalendar(); }
+function renderCalendar() {
+  const title=document.getElementById('cal-title'), grid=document.getElementById('cal-grid');
+  if(!title||!grid) return;
+  const y=calDate.getFullYear(), m=calDate.getMonth();
+  title.textContent=new Date(y,m,1).toLocaleString('default',{month:'long',year:'numeric'});
+  const days=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const first=new Date(y,m,1).getDay(), total=new Date(y,m+1,0).getDate();
+  const prevDays=new Date(y,m,0).getDate();
+  const today=new Date().toDateString();
+  let html=days.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  for(let i=0;i<first;i++) html+=`<div class="cal-day other-month">${prevDays-first+1+i}</div>`;
+  for(let d=1;d<=total;d++){
+    const ds=new Date(y,m,d).toDateString();
+    const cls=['cal-day',ds===today?'today':'',calEvents[ds]?'has-event':''].filter(Boolean).join(' ');
+    html+=`<div class="${cls}" onclick="calClick(${y},${m},${d})">${d}</div>`;
+  }
+  const rem=(7-((first+total)%7))%7;
+  for(let i=1;i<=rem;i++) html+=`<div class="cal-day other-month">${i}</div>`;
+  grid.innerHTML=html;
+}
+function calClick(y,m,d) {
+  const ds=new Date(y,m,d).toDateString();
+  if(calEvents[ds]) delete calEvents[ds]; else calEvents[ds]=true;
+  renderCalendar();
+}
+
+// ── MUSIC PLAYER ─────────────────────────────────────────────────────────────
+const musicTracks = [
+  {title:'Chill Lofi Beat', artist:'MaxOS Radio',    emoji:'🎸', color:'linear-gradient(135deg,#1a1a2e,#0f3460)'},
+  {title:'Synthwave Drive', artist:'Night Rider',    emoji:'🌙', color:'linear-gradient(135deg,#2d1b69,#bf5af2)'},
+  {title:'Morning Coffee',  artist:'Acoustic Vibes', emoji:'☕', color:'linear-gradient(135deg,#1a2a1a,#28c840)'},
+  {title:'Deep Focus',      artist:'Study Mode',     emoji:'🧠', color:'linear-gradient(135deg,#0f2027,#64b4ff)'},
+  {title:'Sunset Jazz',     artist:'Blue Note',      emoji:'🎷', color:'linear-gradient(135deg,#ff4e00,#febc2e)'},
+];
+
+function buildMusic() {
+  return `<div class="music-wrap">
+    <div class="music-art" id="music-art" style="background:${musicTracks[0].color}">${musicTracks[0].emoji}</div>
+    <div class="music-title"><h3 id="music-title">${musicTracks[0].title}</h3><p id="music-artist">${musicTracks[0].artist}</p></div>
+    <canvas id="vis-canvas" height="40"></canvas>
+    <div class="music-progress">
+      <input type="range" class="music-seek" id="music-seek" value="0" min="0" max="100" style="pointer-events:none">
+      <div class="music-times"><span id="music-cur">0:00</span><span id="music-dur">∞</span></div>
+    </div>
+    <div class="music-controls">
+      <button class="music-btn" onclick="musicPrev()">⏮</button>
+      <button class="music-btn play-btn" id="music-play" onclick="musicToggle()">▶</button>
+      <button class="music-btn" onclick="musicNext()">⏭</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 4px">
+      <span style="font-size:13px">🔈</span>
+      <input type="range" min="0" max="100" value="60" style="flex:1;accent-color:#64b4ff;cursor:pointer" oninput="setMusicVol(this.value/100)">
+      <span style="font-size:13px">🔊</span>
+    </div>
+    <div class="music-playlist">${musicTracks.map((t,i)=>`
+      <div class="music-track${i===0?' active':''}" id="mtrack-${i}" onclick="musicPlay(${i})">
+        <span style="font-size:18px">${t.emoji}</span>
+        <span>${t.title}<br><span style="color:rgba(255,255,255,.4);font-size:11px">${t.artist}</span></span>
+        <span class="dur">∞</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ── Web Audio Engine ─────────────────────────────────────────────────────────
+const MUS = (() => {
+  let ac = null, master = null;
+
+  function boot() {
+    if (ac) { ac.state === 'suspended' && ac.resume(); return; }
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ac.createDynamicsCompressor();
+    master = ac.createGain(); master.gain.value = 0.42;
+    master.connect(comp); comp.connect(ac.destination);
+  }
+
+  const osc = (f, d, type='triangle', v=0.12, w=0) => {
+    if (!ac) return;
+    const t=ac.currentTime+w, o=ac.createOscillator(), env=ac.createGain(), lp=ac.createBiquadFilter();
+    lp.type='lowpass'; lp.frequency.value=2200;
+    o.type=type; o.frequency.value=f;
+    env.gain.setValueAtTime(0.001,t);
+    env.gain.linearRampToValueAtTime(v, t+0.018);
+    env.gain.setValueAtTime(v*0.7, t+d*0.5);
+    env.gain.exponentialRampToValueAtTime(0.0001, t+d*0.95);
+    o.connect(lp); lp.connect(env); env.connect(master);
+    o.start(t); o.stop(t+d+0.05);
+  };
+
+  const kick = (v=0.72, w=0) => {
+    if (!ac) return;
+    const t=ac.currentTime+w, o=ac.createOscillator(), g=ac.createGain();
+    o.frequency.setValueAtTime(110,t); o.frequency.exponentialRampToValueAtTime(0.01,t+0.35);
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+0.4);
+  };
+
+  const snare = (v=0.26, w=0) => {
+    if (!ac) return;
+    const t=ac.currentTime+w, buf=ac.createBuffer(1,ac.sampleRate*0.15,ac.sampleRate);
+    const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    const src=ac.createBufferSource(), bp=ac.createBiquadFilter(), g=ac.createGain();
+    bp.type='bandpass'; bp.frequency.value=1300; bp.Q.value=0.6;
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.13);
+    src.buffer=buf; src.connect(bp); bp.connect(g); g.connect(master); src.start(t);
+  };
+
+  const hat = (v=0.055, w=0) => {
+    if (!ac) return;
+    const t=ac.currentTime+w, buf=ac.createBuffer(1,ac.sampleRate*0.04,ac.sampleRate);
+    const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+    const src=ac.createBufferSource(), hp=ac.createBiquadFilter(), g=ac.createGain();
+    hp.type='highpass'; hp.frequency.value=8500;
+    g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.04);
+    src.buffer=buf; src.connect(hp); hp.connect(g); g.connect(master); src.start(t);
+  };
+
+  // Note Hz lookup
+  const H = {
+    A2:110, C3:130.81, D3:146.83, E3:164.81, F3:174.61, G3:196, A3:220, B3:246.94,
+    C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392, A4:440, B4:493.88,
+    C5:523.25, D5:587.33, E5:659.26, F5:698.46,
+  };
+
+  // 5 synthesized tracks — each defines steps(s16, s, w):
+  //   s16 = absolute 16th-note counter, s = 16th-note duration (sec), w = when offset
+  const TRACKS = [
+    // 0: Lofi Chill  72 bpm
+    { bpm:72, len:16, steps(n,s,w) {
+      const bar=Math.floor(n/16)%4, st=n%16;
+      const C=[[H.A3,H.C4,H.E4],[H.F3,H.A3,H.C4],[H.C3,H.E3,H.G3],[H.G3,H.B3,H.D4]];
+      const B=[H.A2,87.31,65.41,98];
+      const ch=C[bar];
+      if(st===0){ ch.forEach((f,i)=>osc(f,s*14,'triangle',0.065,w+i*0.025)); osc(B[bar],s*15,'sine',0.14,w); }
+      if(st===8){ ch.forEach((f,i)=>osc(f,s*6,'triangle',0.05,w+i*0.02)); }
+      const mel=[
+        [[0,H.E4,s*4],[2,H.C4,s*2],[4,H.A3,s*3],[8,H.E4,s*4],[10,H.D4,s*2],[12,H.C4,s*3]],
+        [[0,H.C4,s*4],[3,H.A3,s*2],[5,H.G3,s*3],[8,H.A3,s*4],[12,H.C4,s*4]],
+        [[0,H.G3,s*3],[4,H.E4,s*4],[8,H.G4,s*4],[10,H.E4,s*2],[12,H.C4,s*4]],
+        [[0,H.D4,s*4],[4,H.B3,s*3],[8,H.D4,s*5],[13,H.G3,s*3]],
+      ];
+      mel[bar].forEach(([p,f,d])=>{ if(st===p) osc(f,d,'triangle',0.09,w); });
+      if(st===0||st===8) kick(0.52,w);
+      if(st===4||st===12) snare(0.17,w);
+      if(st%2===0) hat(0.042,w);
+    }},
+
+    // 1: Synthwave  120 bpm
+    { bpm:120, len:16, steps(n,s,w) {
+      const bar=Math.floor(n/16)%2, st=n%16;
+      const arp=[H.D3,H.F3,H.A3,H.C4,H.E4,H.C4,H.A3,H.F3];
+      osc(arp[st%8],s*2.2,'sawtooth',0.085,w);
+      if(st%4===0) osc(bar===0?H.D3/2:H.G3/2,s*8,'sawtooth',0.17,w);
+      const lead=[[0,H.D4],[2,H.F4],[4,H.A4],[6,H.C5],[8,H.A4],[10,H.F4],[12,H.D4],[14,H.E4]];
+      lead.forEach(([p,f])=>{ if(st===p) osc(f,s*2.5,'square',0.055,w); });
+      if(st%4===0) kick(0.62,w);
+      if(st===6||st===14) snare(0.2,w);
+      if(st%2===0) hat(0.036,w);
+    }},
+
+    // 2: Morning Coffee  80 bpm
+    { bpm:80, len:16, steps(n,s,w) {
+      const bar=Math.floor(n/16)%2, st=n%16;
+      const C=[[H.C3,H.E3,H.G3,H.C4],[H.A3,H.C4,H.E4,H.A4]];
+      const ch=C[bar];
+      if(st===0){ ch.forEach((f,i)=>osc(f,s*15,'sine',0.052,w+i*0.03)); osc(ch[0]/2,s*15,'sine',0.13,w); }
+      if(st===8){ ch.forEach((f,i)=>osc(f,s*7,'sine',0.04,w+i*0.02)); }
+      const mel=[
+        [[0,H.E4,s*4],[3,H.D4,s*2],[5,H.C4,s*3],[8,H.E4,s*5],[13,H.C4,s*3]],
+        [[0,H.A4,s*4],[3,H.G4,s*3],[6,H.E4,s*4],[10,H.C4,s*2],[12,H.E4,s*4]],
+      ];
+      mel[bar].forEach(([p,f,d])=>{ if(st===p) osc(f,d,'triangle',0.075,w); });
+      if(st===0) kick(0.36,w); if(st===8) kick(0.3,w);
+      if(st===4||st===12) snare(0.1,w);
+      if(st%4===2) hat(0.032,w);
+    }},
+
+    // 3: Deep Focus  58 bpm
+    { bpm:58, len:32, steps(n,s,w) {
+      const st=n%32, bar=Math.floor(st/8)%4;
+      const C=[[H.A3,H.C4,H.E4],[H.F3,H.A3,H.C4],[H.G3,H.B3,H.D4],[H.E3,H.G3,H.B3]];
+      const ch=C[bar];
+      if(st%8===0){ ch.forEach((f,i)=>osc(f,s*30,'sine',0.048,w+i*0.07)); osc(ch[0]/2,s*30,'sine',0.09,w); }
+      if(st%8===3) osc(H.E5,s*7,'triangle',0.036,w);
+      if(st%8===6) osc(H.C5,s*5,'triangle',0.028,w);
+      if(st%16===0) kick(0.19,w);
+      if(st%16===8) snare(0.07,w);
+    }},
+
+    // 4: Sunset Jazz  100 bpm
+    { bpm:100, len:16, steps(n,s,w) {
+      const bar=Math.floor(n/16)%4, st=n%16;
+      const C=[[H.D3,H.F3,H.A3,H.C4],[H.G3,H.B3,H.D4,H.F4],[H.C3,H.E3,H.G3,H.B3],[H.A3,H.C4,H.E4,H.G4]];
+      const BL=[[H.D3,H.E3,H.F3,H.G3],[H.G3,H.A3,H.B3,H.C4],[H.C3,H.D3,H.E3,H.F3],[H.A3,H.G3,H.F3,H.E3]];
+      const ch=C[bar];
+      if(st===2||st===10) ch.forEach((f,i)=>osc(f,s*3,'triangle',0.062,w+i*0.012));
+      if(st===6||st===14) ch.slice(1).forEach((f,i)=>osc(f,s*2,'triangle',0.048,w+i*0.01));
+      if(st%4===0) osc(BL[bar][st/4]/2,s*3.5,'triangle',0.15,w);
+      const mel=[
+        [[0,H.A4,s*4],[4,H.F4,s*3],[8,H.E4,s*4],[12,H.D4,s*4]],
+        [[0,H.G4,s*4],[4,H.F4,s*3],[8,H.D4,s*4],[12,H.E4,s*4]],
+        [[0,H.E4,s*3],[3,H.G4,s*4],[8,H.B4,s*4],[12,H.A4,s*4]],
+        [[0,H.A4,s*4],[4,H.G4,s*3],[8,H.E4,s*4],[12,H.D4,s*4]],
+      ];
+      mel[bar].forEach(([p,f,d])=>{ if(st===p) osc(f,d,'triangle',0.065,w); });
+      if([0,3,4,7,8,11,12,15].includes(st)) hat(0.038,w);
+      if(st===4||st===12) snare(0.11,w);
+      if(st===0) kick(0.26,w);
+    }},
+  ];
+
+  return { boot, TRACKS, get ac(){ return ac; } };
+})();
+
+// ── Music scheduler ───────────────────────────────────────────────────────────
+let musicIdx=0, musicPlaying=false, musicBarNum=0, musicTimer=null, visInterval=null;
+
+function scheduleBar(trackIdx, barNum, atTime) {
+  const tr = MUS.TRACKS[trackIdx];
+  const s = (60/tr.bpm)/4;       // 16th-note seconds
+  const barDur = s * tr.len;
+  const base = barNum * tr.len;
+  for (let i = 0; i < tr.len; i++) {
+    const w = atTime + i*s - MUS.ac.currentTime;
+    if (w > -0.01) tr.steps(base+i, s, Math.max(0,w));
+  }
+  const nextAt = atTime + barDur;
+  const msAhead = (nextAt - MUS.ac.currentTime - 0.08) * 1000;
+  musicTimer = setTimeout(() => {
+    if (!musicPlaying || musicIdx !== trackIdx) return;
+    musicBarNum = barNum + 1;
+    scheduleBar(trackIdx, musicBarNum, nextAt);
+    const elapsed = musicBarNum * (60/tr.bpm) * 4;
+    const cur = document.getElementById('music-cur');
+    if (cur) cur.textContent = `${Math.floor(elapsed/60)}:${String(Math.floor(elapsed%60)).padStart(2,'0')}`;
+    const seek = document.getElementById('music-seek');
+    if (seek) seek.value = (musicBarNum % 32) / 32 * 100;
+  }, Math.max(0, msAhead));
+}
+
+function initMusic() {}
+
+function musicPlay(i) {
+  clearTimeout(musicTimer);
+  musicIdx = i; musicBarNum = 0;
+  const t = musicTracks[i];
+  const art = document.getElementById('music-art');
+  if (art) { art.style.background = t.color; art.textContent = t.emoji; }
+  const tt = document.getElementById('music-title'); if(tt) tt.textContent = t.title;
+  const ar = document.getElementById('music-artist'); if(ar) ar.textContent = t.artist;
+  document.querySelectorAll('.music-track').forEach((el,j)=>el.classList.toggle('active',j===i));
+  if (musicPlaying) { MUS.boot(); scheduleBar(i, 0, MUS.ac.currentTime + 0.05); }
+}
+
+function musicToggle() { musicPlaying ? musicPause() : musicResume(); }
+
+function musicResume() {
+  musicPlaying = true;
+  document.getElementById('music-play').textContent = '⏸';
+  MUS.boot();
+  scheduleBar(musicIdx, musicBarNum, MUS.ac.currentTime + 0.05);
+  startVisualizer();
+}
+
+function musicPause() {
+  musicPlaying = false;
+  clearTimeout(musicTimer);
+  document.getElementById('music-play').textContent = '▶';
+  clearInterval(visInterval);
+  MUS.ac?.suspend();
+  const c=document.getElementById('vis-canvas');
+  if(c) c.getContext('2d').clearRect(0,0,c.width,c.height);
+}
+
+function setMusicVol(v) { if(MUS.ac){ const g=MUS.ac.destination; } try{ MUS.TRACKS; const gainNode=document.querySelector('#music-art'); const master=MUS.ac?.destination; if(MUS._gain) MUS._gain.gain.value=v*0.8; } catch(e){} }
+function musicNext() { const wasPlaying=musicPlaying; if(wasPlaying)musicPause(); musicPlay((musicIdx+1)%musicTracks.length); if(wasPlaying)musicResume(); notify('🎵','Now Playing',musicTracks[(musicIdx)].title); }
+function musicPrev() { const wasPlaying=musicPlaying; if(wasPlaying)musicPause(); musicPlay((musicIdx-1+musicTracks.length)%musicTracks.length); if(wasPlaying)musicResume(); }
+
+function startVisualizer() {
+  clearInterval(visInterval);
+  visInterval = setInterval(() => {
+    const c=document.getElementById('vis-canvas'); if(!c||!musicPlaying) return;
+    const ctx=c.getContext('2d'), w=c.offsetWidth||280, h=40;
+    if(c.width!==w) c.width=w;
+    ctx.clearRect(0,0,w,h);
+    for(let i=0;i<36;i++){
+      const bh=4+Math.random()*32;
+      ctx.fillStyle=`hsl(${200+i*4},75%,58%)`;
+      ctx.fillRect(i*(w/36),h-bh,w/36-2,bh);
+    }
+  }, 80);
+}
+
+// ── App init hooks ────────────────────────────────────────────────────────────
+const appInitHooks = { paint: initPaint, snake: initSnake, clock: initClock, sysmon: initSysmon, calendar: initCalendar, music: initMusic };
+</script>
+</body>
+</html>

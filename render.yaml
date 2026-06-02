@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: maxos-server
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: MONGO_URI
+        value: mongodb+srv://maxvbuda_db_user:3pfGFMMNHGNcAEwa@cluster0.04zabtc.mongodb.net/maxos?appName=Cluster0
+      - key: PORT
+        value: 3001
