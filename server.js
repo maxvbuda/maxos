@@ -46,20 +46,21 @@ const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
 
 // ── Seed user filesystem ──────────────────────────────────────────────────────
-async function seedUser(userId) {
+async function seedUser(userId, username) {
   const count = await File.countDocuments({ userId });
   if (count > 0) return;
+  const h = `/home/${username}`;
   await File.insertMany([
-    { userId, path: '/',                           name: '/',          type: 'directory', parent: '' },
-    { userId, path: '/home',                       name: 'home',       type: 'directory', parent: '/' },
-    { userId, path: '/home/user',                  name: 'user',       type: 'directory', parent: '/home' },
-    { userId, path: '/home/user/documents',        name: 'documents',  type: 'directory', parent: '/home/user' },
-    { userId, path: '/home/user/pictures',         name: 'pictures',   type: 'directory', parent: '/home/user' },
-    { userId, path: '/home/user/readme.txt',       name: 'readme.txt', type: 'file',      parent: '/home/user',
+    { userId, path: '/',                  name: '/',          type: 'directory', parent: '' },
+    { userId, path: '/home',              name: 'home',       type: 'directory', parent: '/' },
+    { userId, path: h,                    name: username,     type: 'directory', parent: '/home' },
+    { userId, path: `${h}/documents`,     name: 'documents',  type: 'directory', parent: h },
+    { userId, path: `${h}/pictures`,      name: 'pictures',   type: 'directory', parent: h },
+    { userId, path: `${h}/readme.txt`,    name: 'readme.txt', type: 'file',      parent: h,
       content: 'Welcome to MaxOS!\nYour personal files are stored here in MongoDB.' },
-    { userId, path: '/home/user/notes.md',         name: 'notes.md',   type: 'file',      parent: '/home/user',
+    { userId, path: `${h}/notes.md`,      name: 'notes.md',   type: 'file',      parent: h,
       content: '# My Notes\n- Start writing here\n- Files persist across sessions' },
-    { userId, path: '/home/user/documents/ideas.md', name: 'ideas.md', type: 'file',      parent: '/home/user/documents',
+    { userId, path: `${h}/documents/ideas.md`, name: 'ideas.md', type: 'file',   parent: `${h}/documents`,
       content: '# Ideas\n- Build something great' },
   ]);
 }
@@ -86,7 +87,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (exists) return res.status(409).json({ error: 'Username already taken' });
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({ username, password: hashed, displayName: displayName || username });
-    await seedUser(user._id);
+    await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -100,7 +101,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid username or password' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
-    await seedUser(user._id);
+    await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName });
   } catch (e) { res.status(500).json({ error: e.message }); }
