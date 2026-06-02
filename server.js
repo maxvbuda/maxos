@@ -13,7 +13,7 @@ const FileSchema = new mongoose.Schema({
   name:    { type: String, required: true },
   type:    { type: String, enum: ['file', 'directory'], required: true },
   content: { type: String, default: '' },
-  parent:  { type: String, required: true },
+  parent:  { type: String, default: '' },
 }, { timestamps: true });
 
 const File = mongoose.model('File', FileSchema);
