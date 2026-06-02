@@ -136,7 +136,7 @@ app.post('/api/mv', async (req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 if (!MONGO_URI) { console.error('❌ MONGO_URI env var is not set!'); process.exit(1); }
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { dbName: 'maxos' })
   .then(async () => {
     console.log('✅ Connected to MongoDB');
     await seed();
