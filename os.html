@@ -2413,43 +2413,67 @@ function pomoToggle() {
 }
 
 // ── WEATHER (simulated) ──────────────────────────────────────────────────────
-const WEATHER_TYPES = [
-  { icon: '☀️', desc: 'Sunny', min: 18, max: 32 },
-  { icon: '⛅', desc: 'Partly Cloudy', min: 14, max: 24 },
-  { icon: '☁️', desc: 'Cloudy', min: 10, max: 18 },
-  { icon: '🌧️', desc: 'Rainy', min: 8, max: 15 },
-  { icon: '⛈️', desc: 'Stormy', min: 12, max: 20 },
-  { icon: '❄️', desc: 'Snowy', min: -5, max: 3 },
-];
+// WMO weather code → emoji + description (Open-Meteo standard codes)
+const WMO = {
+  0:['☀️','Clear sky'], 1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'], 3:['☁️','Overcast'],
+  45:['🌫️','Fog'], 48:['🌫️','Rime fog'],
+  51:['🌦️','Light drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Heavy drizzle'],
+  56:['🌧️','Freezing drizzle'], 57:['🌧️','Freezing drizzle'],
+  61:['🌧️','Light rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
+  66:['🌧️','Freezing rain'], 67:['🌧️','Freezing rain'],
+  71:['🌨️','Light snow'], 73:['❄️','Snow'], 75:['❄️','Heavy snow'], 77:['❄️','Snow grains'],
+  80:['🌦️','Rain showers'], 81:['🌧️','Rain showers'], 82:['⛈️','Violent showers'],
+  85:['🌨️','Snow showers'], 86:['🌨️','Snow showers'],
+  95:['⛈️','Thunderstorm'], 96:['⛈️','Thunderstorm + hail'], 99:['⛈️','Severe thunderstorm'],
+};
+const WEATHER_PRESETS = ['New York','London','Tokyo','Paris','Sydney','Dubai'];
+
 function buildWeather() {
   return `<div class="weather">
     <div class="weather-search">
       <input id="weather-city" placeholder="Enter a city…" value="San Francisco" onkeydown="if(event.key==='Enter')weatherGo()">
       <button onclick="weatherGo()">Go</button>
     </div>
+    <div class="conv-cats" style="gap:6px">
+      ${WEATHER_PRESETS.map(c => `<button class="conv-cat" onclick="weatherGo('${c}')">${c}</button>`).join('')}
+    </div>
     <div id="weather-content"></div>
   </div>`;
 }
 function initWeather() { weatherGo(); }
-const toF = (c) => Math.round(c * 9 / 5 + 32);
-function weatherGo() {
-  const city = document.getElementById('weather-city').value.trim() || 'Unknown';
-  // deterministic pseudo-random from city name so it's stable per city
-  let seed = 0; for (const ch of city) seed += ch.charCodeAt(0);
-  const rng = (n) => { seed = (seed * 9301 + 49297) % 233280; return Math.floor(seed / 233280 * n); };
-  const cur = WEATHER_TYPES[rng(WEATHER_TYPES.length)];
-  const temp = toF(cur.min + rng(cur.max - cur.min));
-  const days = ['Mon','Tue','Wed','Thu','Fri'].map(d => { const w = WEATHER_TYPES[rng(WEATHER_TYPES.length)]; return { d, icon: w.icon, t: toF(w.min + rng(w.max - w.min)) }; });
+function wmo(code) { return WMO[code] || ['🌡️','Unknown']; }
+
+async function weatherGo(preset) {
+  const input = document.getElementById('weather-city');
+  const city = preset || input.value.trim() || 'San Francisco';
+  if (preset) input.value = preset;
   const content = document.getElementById('weather-content');
   if (!content) return;
-  content.innerHTML = `
-    <div class="weather-current">
-      <div class="weather-icon">${cur.icon}</div>
-      <div class="weather-temp">${temp}°F</div>
-      <div class="weather-desc">${cur.desc}</div>
-      <div class="weather-city">📍 ${city}</div>
-    </div>
-    <div class="weather-days">${days.map(d => `<div class="weather-day"><div class="wd-name">${d.d}</div><div class="wd-icon">${d.icon}</div><div class="wd-temp">${d.t}°F</div></div>`).join('')}</div>`;
+  content.innerHTML = `<div style="text-align:center;color:rgba(255,255,255,.4);padding:30px">Loading…</div>`;
+  try {
+    // 1. Geocode the city name → lat/lon (free, no key)
+    const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`).then(r => r.json());
+    if (!geo.results || !geo.results.length) { content.innerHTML = `<div style="text-align:center;color:#ff8a84;padding:30px">City "${city}" not found</div>`; return; }
+    const loc = geo.results[0];
+    // 2. Fetch live forecast (free, no key)
+    const wx = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max&temperature_unit=fahrenheit&timezone=auto&forecast_days=5`).then(r => r.json());
+    const [icon, desc] = wmo(wx.current.weather_code);
+    const temp = Math.round(wx.current.temperature_2m);
+    const dayNames = wx.daily.time.map(t => new Date(t + 'T00:00').toLocaleDateString([], { weekday: 'short' }));
+    content.innerHTML = `
+      <div class="weather-current">
+        <div class="weather-icon">${icon}</div>
+        <div class="weather-temp">${temp}°F</div>
+        <div class="weather-desc">${desc}</div>
+        <div class="weather-city">📍 ${loc.name}${loc.country ? ', ' + loc.country : ''}</div>
+      </div>
+      <div class="weather-days">${wx.daily.time.map((t, i) => {
+        const [ic] = wmo(wx.daily.weather_code[i]);
+        return `<div class="weather-day"><div class="wd-name">${dayNames[i]}</div><div class="wd-icon">${ic}</div><div class="wd-temp">${Math.round(wx.daily.temperature_2m_max[i])}°F</div></div>`;
+      }).join('')}</div>`;
+  } catch (e) {
+    content.innerHTML = `<div style="text-align:center;color:#ff8a84;padding:30px">Couldn't load weather.<br><small style="color:rgba(255,255,255,.4)">Check your connection.</small></div>`;
+  }
 }
 
 // ── UNIT CONVERTER ───────────────────────────────────────────────────────────
