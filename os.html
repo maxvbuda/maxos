@@ -11,6 +11,24 @@
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
 
+  /* Login screen */
+  #login-screen { position:fixed; inset:0; z-index:999998; background:linear-gradient(135deg,#0d0d1a,#1a1a2e,#0f3460); display:flex; align-items:center; justify-content:center; }
+  .login-box { background:rgba(255,255,255,.06); backdrop-filter:blur(40px); border:1px solid rgba(255,255,255,.12); border-radius:24px; padding:40px 36px; width:360px; display:flex; flex-direction:column; align-items:center; gap:20px; box-shadow:0 32px 80px rgba(0,0,0,.6); }
+  .login-logo { font-size:56px; }
+  .login-title { color:#fff; font-size:22px; font-weight:700; letter-spacing:.5px; }
+  .login-subtitle { color:rgba(255,255,255,.45); font-size:13px; margin-top:-12px; }
+  .login-tabs { display:flex; gap:0; background:rgba(255,255,255,.08); border-radius:10px; padding:3px; width:100%; }
+  .login-tab { flex:1; padding:8px; border:none; background:none; color:rgba(255,255,255,.5); border-radius:8px; cursor:pointer; font-size:13px; font-weight:500; transition:all .15s; }
+  .login-tab.active { background:rgba(255,255,255,.15); color:#fff; }
+  .login-input { width:100%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:13px 16px; color:#fff; font-size:14px; outline:none; font-family:inherit; transition:border-color .15s; }
+  .login-input:focus { border-color:rgba(100,180,255,.5); }
+  .login-input::placeholder { color:rgba(255,255,255,.3); }
+  .login-btn { width:100%; padding:14px; background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; border-radius:12px; color:#fff; font-size:15px; font-weight:600; cursor:pointer; transition:opacity .15s,transform .1s; letter-spacing:.3px; }
+  .login-btn:hover { opacity:.9; }
+  .login-btn:active { transform:scale(.98); }
+  .login-error { color:#ff5f57; font-size:13px; text-align:center; min-height:18px; }
+  .login-footer { color:rgba(255,255,255,.3); font-size:12px; text-align:center; }
+
   /* Boot screen */
   #boot { position:fixed; inset:0; z-index:999999; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; transition:opacity .7s ease; }
   #boot.fade { opacity:0; pointer-events:none; }
@@ -251,8 +269,27 @@
 </head>
 <body>
 
+<!-- Login screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">🖥️</div>
+    <div class="login-title">MaxOS</div>
+    <div class="login-subtitle">Sign in to continue</div>
+    <div class="login-tabs">
+      <button class="login-tab active" onclick="switchAuthTab('login',this)">Sign In</button>
+      <button class="login-tab" onclick="switchAuthTab('register',this)">Create Account</button>
+    </div>
+    <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')authSubmit()">
+    <input class="login-input" id="auth-display" type="text" placeholder="Display name (optional)" style="display:none" onkeydown="if(event.key==='Enter')authSubmit()">
+    <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')authSubmit()">
+    <div class="login-error" id="auth-error"></div>
+    <button class="login-btn" id="auth-btn" onclick="authSubmit()">Sign In</button>
+    <div class="login-footer">MaxOS — Your personal web desktop</div>
+  </div>
+</div>
+
 <!-- Boot screen -->
-<div id="boot">
+<div id="boot" style="display:none">
   <div class="boot-logo">🖥️</div>
   <div class="boot-name">MaxOS</div>
   <div class="boot-bar-bg"><div class="boot-bar"></div></div>
@@ -338,6 +375,9 @@
   <div class="start-item" onclick="openApp('terminal');toggleStartMenu()"><span class="icon">💻</span> Terminal</div>
   <div class="start-item" onclick="openApp('browser');toggleStartMenu()"><span class="icon">🌐</span> Browser</div>
   <div class="start-item" onclick="openApp('settings');toggleStartMenu()"><span class="icon">⚙️</span> Settings</div>
+  <div class="ctx-sep" style="margin:6px 0"></div>
+  <div id="start-user" style="color:rgba(255,255,255,.4);font-size:12px;padding:6px 12px"></div>
+  <div class="start-item" onclick="logout()" style="color:#ff5f57"><span class="icon">🚪</span> Sign Out</div>
   <div class="start-item" onclick="openApp('paint');toggleStartMenu()"><span class="icon">🎨</span> Paint</div>
   <div class="start-item" onclick="openApp('snake');toggleStartMenu()"><span class="icon">🐍</span> Snake</div>
   <div class="start-item" onclick="openApp('clock');toggleStartMenu()"><span class="icon">🕐</span> Clock</div>
@@ -350,11 +390,89 @@
 // ── API ──────────────────────────────────────────────────────────────────────
 const API = 'https://maxos-1oe3.onrender.com';
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+let authToken = localStorage.getItem('maxos_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('maxos_user') || 'null');
+
+function authHeaders() {
+  return authToken ? { 'Authorization': 'Bearer ' + authToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+let authMode = 'login';
+function switchAuthTab(mode, btn) {
+  authMode = mode;
+  document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
+  document.getElementById('auth-display').style.display = mode === 'register' ? 'block' : 'none';
+  document.getElementById('auth-error').textContent = '';
+}
+
+async function authSubmit() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const displayName = document.getElementById('auth-display').value.trim();
+  const errEl = document.getElementById('auth-error');
+  const btn = document.getElementById('auth-btn');
+  if (!username || !password) { errEl.textContent = 'Please fill in all fields'; return; }
+  btn.textContent = '...'; btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/auth/${authMode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, displayName }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
+    authToken = data.token;
+    currentUser = { username: data.username, displayName: data.displayName };
+    localStorage.setItem('maxos_token', authToken);
+    localStorage.setItem('maxos_user', JSON.stringify(currentUser));
+    document.getElementById('login-screen').style.display = 'none';
+    bootOS();
+  } catch (e) {
+    errEl.textContent = 'Cannot reach server'; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false;
+  }
+}
+
+function logout() {
+  localStorage.removeItem('maxos_token');
+  localStorage.removeItem('maxos_user');
+  authToken = null; currentUser = null;
+  location.reload();
+}
+
+// Check if already logged in
+async function checkExistingSession() {
+  if (!authToken) return false;
+  try {
+    const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
+    if (r.ok) { const d = await r.json(); currentUser = d; return true; }
+  } catch {}
+  localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
+  return false;
+}
+
+async function initAuth() {
+  const loggedIn = await checkExistingSession();
+  if (loggedIn) { document.getElementById('login-screen').style.display = 'none'; bootOS(); }
+  // else login screen stays visible
+}
+
+function bootOS() {
+  const boot = document.getElementById('boot');
+  boot.style.display = 'flex';
+  termCwd = `/home/${currentUser?.username || 'user'}`;
+  fmCwd   = `/home/${currentUser?.username || 'user'}`;
+}
+
 let serverOnline = false;
 
 async function apiFetch(path, opts = {}) {
   try {
+    opts.headers = { ...authHeaders(), ...(opts.headers || {}) };
     const r = await fetch(API + path, opts);
+    if (!r.ok && r.status === 401) { logout(); return { error: 'Session expired' }; }
     if (!r.ok) throw new Error(r.statusText);
     return await r.json();
   } catch (e) {
@@ -460,13 +578,16 @@ let zTop = 200;
 const windows = {};
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
-checkServer();
-setTimeout(() => {
-  const b = document.getElementById('boot');
-  b.classList.add('fade');
-  setTimeout(() => b.remove(), 700);
-  notify('👋', 'Welcome to MaxOS', 'Double-click icons · Ctrl+Space for Spotlight');
-}, 2400);
+initAuth().then(() => {
+  checkServer();
+  setTimeout(() => {
+    const b = document.getElementById('boot');
+    if (!b || b.style.display === 'none') return;
+    b.classList.add('fade');
+    setTimeout(() => b.remove(), 700);
+    notify('👋', `Welcome back, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
+  }, 2400);
+});
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
@@ -562,6 +683,8 @@ document.addEventListener('keydown', e => {
 function toggleStartMenu() {
   const m = document.getElementById('start-menu');
   m.style.display = m.style.display === 'block' ? 'none' : 'block';
+  const u = document.getElementById('start-user');
+  if (u && currentUser) u.textContent = `Signed in as ${currentUser.displayName || currentUser.username}`;
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#start-menu') && !e.target.closest('#start-btn'))
