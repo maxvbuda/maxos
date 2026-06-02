@@ -33,8 +33,17 @@ const FileSchema = new mongoose.Schema({
 
 FileSchema.index({ userId: 1, path: 1 }, { unique: true });
 
-const User = mongoose.model('User', UserSchema);
-const File = mongoose.model('File', FileSchema);
+const MessageSchema = new mongoose.Schema({
+  from:     { type: String, required: true },   // username
+  to:       { type: String, required: true },   // username
+  text:     { type: String, required: true },
+  read:     { type: Boolean, default: false },
+}, { timestamps: true });
+MessageSchema.index({ from: 1, to: 1, createdAt: 1 });
+
+const User    = mongoose.model('User', UserSchema);
+const File    = mongoose.model('File', FileSchema);
+const Message = mongoose.model('Message', MessageSchema);
 
 // ── Seed user filesystem ──────────────────────────────────────────────────────
 async function seedUser(userId) {
@@ -99,6 +108,64 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   res.json({ username: req.user.username, displayName: req.user.displayName });
+});
+
+// ── Messaging routes ──────────────────────────────────────────────────────────
+// List all other users (to start a chat with)
+app.get('/api/users', auth, async (req, res) => {
+  try {
+    const users = await User.find({ username: { $ne: req.user.username } })
+      .select('username displayName -_id').sort({ username: 1 });
+    res.json(users);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Conversation list with last message + unread counts
+app.get('/api/conversations', auth, async (req, res) => {
+  try {
+    const me = req.user.username;
+    const msgs = await Message.find({ $or: [{ from: me }, { to: me }] }).sort({ createdAt: -1 });
+    const convos = {};
+    for (const m of msgs) {
+      const other = m.from === me ? m.to : m.from;
+      if (!convos[other]) convos[other] = { user: other, lastText: m.text, lastAt: m.createdAt, unread: 0 };
+      if (m.to === me && !m.read) convos[other].unread++;
+    }
+    res.json(Object.values(convos));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get conversation with a specific user (marks incoming as read)
+app.get('/api/messages', auth, async (req, res) => {
+  try {
+    const me = req.user.username, other = req.query.with;
+    if (!other) return res.status(400).json({ error: 'Missing "with" param' });
+    const msgs = await Message.find({
+      $or: [{ from: me, to: other }, { from: other, to: me }],
+    }).sort({ createdAt: 1 }).limit(200);
+    await Message.updateMany({ from: other, to: me, read: false }, { read: true });
+    res.json(msgs.map(m => ({ from: m.from, to: m.to, text: m.text, at: m.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Send a message
+app.post('/api/messages', auth, async (req, res) => {
+  try {
+    const { to, text } = req.body;
+    if (!to || !text?.trim()) return res.status(400).json({ error: 'Recipient and text required' });
+    const recipient = await User.findOne({ username: to.toLowerCase() });
+    if (!recipient) return res.status(404).json({ error: 'User not found' });
+    const msg = await Message.create({ from: req.user.username, to: to.toLowerCase(), text: text.trim() });
+    res.json({ from: msg.from, to: msg.to, text: msg.text, at: msg.createdAt });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Total unread count
+app.get('/api/messages/unread', auth, async (req, res) => {
+  try {
+    const count = await Message.countDocuments({ to: req.user.username, read: false });
+    res.json({ count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── File routes (all require auth) ───────────────────────────────────────────
@@ -172,6 +239,15 @@ if (!MONGO_URI) { console.error('❌ MONGO_URI env var is not set!'); process.ex
 mongoose.connect(MONGO_URI, { dbName: 'maxos' })
   .then(async () => {
     console.log('✅ Connected to MongoDB');
+    // Migrate: drop stale single-field unique index on `path` from old schema
+    try {
+      const idx = await File.collection.indexes();
+      if (idx.some(i => i.name === 'path_1')) {
+        await File.collection.dropIndex('path_1');
+        console.log('🔧 Dropped stale path_1 index');
+      }
+    } catch (e) { console.log('Index check skipped:', e.message); }
+    await File.syncIndexes();
     const port = process.env.PORT || 3001;
     app.listen(port, () => console.log(`🚀 MaxOS server on http://localhost:${port}`));
   })

@@ -265,6 +265,150 @@
   .music-track span { font-size:12px; color:rgba(255,255,255,.8); }
   .music-track .dur { margin-left:auto; color:rgba(255,255,255,.4); font-size:11px; }
   #vis-canvas { width:100%; height:40px; border-radius:6px; }
+
+  /* App Store */
+  .store { display:flex; flex-direction:column; height:100%; }
+  .store-head { padding:18px 20px 12px; border-bottom:1px solid rgba(255,255,255,.07); }
+  .store-head h2 { color:#fff; font-size:20px; font-weight:700; }
+  .store-head p { color:rgba(255,255,255,.45); font-size:13px; margin-top:2px; }
+  .store-cats { display:flex; gap:6px; padding:12px 20px 0; flex-wrap:wrap; }
+  .store-cat { background:rgba(255,255,255,.08); border:none; color:rgba(255,255,255,.6); border-radius:20px; padding:5px 14px; font-size:12px; cursor:pointer; transition:all .12s; }
+  .store-cat.active { background:rgba(100,180,255,.3); color:#fff; }
+  .store-grid { flex:1; overflow-y:auto; padding:14px 20px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; align-content:start; }
+  .store-card { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:8px; }
+  .store-card .scard-top { display:flex; gap:12px; align-items:center; }
+  .store-card .scard-icon { font-size:34px; }
+  .store-card .scard-name { color:#fff; font-size:14px; font-weight:600; }
+  .store-card .scard-cat { color:rgba(255,255,255,.4); font-size:11px; }
+  .store-card .scard-desc { color:rgba(255,255,255,.55); font-size:12px; flex:1; line-height:1.4; }
+  .store-card .scard-btns { display:flex; gap:6px; }
+  .store-btn { flex:1; border:none; border-radius:8px; padding:7px; font-size:12px; font-weight:600; cursor:pointer; transition:filter .1s; }
+  .store-btn.install { background:linear-gradient(135deg,#64b4ff,#bf5af2); color:#fff; }
+  .store-btn.open { background:rgba(255,255,255,.14); color:#fff; }
+  .store-btn.remove { background:rgba(255,95,87,.25); color:#ff8a84; flex:0 0 auto; padding:7px 11px; }
+  .store-btn:hover { filter:brightness(1.15); }
+
+  /* Messages */
+  .msg-app { display:flex; height:100%; }
+  .msg-sidebar { width:190px; border-right:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; flex-shrink:0; }
+  .msg-sidebar-head { padding:12px 14px; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:rgba(255,255,255,.4); font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+  .msg-newbtn { background:rgba(100,180,255,.25); border:none; color:#fff; border-radius:6px; width:22px; height:22px; cursor:pointer; font-size:14px; line-height:1; }
+  .msg-userlist { flex:1; overflow-y:auto; }
+  .msg-user { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; transition:background .1s; }
+  .msg-user:hover { background:rgba(255,255,255,.06); }
+  .msg-user.active { background:rgba(100,180,255,.18); }
+  .msg-avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#64b4ff,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:13px; flex-shrink:0; }
+  .msg-user-info { flex:1; overflow:hidden; }
+  .msg-user-name { color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .msg-user-last { color:rgba(255,255,255,.4); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .msg-badge { background:#ff5f57; color:#fff; font-size:10px; font-weight:700; border-radius:10px; padding:1px 6px; flex-shrink:0; }
+  .msg-main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .msg-main-head { padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.08); color:#fff; font-weight:600; font-size:14px; display:flex; align-items:center; gap:10px; }
+  .msg-thread { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px; }
+  .msg-bubble { max-width:70%; padding:9px 13px; border-radius:16px; font-size:13px; line-height:1.4; word-break:break-word; }
+  .msg-bubble.me { align-self:flex-end; background:linear-gradient(135deg,#64b4ff,#5a9eff); color:#fff; border-bottom-right-radius:5px; }
+  .msg-bubble.them { align-self:flex-start; background:rgba(255,255,255,.1); color:#fff; border-bottom-left-radius:5px; }
+  .msg-time { font-size:10px; opacity:.5; margin-top:2px; display:block; }
+  .msg-empty { flex:1; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.3); font-size:14px; flex-direction:column; gap:8px; }
+  .msg-inputbar { padding:12px; border-top:1px solid rgba(255,255,255,.08); display:flex; gap:8px; }
+  .msg-input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:20px; padding:9px 16px; color:#fff; font-size:13px; outline:none; font-family:inherit; }
+  .msg-send { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:50%; width:38px; height:38px; cursor:pointer; font-size:16px; flex-shrink:0; }
+  #taskbar-msg-badge { position:absolute; top:-4px; right:-4px; background:#ff5f57; color:#fff; font-size:9px; font-weight:700; border-radius:10px; padding:1px 5px; }
+
+  /* 2048 */
+  .g2048 { display:flex; flex-direction:column; align-items:center; padding:16px; gap:12px; height:100%; }
+  .g2048-head { display:flex; justify-content:space-between; width:100%; align-items:center; }
+  .g2048-score { background:rgba(255,255,255,.1); border-radius:8px; padding:6px 14px; color:#fff; font-size:13px; text-align:center; }
+  .g2048-score b { display:block; font-size:18px; }
+  .g2048-board { background:rgba(0,0,0,.3); border-radius:10px; padding:8px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:288px; height:288px; }
+  .g2048-cell { border-radius:7px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:24px; background:rgba(255,255,255,.05); transition:all .1s; }
+  .g2048-hint { color:rgba(255,255,255,.4); font-size:12px; }
+
+  /* Tic-Tac-Toe */
+  .ttt { display:flex; flex-direction:column; align-items:center; padding:16px; gap:14px; height:100%; }
+  .ttt-status { color:#fff; font-size:16px; font-weight:600; }
+  .ttt-board { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .ttt-cell { width:80px; height:80px; background:rgba(255,255,255,.07); border:none; border-radius:12px; font-size:40px; cursor:pointer; transition:background .1s; display:flex; align-items:center; justify-content:center; }
+  .ttt-cell:hover { background:rgba(255,255,255,.14); }
+  .ttt-controls { display:flex; gap:8px; }
+  .ttt-btn { background:rgba(255,255,255,.1); border:none; color:#fff; border-radius:8px; padding:8px 16px; cursor:pointer; font-size:13px; }
+  .ttt-btn.active { background:rgba(100,180,255,.3); }
+
+  /* Memory */
+  .memory { display:flex; flex-direction:column; align-items:center; padding:16px; gap:12px; height:100%; }
+  .memory-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .mem-card { width:72px; height:72px; border-radius:10px; background:rgba(255,255,255,.08); border:none; font-size:32px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform .15s,background .15s; }
+  .mem-card.flipped { background:rgba(100,180,255,.2); }
+  .mem-card.matched { background:rgba(80,210,130,.25); cursor:default; }
+
+  /* Sticky Notes */
+  .notes-app { display:flex; flex-direction:column; height:100%; }
+  .notes-toolbar { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.07); }
+  .notes-add { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:8px; padding:7px 14px; cursor:pointer; font-size:13px; font-weight:500; }
+  .notes-grid { flex:1; overflow-y:auto; padding:14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; align-content:start; }
+  .sticky { border-radius:10px; padding:10px; min-height:120px; display:flex; flex-direction:column; box-shadow:0 4px 12px rgba(0,0,0,.3); }
+  .sticky textarea { flex:1; background:none; border:none; outline:none; resize:none; font-family:inherit; font-size:13px; color:rgba(0,0,0,.8); }
+  .sticky-del { align-self:flex-end; background:none; border:none; cursor:pointer; opacity:.5; font-size:13px; }
+  .sticky-del:hover { opacity:1; }
+
+  /* Pomodoro */
+  .pomodoro { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; height:100%; padding:20px; }
+  .pomo-modes { display:flex; gap:6px; }
+  .pomo-mode { background:rgba(255,255,255,.08); border:none; color:rgba(255,255,255,.6); border-radius:8px; padding:7px 14px; cursor:pointer; font-size:12px; }
+  .pomo-mode.active { background:rgba(255,99,71,.35); color:#fff; }
+  .pomo-time { font-size:68px; font-weight:200; color:#fff; font-variant-numeric:tabular-nums; }
+  .pomo-btn { background:rgba(255,255,255,.12); border:none; color:#fff; border-radius:12px; padding:12px 32px; font-size:16px; cursor:pointer; font-weight:600; }
+  .pomo-count { color:rgba(255,255,255,.4); font-size:13px; }
+
+  /* Weather */
+  .weather { display:flex; flex-direction:column; height:100%; padding:18px; gap:16px; }
+  .weather-search { display:flex; gap:8px; }
+  .weather-search input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:10px 14px; color:#fff; outline:none; font-family:inherit; font-size:14px; }
+  .weather-search button { background:rgba(100,180,255,.3); border:none; color:#fff; border-radius:10px; padding:0 18px; cursor:pointer; }
+  .weather-current { text-align:center; padding:10px; }
+  .weather-icon { font-size:72px; }
+  .weather-temp { font-size:52px; font-weight:200; color:#fff; }
+  .weather-desc { color:rgba(255,255,255,.6); font-size:15px; }
+  .weather-city { color:rgba(255,255,255,.4); font-size:13px; margin-top:4px; }
+  .weather-days { display:flex; justify-content:space-around; border-top:1px solid rgba(255,255,255,.08); padding-top:14px; }
+  .weather-day { text-align:center; }
+  .weather-day .wd-name { color:rgba(255,255,255,.5); font-size:11px; }
+  .weather-day .wd-icon { font-size:24px; margin:4px 0; }
+  .weather-day .wd-temp { color:#fff; font-size:12px; }
+
+  /* Converter */
+  .converter { padding:18px; display:flex; flex-direction:column; gap:14px; height:100%; }
+  .conv-cats { display:flex; gap:6px; flex-wrap:wrap; }
+  .conv-cat { background:rgba(255,255,255,.08); border:none; color:rgba(255,255,255,.6); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:12px; }
+  .conv-cat.active { background:rgba(100,180,255,.3); color:#fff; }
+  .conv-row { display:flex; flex-direction:column; gap:6px; }
+  .conv-row label { color:rgba(255,255,255,.5); font-size:12px; }
+  .conv-row input, .conv-row select { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:11px 14px; color:#fff; font-size:16px; outline:none; font-family:inherit; }
+  .conv-row select option { background:#1a1a2e; }
+  .conv-eq { text-align:center; color:rgba(255,255,255,.3); font-size:20px; }
+
+  /* Dice */
+  .dice-app { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; height:100%; padding:20px; }
+  .dice-display { font-size:90px; min-height:110px; display:flex; align-items:center; gap:10px; }
+  .dice-result { color:#fff; font-size:18px; font-weight:600; }
+  .dice-btns { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .dice-btn { background:rgba(255,255,255,.12); border:none; color:#fff; border-radius:12px; padding:12px 20px; font-size:14px; cursor:pointer; font-weight:500; }
+  .dice-btn:hover { background:rgba(255,255,255,.2); }
+  @keyframes diceRoll { 0%{transform:rotate(0) scale(1)} 50%{transform:rotate(180deg) scale(1.2)} 100%{transform:rotate(360deg) scale(1)} }
+  .rolling { animation:diceRoll .4s ease; }
+
+  /* Colors */
+  .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
+  .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
+  .color-sliders { display:flex; flex-direction:column; gap:10px; }
+  .color-slider-row { display:flex; align-items:center; gap:10px; }
+  .color-slider-row label { color:rgba(255,255,255,.6); font-size:13px; width:20px; }
+  .color-slider-row input[type=range] { flex:1; }
+  .color-codes { display:flex; flex-direction:column; gap:8px; }
+  .color-code { display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,.06); border-radius:8px; padding:9px 13px; cursor:pointer; }
+  .color-code:hover { background:rgba(255,255,255,.12); }
+  .color-code span { color:#fff; font-family:monospace; font-size:13px; }
+  .color-code small { color:rgba(255,255,255,.4); font-size:11px; }
 </style>
 </head>
 <body>
@@ -280,7 +424,7 @@
       <button class="login-tab" onclick="switchAuthTab('register',this)">Create Account</button>
     </div>
     <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')authSubmit()">
-    <input class="login-input" id="auth-display" type="text" placeholder="Display name (optional)" style="display:none" onkeydown="if(event.key==='Enter')authSubmit()">
+    <input class="login-input" id="auth-display" type="text" placeholder="Display name" style="display:none" onkeydown="if(event.key==='Enter')authSubmit()">
     <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')authSubmit()">
     <div class="login-error" id="auth-error"></div>
     <button class="login-btn" id="auth-btn" onclick="authSubmit()">Sign In</button>
@@ -316,45 +460,7 @@
 </div>
 
 <div id="desktop">
-
-  <!-- Desktop icons -->
-  <div class="desktop-icon" style="top:30px;left:30px" ondblclick="openApp('files')">
-    <div class="icon">📁</div><span>Files</span>
-  </div>
-  <div class="desktop-icon" style="top:130px;left:30px" ondblclick="openApp('editor')">
-    <div class="icon">📝</div><span>Editor</span>
-  </div>
-  <div class="desktop-icon" style="top:230px;left:30px" ondblclick="openApp('calc')">
-    <div class="icon">🧮</div><span>Calculator</span>
-  </div>
-  <div class="desktop-icon" style="top:330px;left:30px" ondblclick="openApp('terminal')">
-    <div class="icon">💻</div><span>Terminal</span>
-  </div>
-  <div class="desktop-icon" style="top:430px;left:30px" ondblclick="openApp('browser')">
-    <div class="icon">🌐</div><span>Browser</span>
-  </div>
-  <div class="desktop-icon" style="top:30px;left:120px" ondblclick="openApp('settings')">
-    <div class="icon">⚙️</div><span>Settings</span>
-  </div>
-  <div class="desktop-icon" style="top:130px;left:120px" ondblclick="openApp('paint')">
-    <div class="icon">🎨</div><span>Paint</span>
-  </div>
-  <div class="desktop-icon" style="top:230px;left:120px" ondblclick="openApp('snake')">
-    <div class="icon">🐍</div><span>Snake</span>
-  </div>
-  <div class="desktop-icon" style="top:330px;left:120px" ondblclick="openApp('clock')">
-    <div class="icon">🕐</div><span>Clock</span>
-  </div>
-  <div class="desktop-icon" style="top:430px;left:120px" ondblclick="openApp('sysmon')">
-    <div class="icon">📊</div><span>System</span>
-  </div>
-  <div class="desktop-icon" style="top:30px;left:210px" ondblclick="openApp('calendar')">
-    <div class="icon">📅</div><span>Calendar</span>
-  </div>
-  <div class="desktop-icon" style="top:130px;left:210px" ondblclick="openApp('music')">
-    <div class="icon">🎵</div><span>Music</span>
-  </div>
-
+  <div id="desktop-icons"></div>
 </div>
 
 <!-- Taskbar -->
@@ -369,21 +475,10 @@
 <!-- Start Menu -->
 <div id="start-menu">
   <h3>Apps</h3>
-  <div class="start-item" onclick="openApp('files');toggleStartMenu()"><span class="icon">📁</span> File Manager</div>
-  <div class="start-item" onclick="openApp('editor');toggleStartMenu()"><span class="icon">📝</span> Text Editor</div>
-  <div class="start-item" onclick="openApp('calc');toggleStartMenu()"><span class="icon">🧮</span> Calculator</div>
-  <div class="start-item" onclick="openApp('terminal');toggleStartMenu()"><span class="icon">💻</span> Terminal</div>
-  <div class="start-item" onclick="openApp('browser');toggleStartMenu()"><span class="icon">🌐</span> Browser</div>
-  <div class="start-item" onclick="openApp('settings');toggleStartMenu()"><span class="icon">⚙️</span> Settings</div>
-  <div class="ctx-sep" style="margin:6px 0"></div>
-  <div id="start-user" style="color:rgba(255,255,255,.4);font-size:12px;padding:6px 12px"></div>
+  <div id="start-apps" style="max-height:340px;overflow-y:auto"></div>
+  <div class="ctx-sep" style="margin:8px 0"></div>
+  <div id="start-user" style="color:rgba(255,255,255,.4);font-size:12px;padding:4px 12px 8px"></div>
   <div class="start-item" onclick="logout()" style="color:#ff5f57"><span class="icon">🚪</span> Sign Out</div>
-  <div class="start-item" onclick="openApp('paint');toggleStartMenu()"><span class="icon">🎨</span> Paint</div>
-  <div class="start-item" onclick="openApp('snake');toggleStartMenu()"><span class="icon">🐍</span> Snake</div>
-  <div class="start-item" onclick="openApp('clock');toggleStartMenu()"><span class="icon">🕐</span> Clock</div>
-  <div class="start-item" onclick="openApp('sysmon');toggleStartMenu()"><span class="icon">📊</span> System Monitor</div>
-  <div class="start-item" onclick="openApp('calendar');toggleStartMenu()"><span class="icon">📅</span> Calendar</div>
-  <div class="start-item" onclick="openApp('music');toggleStartMenu()"><span class="icon">🎵</span> Music Player</div>
 </div>
 
 <script>
@@ -464,6 +559,9 @@ function bootOS() {
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
+  renderDesktop();
+  renderStartApps();
+  startUnreadPolling();
 }
 
 let serverOnline = false;
@@ -482,7 +580,7 @@ async function apiFetch(path, opts = {}) {
 
 // Check server connection on boot
 async function checkServer() {
-  const res = await apiFetch('/api/ls?path=/home/max');
+  const res = await apiFetch(`/api/ls?path=${encodeURIComponent(fmCwd)}`);
   serverOnline = !res.error;
   const badge = document.getElementById('server-badge');
   if (badge) {
@@ -693,19 +791,78 @@ document.addEventListener('click', e => {
 
 // ── App definitions ──────────────────────────────────────────────────────────
 const apps = {
-  files:    { title: 'File Manager',   icon: '📁', w: 520, h: 380, html: buildFiles },
-  editor:   { title: 'Text Editor',    icon: '📝', w: 600, h: 420, html: buildEditor },
-  calc:     { title: 'Calculator',     icon: '🧮', w: 300, h: 440, html: buildCalc },
-  terminal: { title: 'Terminal',       icon: '💻', w: 560, h: 360, html: buildTerminal },
-  browser:  { title: 'Browser',        icon: '🌐', w: 700, h: 500, html: buildBrowser },
-  settings: { title: 'Settings',       icon: '⚙️', w: 420, h: 380, html: buildSettings },
-  paint:    { title: 'Paint',          icon: '🎨', w: 620, h: 480, html: buildPaint },
-  snake:    { title: 'Snake',          icon: '🐍', w: 420, h: 480, html: buildSnake },
-  clock:    { title: 'Clock',          icon: '🕐', w: 380, h: 320, html: buildClock },
-  sysmon:   { title: 'System Monitor', icon: '📊', w: 480, h: 380, html: buildSysmon },
-  calendar: { title: 'Calendar',       icon: '📅', w: 380, h: 380, html: buildCalendar },
-  music:    { title: 'Music Player',   icon: '🎵', w: 340, h: 460, html: buildMusic },
+  // ── Core apps (always on desktop) ──
+  files:    { title: 'File Manager',   short:'Files',     icon: '📁', w: 520, h: 380, core:true, html: buildFiles },
+  appstore: { title: 'App Store',      short:'App Store', icon: '🛍️', w: 640, h: 500, core:true, html: buildStore },
+  messages: { title: 'Messages',       short:'Messages',  icon: '💬', w: 620, h: 460, core:true, html: buildMessages },
+  editor:   { title: 'Text Editor',    short:'Editor',    icon: '📝', w: 600, h: 420, core:true, html: buildEditor },
+  terminal: { title: 'Terminal',       short:'Terminal',  icon: '💻', w: 560, h: 360, core:true, html: buildTerminal },
+  browser:  { title: 'Browser',        short:'Browser',   icon: '🌐', w: 700, h: 500, core:true, html: buildBrowser },
+  settings: { title: 'Settings',       short:'Settings',  icon: '⚙️', w: 420, h: 420, core:true, html: buildSettings },
+
+  // ── Store apps (installable) ──
+  calc:     { title: 'Calculator',     short:'Calculator', icon:'🧮', w:300, h:440, cat:'Utilities',  desc:'Basic & keyboard calculator', html: buildCalc },
+  paint:    { title: 'Paint',          short:'Paint',      icon:'🎨', w:620, h:480, cat:'Creativity', desc:'Draw, fill, and save art',    html: buildPaint },
+  music:    { title: 'Music Player',   short:'Music',      icon:'🎵', w:340, h:480, cat:'Media',      desc:'5 synthesized tracks',        html: buildMusic },
+  clock:    { title: 'Clock',          short:'Clock',      icon:'🕐', w:380, h:340, cat:'Utilities',  desc:'Clock, stopwatch & timer',    html: buildClock },
+  calendar: { title: 'Calendar',       short:'Calendar',   icon:'📅', w:380, h:380, cat:'Utilities',  desc:'Month view with events',      html: buildCalendar },
+  sysmon:   { title: 'System Monitor', short:'System',     icon:'📊', w:480, h:380, cat:'Utilities',  desc:'CPU, RAM & processes',        html: buildSysmon },
+  snake:    { title: 'Snake',          short:'Snake',      icon:'🐍', w:420, h:480, cat:'Games',      desc:'Classic arcade snake',        html: buildSnake },
+  g2048:    { title: '2048',           short:'2048',       icon:'🔢', w:380, h:480, cat:'Games',      desc:'Slide tiles to reach 2048',   html: build2048 },
+  ttt:      { title: 'Tic-Tac-Toe',    short:'Tic-Tac-Toe',icon:'⭕', w:340, h:440, cat:'Games',      desc:'Play vs a friend or the CPU', html: buildTTT },
+  memory:   { title: 'Memory Match',   short:'Memory',     icon:'🃏', w:420, h:460, cat:'Games',      desc:'Flip & match the pairs',      html: buildMemory },
+  notes:    { title: 'Sticky Notes',   short:'Notes',      icon:'🗒️', w:420, h:420, cat:'Productivity', desc:'Colorful sticky notes',     html: buildNotes },
+  pomodoro: { title: 'Pomodoro',       short:'Pomodoro',   icon:'🍅', w:340, h:420, cat:'Productivity', desc:'Focus timer technique',     html: buildPomodoro },
+  weather:  { title: 'Weather',        short:'Weather',    icon:'⛅', w:380, h:440, cat:'Utilities',  desc:'Forecast for any city',       html: buildWeather },
+  converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
+  dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
+  colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 };
+
+// ── App installation / desktop rendering ─────────────────────────────────────
+let installedApps = JSON.parse(localStorage.getItem('maxos_installed') || '["calc","music","snake","notes"]');
+
+function isInstalled(id) { return apps[id].core || installedApps.includes(id); }
+function desktopApps() { return Object.keys(apps).filter(isInstalled); }
+
+function renderDesktop() {
+  const c = document.getElementById('desktop-icons');
+  if (!c) return;
+  c.innerHTML = desktopApps().map((id, i) => {
+    const col = Math.floor(i / 5), row = i % 5;
+    const a = apps[id];
+    return `<div class="desktop-icon" style="top:${30 + row * 100}px;left:${30 + col * 92}px" ondblclick="openApp('${id}')">
+      <div class="icon">${a.icon}</div><span>${a.short || a.title}</span></div>`;
+  }).join('');
+}
+
+function renderStartApps() {
+  const c = document.getElementById('start-apps');
+  if (!c) return;
+  c.innerHTML = desktopApps().map(id => {
+    const a = apps[id];
+    return `<div class="start-item" onclick="openApp('${id}');toggleStartMenu()"><span class="icon">${a.icon}</span> ${a.title}</div>`;
+  }).join('');
+}
+
+function installApp(id) {
+  if (!installedApps.includes(id)) {
+    installedApps.push(id);
+    localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+    renderDesktop(); renderStartApps();
+    if (windows['appstore']) renderStoreGrid();
+    notify(apps[id].icon, 'Installed', `${apps[id].title} added to your desktop`);
+  }
+}
+
+function uninstallApp(id) {
+  installedApps = installedApps.filter(x => x !== id);
+  localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+  if (windows[id]) closeWindow(id);
+  renderDesktop(); renderStartApps();
+  if (windows['appstore']) renderStoreGrid();
+  notify('🗑️', 'Uninstalled', `${apps[id].title} removed`);
+}
 
 // ── Open / focus window ──────────────────────────────────────────────────────
 function openApp(id) {
@@ -760,6 +917,7 @@ function focusWindow(id) {
 function closeWindow(id) {
   const w = windows[id];
   if (!w) return;
+  if (id === 'messages') { clearInterval(msgPollTimer); msgActiveUser = null; }
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -1899,7 +2057,517 @@ function startVisualizer() {
 }
 
 // ── App init hooks ────────────────────────────────────────────────────────────
-const appInitHooks = { paint: initPaint, snake: initSnake, clock: initClock, sysmon: initSysmon, calendar: initCalendar, music: initMusic };
+// ── APP STORE ────────────────────────────────────────────────────────────────
+let storeCat = 'All';
+function buildStore() {
+  const cats = ['All', ...new Set(Object.values(apps).filter(a => !a.core).map(a => a.cat))];
+  return `<div class="store">
+    <div class="store-head"><h2>🛍️ App Store</h2><p>Install apps to your desktop</p></div>
+    <div class="store-cats">${cats.map(c => `<button class="store-cat${c === storeCat ? ' active' : ''}" onclick="storeSetCat('${c}')">${c}</button>`).join('')}</div>
+    <div class="store-grid" id="store-grid"></div>
+  </div>`;
+}
+function initStore() { renderStoreGrid(); }
+function storeSetCat(c) {
+  storeCat = c;
+  document.querySelectorAll('.store-cat').forEach(b => b.classList.toggle('active', b.textContent === c));
+  renderStoreGrid();
+}
+function renderStoreGrid() {
+  const grid = document.getElementById('store-grid');
+  if (!grid) return;
+  const list = Object.keys(apps).filter(id => !apps[id].core && (storeCat === 'All' || apps[id].cat === storeCat));
+  grid.innerHTML = list.map(id => {
+    const a = apps[id], inst = installedApps.includes(id);
+    return `<div class="store-card">
+      <div class="scard-top"><div class="scard-icon">${a.icon}</div>
+        <div><div class="scard-name">${a.title}</div><div class="scard-cat">${a.cat}</div></div></div>
+      <div class="scard-desc">${a.desc || ''}</div>
+      <div class="scard-btns">
+        ${inst
+          ? `<button class="store-btn open" onclick="openApp('${id}')">Open</button><button class="store-btn remove" onclick="uninstallApp('${id}')">🗑</button>`
+          : `<button class="store-btn install" onclick="installApp('${id}')">＋ Install</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── MESSAGES ─────────────────────────────────────────────────────────────────
+let msgActiveUser = null, msgPollTimer = null, unreadPollTimer = null;
+
+function buildMessages() {
+  return `<div class="msg-app">
+    <div class="msg-sidebar">
+      <div class="msg-sidebar-head">Chats <button class="msg-newbtn" onclick="msgNewChat()" title="New chat">＋</button></div>
+      <div class="msg-userlist" id="msg-userlist"></div>
+    </div>
+    <div class="msg-main" id="msg-main">
+      <div class="msg-empty"><div style="font-size:40px">💬</div>Select a chat to start messaging</div>
+    </div>
+  </div>`;
+}
+function initMessages() {
+  if (!serverOnline) {
+    document.getElementById('msg-userlist').innerHTML = '<div style="padding:14px;color:rgba(255,255,255,.4);font-size:12px">Messages require a server connection.</div>';
+    return;
+  }
+  msgLoadConversations();
+  msgPollTimer = setInterval(() => { if (windows['messages']) { msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); } }, 4000);
+}
+async function msgLoadConversations() {
+  const convos = await apiFetch('/api/conversations');
+  const list = document.getElementById('msg-userlist');
+  if (!list || convos.error) return;
+  if (!convos.length) { list.innerHTML = '<div style="padding:14px;color:rgba(255,255,255,.35);font-size:12px">No chats yet. Tap ＋ to start one.</div>'; return; }
+  list.innerHTML = convos.map(c => `
+    <div class="msg-user${c.user === msgActiveUser ? ' active' : ''}" onclick="msgOpenChat('${c.user}')">
+      <div class="msg-avatar">${c.user[0].toUpperCase()}</div>
+      <div class="msg-user-info"><div class="msg-user-name">${c.user}</div><div class="msg-user-last">${c.lastText}</div></div>
+      ${c.unread ? `<div class="msg-badge">${c.unread}</div>` : ''}
+    </div>`).join('');
+}
+async function msgNewChat() {
+  const users = await apiFetch('/api/users');
+  if (users.error) { notify('💬', 'Offline', 'Cannot load users'); return; }
+  if (!users.length) { notify('💬', 'No other users', 'Invite a friend to register!'); return; }
+  const list = document.getElementById('msg-userlist');
+  list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">All Users</div>` +
+    users.map(u => `<div class="msg-user" onclick="msgOpenChat('${u.username}')">
+      <div class="msg-avatar">${u.username[0].toUpperCase()}</div>
+      <div class="msg-user-info"><div class="msg-user-name">${u.displayName || u.username}</div><div class="msg-user-last">@${u.username}</div></div>
+    </div>`).join('');
+}
+function msgOpenChat(user) {
+  msgActiveUser = user;
+  const main = document.getElementById('msg-main');
+  main.innerHTML = `
+    <div class="msg-main-head"><div class="msg-avatar">${user[0].toUpperCase()}</div>${user}</div>
+    <div class="msg-thread" id="msg-thread"></div>
+    <div class="msg-inputbar">
+      <input class="msg-input" id="msg-input" placeholder="Message ${user}…" onkeydown="if(event.key==='Enter')msgSend()">
+      <button class="msg-send" onclick="msgSend()">➤</button>
+    </div>`;
+  msgLoadThread(user);
+  msgLoadConversations();
+  setTimeout(() => document.getElementById('msg-input')?.focus(), 50);
+}
+async function msgLoadThread(user, keepScroll) {
+  const msgs = await apiFetch('/api/messages?with=' + encodeURIComponent(user));
+  const thread = document.getElementById('msg-thread');
+  if (!thread || msgs.error) return;
+  const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 50;
+  thread.innerHTML = msgs.map(m => {
+    const mine = m.from === currentUser.username;
+    const t = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div class="msg-bubble ${mine ? 'me' : 'them'}">${escapeHtml(m.text)}<span class="msg-time">${t}</span></div>`;
+  }).join('');
+  if (!keepScroll || atBottom) thread.scrollTop = thread.scrollHeight;
+}
+async function msgSend() {
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if (!text || !msgActiveUser) return;
+  input.value = '';
+  const res = await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ to: msgActiveUser, text }) });
+  if (res.error) { notify('💬', 'Failed', res.error); return; }
+  msgLoadThread(msgActiveUser);
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function startUnreadPolling() {
+  clearInterval(unreadPollTimer);
+  const poll = async () => {
+    if (!serverOnline) return;
+    const res = await apiFetch('/api/messages/unread');
+    const badge = document.getElementById('tb-app-messages');
+    const count = res.count || 0;
+    let dot = document.getElementById('taskbar-msg-badge');
+    if (count > 0 && badge) {
+      if (!dot) { dot = document.createElement('span'); dot.id = 'taskbar-msg-badge'; badge.style.position = 'relative'; badge.appendChild(dot); }
+      dot.textContent = count;
+    } else if (dot) { dot.remove(); }
+  };
+  poll();
+  unreadPollTimer = setInterval(poll, 6000);
+}
+
+// ── 2048 ─────────────────────────────────────────────────────────────────────
+let g2048 = null;
+function build2048() {
+  return `<div class="g2048">
+    <div class="g2048-head">
+      <div style="color:#fff;font-size:20px;font-weight:700">2048</div>
+      <div class="g2048-score">Score<b id="g2048-score">0</b></div>
+    </div>
+    <div class="g2048-board" id="g2048-board"></div>
+    <div class="g2048-hint">Arrow keys / WASD to move · <button class="ttt-btn" onclick="g2048New()" style="padding:3px 10px">New Game</button></div>
+  </div>`;
+}
+const G2048_COLORS = { 0:'rgba(255,255,255,.05)', 2:'#3a3a5e', 4:'#46466e', 8:'#f2b179', 16:'#f59563', 32:'#f67c5f', 64:'#f65e3b', 128:'#edcf72', 256:'#edcc61', 512:'#edc850', 1024:'#edc53f', 2048:'#edc22e' };
+function g2048New() {
+  g2048 = { grid: Array(16).fill(0), score: 0 };
+  g2048AddTile(); g2048AddTile(); g2048Draw();
+}
+function initG2048() {
+  g2048New();
+  document.addEventListener('keydown', g2048Key);
+}
+function g2048AddTile() {
+  const empty = g2048.grid.map((v, i) => v === 0 ? i : -1).filter(i => i >= 0);
+  if (!empty.length) return;
+  g2048.grid[empty[Math.floor(Math.random() * empty.length)]] = Math.random() < 0.9 ? 2 : 4;
+}
+function g2048Draw() {
+  const b = document.getElementById('g2048-board');
+  if (!b) return;
+  b.innerHTML = g2048.grid.map(v => `<div class="g2048-cell" style="background:${G2048_COLORS[v] || '#edc22e'};color:${v <= 4 ? 'rgba(255,255,255,.85)' : '#fff'};font-size:${v >= 1000 ? 20 : 24}px">${v || ''}</div>`).join('');
+  const s = document.getElementById('g2048-score'); if (s) s.textContent = g2048.score;
+}
+function g2048Key(e) {
+  if (!windows['g2048'] || windows['g2048'].minimized || !g2048) return;
+  const map = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'D', a: 'L', d: 'R', w: 'U', s: 'D' };
+  const dir = map[e.key]; if (!dir) return;
+  e.preventDefault();
+  const before = g2048.grid.join(',');
+  g2048Move(dir);
+  if (g2048.grid.join(',') !== before) { g2048AddTile(); g2048Draw(); if (g2048Over()) setTimeout(() => notify('🔢', 'Game Over', 'Score: ' + g2048.score), 100); }
+}
+function g2048Move(dir) {
+  const get = (r, c) => g2048.grid[r * 4 + c], set = (r, c, v) => g2048.grid[r * 4 + c] = v;
+  const line = i => { const out = []; for (let j = 0; j < 4; j++) out.push(dir === 'L' ? get(i, j) : dir === 'R' ? get(i, 3 - j) : dir === 'U' ? get(j, i) : get(3 - j, i)); return out; };
+  const put = (i, arr) => { for (let j = 0; j < 4; j++) { const v = arr[j]; if (dir === 'L') set(i, j, v); else if (dir === 'R') set(i, 3 - j, v); else if (dir === 'U') set(j, i, v); else set(3 - j, i, v); } };
+  for (let i = 0; i < 4; i++) {
+    let arr = line(i).filter(v => v);
+    for (let j = 0; j < arr.length - 1; j++) if (arr[j] === arr[j + 1]) { arr[j] *= 2; g2048.score += arr[j]; arr.splice(j + 1, 1); }
+    while (arr.length < 4) arr.push(0);
+    put(i, arr);
+  }
+}
+function g2048Over() {
+  if (g2048.grid.includes(0)) return false;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) { const v = g2048.grid[r * 4 + c]; if (c < 3 && v === g2048.grid[r * 4 + c + 1]) return false; if (r < 3 && v === g2048.grid[(r + 1) * 4 + c]) return false; }
+  return true;
+}
+
+// ── TIC-TAC-TOE ──────────────────────────────────────────────────────────────
+let ttt = null;
+function buildTTT() {
+  return `<div class="ttt">
+    <div class="ttt-status" id="ttt-status">Your turn (X)</div>
+    <div class="ttt-board" id="ttt-board"></div>
+    <div class="ttt-controls">
+      <button class="ttt-btn active" id="ttt-cpu" onclick="tttMode(true)">vs CPU</button>
+      <button class="ttt-btn" id="ttt-2p" onclick="tttMode(false)">2 Players</button>
+      <button class="ttt-btn" onclick="tttReset()">Reset</button>
+    </div>
+  </div>`;
+}
+function initTTT() { ttt = { board: Array(9).fill(''), turn: 'X', vsCpu: true, over: false }; tttDraw(); }
+function tttMode(cpu) { ttt.vsCpu = cpu; document.getElementById('ttt-cpu').classList.toggle('active', cpu); document.getElementById('ttt-2p').classList.toggle('active', !cpu); tttReset(); }
+function tttReset() { ttt.board = Array(9).fill(''); ttt.turn = 'X'; ttt.over = false; tttDraw(); document.getElementById('ttt-status').textContent = ttt.vsCpu ? 'Your turn (X)' : "X's turn"; }
+function tttDraw() {
+  const b = document.getElementById('ttt-board');
+  if (!b) return;
+  b.innerHTML = ttt.board.map((v, i) => `<button class="ttt-cell" onclick="tttPlay(${i})">${v}</button>`).join('');
+}
+function tttPlay(i) {
+  if (ttt.over || ttt.board[i]) return;
+  ttt.board[i] = ttt.turn; tttDraw();
+  if (tttCheck()) return;
+  ttt.turn = ttt.turn === 'X' ? 'O' : 'X';
+  const st = document.getElementById('ttt-status');
+  if (ttt.vsCpu && ttt.turn === 'O') { st.textContent = 'CPU thinking…'; setTimeout(tttCpu, 450); }
+  else st.textContent = ttt.vsCpu ? 'Your turn (X)' : `${ttt.turn}'s turn`;
+}
+function tttCpu() {
+  const empty = ttt.board.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+  // try win, then block, then center, then random
+  const find = (mark) => { for (const i of empty) { const t = [...ttt.board]; t[i] = mark; if (tttWinner(t) === mark) return i; } return -1; };
+  let move = find('O'); if (move < 0) move = find('X'); if (move < 0 && ttt.board[4] === '') move = 4;
+  if (move < 0) move = empty[Math.floor(Math.random() * empty.length)];
+  ttt.board[move] = 'O'; tttDraw();
+  if (tttCheck()) return;
+  ttt.turn = 'X'; document.getElementById('ttt-status').textContent = 'Your turn (X)';
+}
+function tttWinner(b) {
+  const L = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for (const [a, c, d] of L) if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a];
+  return null;
+}
+function tttCheck() {
+  const w = tttWinner(ttt.board);
+  const st = document.getElementById('ttt-status');
+  if (w) { ttt.over = true; st.textContent = ttt.vsCpu ? (w === 'X' ? '🎉 You win!' : '🤖 CPU wins!') : `${w} wins! 🎉`; return true; }
+  if (!ttt.board.includes('')) { ttt.over = true; st.textContent = "It's a draw!"; return true; }
+  return false;
+}
+
+// ── MEMORY MATCH ─────────────────────────────────────────────────────────────
+let memory = null;
+function buildMemory() {
+  return `<div class="memory">
+    <div style="color:#fff;font-size:14px" id="mem-status">Moves: 0 · Pairs: 0/8</div>
+    <div class="memory-grid" id="mem-grid"></div>
+    <button class="ttt-btn" onclick="initMemory()">New Game</button>
+  </div>`;
+}
+function initMemory() {
+  const emojis = ['🍎','🚀','🎸','🐱','🌈','⚡','🎲','🍕'];
+  const cards = [...emojis, ...emojis].sort(() => Math.random() - 0.5);
+  memory = { cards, flipped: [], matched: [], moves: 0, lock: false };
+  memDraw();
+}
+function memDraw() {
+  const g = document.getElementById('mem-grid');
+  if (!g) return;
+  g.innerHTML = memory.cards.map((e, i) => {
+    const shown = memory.flipped.includes(i) || memory.matched.includes(i);
+    const cls = memory.matched.includes(i) ? 'matched' : memory.flipped.includes(i) ? 'flipped' : '';
+    return `<button class="mem-card ${cls}" onclick="memFlip(${i})">${shown ? e : '❓'}</button>`;
+  }).join('');
+  const st = document.getElementById('mem-status');
+  if (st) st.textContent = `Moves: ${memory.moves} · Pairs: ${memory.matched.length / 2}/8`;
+}
+function memFlip(i) {
+  if (memory.lock || memory.flipped.includes(i) || memory.matched.includes(i)) return;
+  memory.flipped.push(i); memDraw();
+  if (memory.flipped.length === 2) {
+    memory.moves++; memory.lock = true;
+    const [a, b] = memory.flipped;
+    if (memory.cards[a] === memory.cards[b]) {
+      memory.matched.push(a, b); memory.flipped = []; memory.lock = false; memDraw();
+      if (memory.matched.length === 16) setTimeout(() => notify('🃏', 'You won!', `Completed in ${memory.moves} moves`), 100);
+    } else {
+      setTimeout(() => { memory.flipped = []; memory.lock = false; memDraw(); }, 800);
+    }
+  }
+}
+
+// ── STICKY NOTES ─────────────────────────────────────────────────────────────
+let stickyNotes = JSON.parse(localStorage.getItem('maxos_notes') || '[]');
+const STICKY_COLORS = ['#ffd966','#a8e6a0','#a0d8ef','#f4a8c0','#d4a8f4','#ffb347'];
+function buildNotes() {
+  return `<div class="notes-app">
+    <div class="notes-toolbar"><button class="notes-add" onclick="notesAdd()">＋ New Note</button></div>
+    <div class="notes-grid" id="notes-grid"></div>
+  </div>`;
+}
+function initNotes() { notesDraw(); }
+function notesDraw() {
+  const g = document.getElementById('notes-grid');
+  if (!g) return;
+  if (!stickyNotes.length) { g.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:13px;grid-column:1/-1;text-align:center;padding:30px">No notes yet. Click ＋ New Note.</div>'; return; }
+  g.innerHTML = stickyNotes.map((n, i) => `
+    <div class="sticky" style="background:${n.color}">
+      <button class="sticky-del" onclick="notesDel(${i})">✕</button>
+      <textarea oninput="notesUpdate(${i},this.value)" placeholder="Write…">${n.text}</textarea>
+    </div>`).join('');
+}
+function notesAdd() { stickyNotes.push({ text: '', color: STICKY_COLORS[stickyNotes.length % STICKY_COLORS.length] }); notesSave(); notesDraw(); }
+function notesUpdate(i, v) { stickyNotes[i].text = v; notesSave(); }
+function notesDel(i) { stickyNotes.splice(i, 1); notesSave(); notesDraw(); }
+function notesSave() { localStorage.setItem('maxos_notes', JSON.stringify(stickyNotes)); }
+
+// ── POMODORO ─────────────────────────────────────────────────────────────────
+let pomo = null;
+const POMO_MODES = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
+function buildPomodoro() {
+  return `<div class="pomodoro">
+    <div class="pomo-modes">
+      <button class="pomo-mode active" data-m="focus" onclick="pomoMode('focus')">Focus</button>
+      <button class="pomo-mode" data-m="short" onclick="pomoMode('short')">Short Break</button>
+      <button class="pomo-mode" data-m="long" onclick="pomoMode('long')">Long Break</button>
+    </div>
+    <div class="pomo-time" id="pomo-time">25:00</div>
+    <button class="pomo-btn" id="pomo-btn" onclick="pomoToggle()">Start</button>
+    <div class="pomo-count" id="pomo-count">Completed today: 0</div>
+  </div>`;
+}
+function initPomodoro() { pomo = { mode: 'focus', remaining: POMO_MODES.focus, running: false, timer: null, done: 0 }; pomoDraw(); }
+function pomoMode(m) {
+  if (pomo.running) pomoToggle();
+  pomo.mode = m; pomo.remaining = POMO_MODES[m];
+  document.querySelectorAll('.pomo-mode').forEach(b => b.classList.toggle('active', b.dataset.m === m));
+  pomoDraw();
+}
+function pomoDraw() {
+  const t = document.getElementById('pomo-time');
+  if (t) t.textContent = `${String(Math.floor(pomo.remaining / 60)).padStart(2, '0')}:${String(pomo.remaining % 60).padStart(2, '0')}`;
+  const c = document.getElementById('pomo-count'); if (c) c.textContent = `Completed today: ${pomo.done}`;
+}
+function pomoToggle() {
+  pomo.running = !pomo.running;
+  document.getElementById('pomo-btn').textContent = pomo.running ? 'Pause' : 'Start';
+  if (pomo.running) {
+    pomo.timer = setInterval(() => {
+      pomo.remaining--;
+      if (pomo.remaining <= 0) {
+        clearInterval(pomo.timer); pomo.running = false;
+        if (pomo.mode === 'focus') pomo.done++;
+        document.getElementById('pomo-btn').textContent = 'Start';
+        notify('🍅', 'Time\'s up!', pomo.mode === 'focus' ? 'Take a break 🎉' : 'Back to focus!');
+        pomo.remaining = POMO_MODES[pomo.mode];
+      }
+      pomoDraw();
+    }, 1000);
+  } else clearInterval(pomo.timer);
+}
+
+// ── WEATHER (simulated) ──────────────────────────────────────────────────────
+const WEATHER_TYPES = [
+  { icon: '☀️', desc: 'Sunny', min: 18, max: 32 },
+  { icon: '⛅', desc: 'Partly Cloudy', min: 14, max: 24 },
+  { icon: '☁️', desc: 'Cloudy', min: 10, max: 18 },
+  { icon: '🌧️', desc: 'Rainy', min: 8, max: 15 },
+  { icon: '⛈️', desc: 'Stormy', min: 12, max: 20 },
+  { icon: '❄️', desc: 'Snowy', min: -5, max: 3 },
+];
+function buildWeather() {
+  return `<div class="weather">
+    <div class="weather-search">
+      <input id="weather-city" placeholder="Enter a city…" value="San Francisco" onkeydown="if(event.key==='Enter')weatherGo()">
+      <button onclick="weatherGo()">Go</button>
+    </div>
+    <div id="weather-content"></div>
+  </div>`;
+}
+function initWeather() { weatherGo(); }
+function weatherGo() {
+  const city = document.getElementById('weather-city').value.trim() || 'Unknown';
+  // deterministic pseudo-random from city name so it's stable per city
+  let seed = 0; for (const ch of city) seed += ch.charCodeAt(0);
+  const rng = (n) => { seed = (seed * 9301 + 49297) % 233280; return Math.floor(seed / 233280 * n); };
+  const cur = WEATHER_TYPES[rng(WEATHER_TYPES.length)];
+  const temp = cur.min + rng(cur.max - cur.min);
+  const days = ['Mon','Tue','Wed','Thu','Fri'].map(d => { const w = WEATHER_TYPES[rng(WEATHER_TYPES.length)]; return { d, icon: w.icon, t: w.min + rng(w.max - w.min) }; });
+  const content = document.getElementById('weather-content');
+  if (!content) return;
+  content.innerHTML = `
+    <div class="weather-current">
+      <div class="weather-icon">${cur.icon}</div>
+      <div class="weather-temp">${temp}°</div>
+      <div class="weather-desc">${cur.desc}</div>
+      <div class="weather-city">📍 ${city}</div>
+    </div>
+    <div class="weather-days">${days.map(d => `<div class="weather-day"><div class="wd-name">${d.d}</div><div class="wd-icon">${d.icon}</div><div class="wd-temp">${d.t}°</div></div>`).join('')}</div>`;
+}
+
+// ── UNIT CONVERTER ───────────────────────────────────────────────────────────
+const CONV = {
+  Length: { units: { Meters: 1, Kilometers: 1000, Miles: 1609.34, Feet: 0.3048, Inches: 0.0254, Centimeters: 0.01 } },
+  Weight: { units: { Kilograms: 1, Grams: 0.001, Pounds: 0.453592, Ounces: 0.0283495, Tons: 1000 } },
+  Temperature: { special: true },
+  Speed: { units: { 'm/s': 1, 'km/h': 0.277778, 'mph': 0.44704, 'knots': 0.514444 } },
+};
+let convCat = 'Length';
+function buildConverter() {
+  return `<div class="converter">
+    <div class="conv-cats">${Object.keys(CONV).map(c => `<button class="conv-cat${c === 'Length' ? ' active' : ''}" onclick="convSetCat('${c}')">${c}</button>`).join('')}</div>
+    <div id="conv-body"></div>
+  </div>`;
+}
+function initConverter() { convSetCat('Length'); }
+function convSetCat(c) {
+  convCat = c;
+  document.querySelectorAll('.conv-cat').forEach(b => b.classList.toggle('active', b.textContent === c));
+  const units = CONV[c].special ? ['Celsius', 'Fahrenheit', 'Kelvin'] : Object.keys(CONV[c].units);
+  document.getElementById('conv-body').innerHTML = `
+    <div class="conv-row"><label>From</label>
+      <input type="number" id="conv-in" value="1" oninput="convCalc()">
+      <select id="conv-from" onchange="convCalc()">${units.map(u => `<option>${u}</option>`).join('')}</select></div>
+    <div class="conv-eq">⬇</div>
+    <div class="conv-row"><label>To</label>
+      <input type="number" id="conv-out" readonly>
+      <select id="conv-to" onchange="convCalc()">${units.map((u, i) => `<option ${i === 1 ? 'selected' : ''}>${u}</option>`).join('')}</select></div>`;
+  convCalc();
+}
+function convCalc() {
+  const val = parseFloat(document.getElementById('conv-in').value) || 0;
+  const from = document.getElementById('conv-from').value, to = document.getElementById('conv-to').value;
+  let result;
+  if (CONV[convCat].special) {
+    let celsius = from === 'Celsius' ? val : from === 'Fahrenheit' ? (val - 32) * 5 / 9 : val - 273.15;
+    result = to === 'Celsius' ? celsius : to === 'Fahrenheit' ? celsius * 9 / 5 + 32 : celsius + 273.15;
+  } else {
+    const u = CONV[convCat].units;
+    result = val * u[from] / u[to];
+  }
+  document.getElementById('conv-out').value = Math.round(result * 100000) / 100000;
+}
+
+// ── DICE & COIN ──────────────────────────────────────────────────────────────
+const DICE_FACES = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+function buildDice() {
+  return `<div class="dice-app">
+    <div class="dice-display" id="dice-display">🎲</div>
+    <div class="dice-result" id="dice-result">Roll the dice or flip a coin</div>
+    <div class="dice-btns">
+      <button class="dice-btn" onclick="rollDice(1)">🎲 1 Die</button>
+      <button class="dice-btn" onclick="rollDice(2)">🎲🎲 2 Dice</button>
+      <button class="dice-btn" onclick="flipCoin()">🪙 Flip Coin</button>
+    </div>
+  </div>`;
+}
+function rollDice(n) {
+  const d = document.getElementById('dice-display'), r = document.getElementById('dice-result');
+  d.classList.remove('rolling'); void d.offsetWidth; d.classList.add('rolling');
+  const rolls = Array.from({ length: n }, () => 1 + Math.floor(Math.random() * 6));
+  setTimeout(() => {
+    d.textContent = rolls.map(v => DICE_FACES[v - 1]).join(' ');
+    r.textContent = n === 2 ? `${rolls[0]} + ${rolls[1]} = ${rolls[0] + rolls[1]}` : `You rolled a ${rolls[0]}`;
+  }, 200);
+}
+function flipCoin() {
+  const d = document.getElementById('dice-display'), r = document.getElementById('dice-result');
+  d.classList.remove('rolling'); void d.offsetWidth; d.classList.add('rolling');
+  const heads = Math.random() < 0.5;
+  setTimeout(() => { d.textContent = heads ? '🪙' : '🪙'; r.textContent = heads ? 'Heads!' : 'Tails!'; }, 200);
+}
+
+// ── COLOR PICKER ─────────────────────────────────────────────────────────────
+let colorRGB = { r: 100, g: 180, b: 255 };
+function buildColors() {
+  return `<div class="colors-app">
+    <div class="color-preview" id="color-preview">Click a code to copy</div>
+    <div class="color-sliders">
+      <div class="color-slider-row"><label style="color:#ff6b6b">R</label><input type="range" min="0" max="255" value="${colorRGB.r}" oninput="colorSet('r',this.value)"></div>
+      <div class="color-slider-row"><label style="color:#6bff6b">G</label><input type="range" min="0" max="255" value="${colorRGB.g}" oninput="colorSet('g',this.value)"></div>
+      <div class="color-slider-row"><label style="color:#6b9bff">B</label><input type="range" min="0" max="255" value="${colorRGB.b}" oninput="colorSet('b',this.value)"></div>
+    </div>
+    <div class="color-codes" id="color-codes"></div>
+  </div>`;
+}
+function initColors() { colorDraw(); }
+function colorSet(ch, v) { colorRGB[ch] = +v; colorDraw(); }
+function colorDraw() {
+  const { r, g, b } = colorRGB;
+  const hex = '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+  const prev = document.getElementById('color-preview');
+  if (prev) { prev.style.background = hex; prev.style.color = (r * 0.299 + g * 0.587 + b * 0.114) > 150 ? '#000' : '#fff'; prev.textContent = hex; }
+  const codes = document.getElementById('color-codes');
+  if (codes) {
+    const rows = [['HEX', hex], ['RGB', `rgb(${r}, ${g}, ${b})`], ['HSL', rgbToHsl(r, g, b)]];
+    codes.innerHTML = rows.map(([k, v]) => `<div class="color-code" onclick="copyColor('${v}')"><span>${v}</span><small>${k} · click to copy</small></div>`).join('');
+  }
+}
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h, s, l = (mx + mn) / 2;
+  if (mx === mn) { h = s = 0; }
+  else { const d = mx - mn; s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h /= 6; }
+  return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+}
+function copyColor(v) { navigator.clipboard?.writeText(v); notify('🌈', 'Copied!', v); }
+
+// ── App init hooks ────────────────────────────────────────────────────────────
+const appInitHooks = {
+  paint: initPaint, snake: initSnake, clock: initClock, sysmon: initSysmon,
+  calendar: initCalendar, music: initMusic, appstore: initStore, messages: initMessages,
+  g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
+  pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
+  dice: () => {}, colors: initColors,
+};
 </script>
 </body>
 </html>
