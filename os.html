@@ -409,6 +409,91 @@
   .color-code:hover { background:rgba(255,255,255,.12); }
   .color-code span { color:#fff; font-family:monospace; font-size:13px; }
   .color-code small { color:rgba(255,255,255,.4); font-size:11px; }
+
+  /* Generic game shell */
+  .gshell { display:flex; flex-direction:column; align-items:center; height:100%; padding:14px; gap:10px; }
+  .grow { display:flex; gap:16px; align-items:center; color:#fff; font-size:14px; }
+  .gbtn { background:rgba(255,255,255,.12); border:none; color:#fff; border-radius:8px; padding:7px 14px; cursor:pointer; font-size:13px; }
+  .gbtn:hover { background:rgba(255,255,255,.2); }
+  .ghint { color:rgba(255,255,255,.4); font-size:12px; text-align:center; }
+  canvas { display:block; }
+
+  /* Tetris */
+  .tetris-wrap { display:flex; gap:12px; }
+  .tetris-side { display:flex; flex-direction:column; gap:10px; min-width:84px; }
+  .tetris-panel { background:rgba(255,255,255,.05); border-radius:10px; padding:8px; text-align:center; }
+  .tetris-panel .lbl { color:rgba(255,255,255,.4); font-size:10px; text-transform:uppercase; letter-spacing:1px; }
+  .tetris-panel .val { color:#fff; font-size:18px; font-weight:700; }
+
+  /* Piano */
+  .piano-wrap { display:flex; flex-direction:column; height:100%; }
+  .piano-keys { flex:1; position:relative; display:flex; justify-content:center; padding:14px; }
+  .piano-inner { position:relative; height:100%; display:flex; }
+  .pkey { width:42px; height:100%; background:linear-gradient(#fff,#eee); border:1px solid #999; border-radius:0 0 6px 6px; cursor:pointer; position:relative; transition:background .05s; }
+  .pkey.black { width:28px; height:62%; background:linear-gradient(#333,#000); margin:0 -14px; z-index:2; border-radius:0 0 4px 4px; }
+  .pkey.active { background:linear-gradient(#9cf,#6af); }
+  .pkey.black.active { background:linear-gradient(#69f,#36c); }
+  .pkey .klabel { position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:10px; color:#999; pointer-events:none; }
+  .pkey.black .klabel { color:#888; bottom:4px; }
+
+  /* Beat maker */
+  .beats-wrap { display:flex; flex-direction:column; height:100%; padding:14px; gap:8px; }
+  .beats-controls { display:flex; align-items:center; gap:10px; }
+  .beats-grid { flex:1; display:flex; flex-direction:column; gap:4px; }
+  .beat-row { display:flex; align-items:center; gap:4px; }
+  .beat-label { width:54px; color:rgba(255,255,255,.7); font-size:12px; flex-shrink:0; }
+  .beat-cells { display:flex; gap:3px; flex:1; }
+  .beat-cell { flex:1; aspect-ratio:1; border-radius:4px; background:rgba(255,255,255,.07); cursor:pointer; transition:background .08s; min-height:22px; }
+  .beat-cell.on { background:linear-gradient(135deg,#64b4ff,#bf5af2); }
+  .beat-cell.playing { outline:2px solid rgba(255,255,255,.6); }
+
+  /* Markdown / code */
+  .split { display:flex; height:100%; }
+  .split textarea { flex:1; background:rgba(0,0,0,.25); border:none; outline:none; color:#d4d4d8; font-family:'Menlo','Cascadia Code',monospace; font-size:13px; padding:14px; resize:none; line-height:1.6; }
+  .md-preview { flex:1; overflow-y:auto; padding:14px 20px; color:#e4e4e8; background:rgba(255,255,255,.02); border-left:1px solid rgba(255,255,255,.08); }
+  .md-preview h1 { font-size:24px; margin:10px 0; border-bottom:1px solid rgba(255,255,255,.1); padding-bottom:4px; }
+  .md-preview h2 { font-size:19px; margin:8px 0; } .md-preview h3 { font-size:16px; margin:6px 0; }
+  .md-preview p { margin:8px 0; line-height:1.6; } .md-preview code { background:rgba(255,255,255,.1); padding:1px 5px; border-radius:4px; font-family:monospace; font-size:12px; }
+  .md-preview pre { background:rgba(0,0,0,.3); padding:12px; border-radius:8px; overflow-x:auto; margin:8px 0; }
+  .md-preview pre code { background:none; padding:0; }
+  .md-preview a { color:#64b4ff; } .md-preview ul,.md-preview ol { margin:8px 0 8px 22px; } .md-preview li { margin:3px 0; }
+  .md-preview blockquote { border-left:3px solid #64b4ff; padding-left:12px; color:rgba(255,255,255,.6); margin:8px 0; }
+  .md-preview strong { font-weight:700; } .md-preview em { font-style:italic; }
+  .codepen-tabs { display:flex; flex-direction:column; flex:1; }
+  .codepen-editors { display:flex; flex:1; }
+  .codepen-col { flex:1; display:flex; flex-direction:column; border-right:1px solid rgba(255,255,255,.08); }
+  .codepen-col .cphead { background:rgba(255,255,255,.05); color:rgba(255,255,255,.6); font-size:11px; padding:5px 10px; text-transform:uppercase; letter-spacing:1px; }
+  .codepen-col textarea { flex:1; background:rgba(0,0,0,.25); border:none; outline:none; color:#d4d4d8; font-family:monospace; font-size:12px; padding:10px; resize:none; }
+  #codepen-frame { height:200px; border:none; border-top:2px solid rgba(255,255,255,.1); background:#fff; }
+
+  /* Typing */
+  .typing { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
+  .typing-stats { display:flex; gap:20px; justify-content:center; }
+  .typing-stat { text-align:center; } .typing-stat b { display:block; color:#fff; font-size:24px; } .typing-stat span { color:rgba(255,255,255,.4); font-size:11px; }
+  .typing-text { background:rgba(0,0,0,.2); border-radius:10px; padding:16px; font-size:17px; line-height:1.8; color:rgba(255,255,255,.35); font-family:'Menlo',monospace; }
+  .typing-text .ok { color:#5fd; } .typing-text .bad { color:#ff6b6b; background:rgba(255,80,80,.2); border-radius:3px; } .typing-text .cur { background:rgba(100,180,255,.4); border-radius:3px; }
+  .typing-input { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:12px; color:#fff; font-size:15px; outline:none; font-family:inherit; }
+
+  /* Wikipedia */
+  .wiki { display:flex; flex-direction:column; height:100%; }
+  .wiki-search { display:flex; gap:8px; padding:14px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .wiki-search input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:10px 14px; color:#fff; outline:none; font-family:inherit; }
+  .wiki-search button { background:rgba(100,180,255,.3); border:none; color:#fff; border-radius:10px; padding:0 18px; cursor:pointer; }
+  .wiki-body { flex:1; overflow-y:auto; padding:18px; color:#e0e0e8; line-height:1.7; }
+  .wiki-body h2 { color:#fff; font-size:22px; margin-bottom:10px; }
+  .wiki-body img { max-width:200px; border-radius:10px; float:right; margin:0 0 10px 14px; }
+  .wiki-results { display:flex; flex-direction:column; gap:6px; }
+  .wiki-result { background:rgba(255,255,255,.05); border-radius:10px; padding:12px; cursor:pointer; }
+  .wiki-result:hover { background:rgba(255,255,255,.1); }
+  .wiki-result b { color:#fff; } .wiki-result p { color:rgba(255,255,255,.5); font-size:12px; margin-top:3px; }
+  .wiki-link { color:#64b4ff; cursor:pointer; }
+
+  /* Chess */
+  .chess-board { display:grid; grid-template-columns:repeat(8,1fr); width:384px; height:384px; border-radius:8px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  .chess-sq { display:flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; user-select:none; }
+  .chess-sq.light { background:#e8d3b0; } .chess-sq.dark { background:#a87a52; }
+  .chess-sq.sel { background:#7fd17f !important; } .chess-sq.move { box-shadow:inset 0 0 0 4px rgba(80,200,120,.7); }
+  .chess-status { color:#fff; font-size:15px; font-weight:600; }
 </style>
 </head>
 <body>
@@ -816,6 +901,19 @@ const apps = {
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
+
+  // ── Premium apps ──
+  tetris:   { title: 'Tetris',         short:'Tetris',     icon:'🧩', w:340, h:560, cat:'Games',      desc:'Full falling-blocks classic with levels & hold', html: buildTetris },
+  breakout: { title: 'Breakout',       short:'Breakout',   icon:'🧱', w:480, h:520, cat:'Games',      desc:'Smash every brick across 3 levels',  html: buildBreakout },
+  chess:    { title: 'Chess',          short:'Chess',      icon:'♟️', w:480, h:560, cat:'Games',      desc:'Play vs CPU with full move rules',    html: buildChess },
+  life:     { title: 'Game of Life',   short:'Life',       icon:'🦠', w:520, h:540, cat:'Games',      desc:"Conway's cellular automaton + patterns", html: buildLife },
+  piano:    { title: 'Piano',          short:'Piano',      icon:'🎹', w:640, h:360, cat:'Creativity', desc:'Playable synth — mouse & keyboard',   html: buildPiano },
+  beats:    { title: 'Beat Maker',     short:'Beats',      icon:'🥁', w:560, h:460, cat:'Creativity', desc:'16-step drum machine sequencer',      html: buildBeats },
+  fractal:  { title: 'Fractal Explorer',short:'Fractal',   icon:'🌀', w:560, h:560, cat:'Creativity', desc:'Zoom into the infinite Mandelbrot set', html: buildFractal },
+  markdown: { title: 'Markdown Editor',short:'Markdown',   icon:'📑', w:700, h:480, cat:'Productivity', desc:'Write Markdown with live preview',   html: buildMarkdown },
+  codepen:  { title: 'Code Playground',short:'Code',       icon:'🧪', w:760, h:520, cat:'Productivity', desc:'Live HTML/CSS/JS editor + preview',  html: buildCodepen },
+  typing:   { title: 'Typing Test',    short:'Typing',     icon:'⌨️', w:560, h:420, cat:'Productivity', desc:'Measure your words-per-minute',      html: buildTyping },
+  wiki:     { title: 'Wikipedia',      short:'Wiki',       icon:'📖', w:600, h:500, cat:'Knowledge',  desc:'Search & read real Wikipedia',        html: buildWiki },
 };
 
 // ── App installation / desktop rendering ─────────────────────────────────────
@@ -917,6 +1015,10 @@ function closeWindow(id) {
   const w = windows[id];
   if (!w) return;
   if (id === 'messages') { clearInterval(msgPollTimer); msgActiveUser = null; }
+  if (id === 'tetris') tetris?.stop();
+  if (id === 'breakout') breakout?.stop();
+  if (id === 'life') life?.stop();
+  if (id === 'beats' && beats?.playing) beatsToggle();
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -2588,12 +2690,474 @@ function rgbToHsl(r, g, b) {
 function copyColor(v) { navigator.clipboard?.writeText(v); notify('🌈', 'Copied!', v); }
 
 // ── App init hooks ────────────────────────────────────────────────────────────
+// ── Shared audio ─────────────────────────────────────────────────────────────
+let _ac = null;
+function getAC() { if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)(); if (_ac.state === 'suspended') _ac.resume(); return _ac; }
+function tone(freq, dur = 0.4, type = 'sine', vol = 0.2, when = 0) {
+  const ac = getAC(), t = ac.currentTime + when;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+
+// ══ TETRIS ════════════════════════════════════════════════════════════════════
+let tetris = null;
+function buildTetris() {
+  return `<div class="gshell"><div class="tetris-wrap">
+    <canvas id="tetris-canvas" width="200" height="400" style="background:#0d1117;border-radius:8px;border:1px solid rgba(255,255,255,.1)"></canvas>
+    <div class="tetris-side">
+      <div class="tetris-panel"><div class="lbl">Score</div><div class="val" id="tetris-score">0</div></div>
+      <div class="tetris-panel"><div class="lbl">Level</div><div class="val" id="tetris-level">1</div></div>
+      <div class="tetris-panel"><div class="lbl">Lines</div><div class="val" id="tetris-lines">0</div></div>
+      <div class="tetris-panel"><div class="lbl">Next</div><canvas id="tetris-next" width="64" height="64"></canvas></div>
+    </div>
+  </div><div class="ghint">← → move · ↑ rotate · ↓ soft drop · Space hard drop</div></div>`;
+}
+const TET_COLORS = [null,'#00f0f0','#0000f0','#f0a000','#f0f000','#00f000','#a000f0','#f00000'];
+const TET_SHAPES = [[],
+  [[1,1,1,1]], [[2,0,0],[2,2,2]], [[0,0,3],[3,3,3]], [[4,4],[4,4]],
+  [[0,5,5],[5,5,0]], [[0,6,0],[6,6,6]], [[7,7,0],[0,7,7]]];
+function initTetris() {
+  const c = document.getElementById('tetris-canvas'); if (!c) return;
+  const ctx = c.getContext('2d'), CELL = 20, COLS = 10, ROWS = 20;
+  let grid, piece, nextP, score, level, lines, dropTimer, gameOver;
+  function newPiece() { const id = 1 + Math.floor(Math.random() * 7); return { id, shape: TET_SHAPES[id], x: 3, y: 0 }; }
+  function reset() { grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0)); piece = newPiece(); nextP = newPiece(); score = 0; level = 1; lines = 0; gameOver = false; schedule(); draw(); }
+  function schedule() { clearInterval(dropTimer); dropTimer = setInterval(() => tick(), Math.max(80, 600 - (level - 1) * 50)); }
+  function collide(p, dx, dy, shape) { shape = shape || p.shape; for (let r = 0; r < shape.length; r++) for (let cc = 0; cc < shape[r].length; cc++) { if (!shape[r][cc]) continue; const nx = p.x + cc + dx, ny = p.y + r + dy; if (nx < 0 || nx >= COLS || ny >= ROWS) return true; if (ny >= 0 && grid[ny][nx]) return true; } return false; }
+  function merge() { piece.shape.forEach((row, r) => row.forEach((v, cc) => { if (v) { const ny = piece.y + r; if (ny >= 0) grid[ny][piece.x + cc] = v; } })); }
+  function clearLines() { let cleared = 0; for (let r = ROWS - 1; r >= 0; r--) { if (grid[r].every(v => v)) { grid.splice(r, 1); grid.unshift(Array(COLS).fill(0)); cleared++; r++; } } if (cleared) { lines += cleared; score += [0, 100, 300, 500, 800][cleared] * level; level = 1 + Math.floor(lines / 10); schedule(); tone([0,523,659,784,1047][cleared] || 523, 0.15, 'square', 0.15); upd(); } }
+  function tick() { if (gameOver) return; if (!collide(piece, 0, 1)) piece.y++; else { merge(); clearLines(); piece = nextP; nextP = newPiece(); if (collide(piece, 0, 0)) { gameOver = true; clearInterval(dropTimer); tone(160, 0.5, 'sawtooth', 0.2); notify('🧩', 'Game Over', 'Score: ' + score); } } draw(); }
+  function rotate() { const s = piece.shape, R = s[0].map((_, i) => s.map(row => row[i]).reverse()); if (!collide(piece, 0, 0, R)) piece.shape = R; }
+  function upd() { document.getElementById('tetris-score').textContent = score; document.getElementById('tetris-level').textContent = level; document.getElementById('tetris-lines').textContent = lines; }
+  function drawCell(x, y, id, g) { g.fillStyle = TET_COLORS[id]; g.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2); g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, 3); }
+  function draw() {
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, c.width, c.height);
+    for (let r = 0; r < ROWS; r++) for (let cc = 0; cc < COLS; cc++) if (grid[r][cc]) drawCell(cc, r, grid[r][cc], ctx);
+    piece.shape.forEach((row, r) => row.forEach((v, cc) => { if (v) drawCell(piece.x + cc, piece.y + r, v, ctx); }));
+    const nc = document.getElementById('tetris-next'); if (nc) { const ng = nc.getContext('2d'); ng.clearRect(0, 0, 64, 64); ng.save(); ng.scale(0.7, 0.7); nextP.shape.forEach((row, r) => row.forEach((v, cc) => { if (v) drawCell(cc + 0.5, r + 0.5, v, ng); })); ng.restore(); }
+    upd();
+  }
+  tetris = { reset, stop() { clearInterval(dropTimer); }, key(e) {
+    if (gameOver) { if (e.key === ' ') reset(); return; }
+    if (e.key === 'ArrowLeft' && !collide(piece, -1, 0)) piece.x--;
+    else if (e.key === 'ArrowRight' && !collide(piece, 1, 0)) piece.x++;
+    else if (e.key === 'ArrowDown' && !collide(piece, 0, 1)) { piece.y++; score++; }
+    else if (e.key === 'ArrowUp') rotate();
+    else if (e.key === ' ') { while (!collide(piece, 0, 1)) piece.y++; tick(); }
+    else return;
+    e.preventDefault(); draw();
+  } };
+  reset();
+}
+function tetrisKey(e) { if (windows['tetris'] && !windows['tetris'].minimized && tetris) tetris.key(e); }
+
+// ══ BREAKOUT ══════════════════════════════════════════════════════════════════
+let breakout = null;
+function buildBreakout() {
+  return `<div class="gshell">
+    <div class="grow"><span>Score: <b id="bo-score">0</b></span><span>Lives: <b id="bo-lives">3</b></span><span>Level: <b id="bo-level">1</b></span></div>
+    <canvas id="bo-canvas" width="440" height="380" style="background:#0a0a16;border-radius:8px"></canvas>
+    <div class="ghint">Move mouse to control paddle · click to launch</div></div>`;
+}
+function initBreakout() {
+  const c = document.getElementById('bo-canvas'); if (!c) return;
+  const ctx = c.getContext('2d'), W = c.width, H = c.height;
+  let paddle, ball, bricks, score, lives, level, running, raf;
+  const COLORS = ['#ff5f57','#febc2e','#28c840','#64b4ff','#bf5af2'];
+  function makeBricks() { bricks = []; const rows = 4 + level, cols = 9, bw = (W - 40) / cols, bh = 18; for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) bricks.push({ x: 20 + cc * bw, y: 40 + r * (bh + 5), w: bw - 5, h: bh, c: COLORS[r % COLORS.length], alive: true }); }
+  function reset(full) { paddle = { x: W / 2 - 45, w: 90, h: 12 }; ball = { x: W / 2, y: H - 40, dx: 0, dy: 0, r: 7, stuck: true }; if (full) { score = 0; lives = 3; level = 1; } makeBricks(); upd(); }
+  function upd() { document.getElementById('bo-score').textContent = score; document.getElementById('bo-lives').textContent = lives; document.getElementById('bo-level').textContent = level; }
+  function launch() { if (ball.stuck) { ball.stuck = false; ball.dx = 3.5 * (Math.random() > .5 ? 1 : -1); ball.dy = -4; } }
+  function loop() {
+    ctx.fillStyle = '#0a0a16'; ctx.fillRect(0, 0, W, H);
+    if (ball.stuck) { ball.x = paddle.x + paddle.w / 2; ball.y = H - 40; }
+    else { ball.x += ball.dx; ball.y += ball.dy; if (ball.x < ball.r || ball.x > W - ball.r) ball.dx *= -1; if (ball.y < ball.r) ball.dy *= -1;
+      if (ball.y > H) { lives--; upd(); if (lives <= 0) { tone(140, 0.5, 'sawtooth', 0.2); notify('🧱', 'Game Over', 'Score: ' + score); running = false; } reset(false); } }
+    // paddle collision
+    if (ball.y + ball.r > H - 24 && ball.y < H - 12 && ball.x > paddle.x && ball.x < paddle.x + paddle.w) { ball.dy = -Math.abs(ball.dy); const hit = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2); ball.dx = hit * 5; tone(440, 0.05, 'square', 0.1); }
+    // bricks
+    let alive = 0;
+    for (const b of bricks) { if (!b.alive) continue; alive++;
+      if (ball.x > b.x && ball.x < b.x + b.w && ball.y - ball.r < b.y + b.h && ball.y + ball.r > b.y) { b.alive = false; ball.dy *= -1; score += 10 * level; upd(); tone(600 + Math.random() * 200, 0.05, 'square', 0.12); }
+      ctx.fillStyle = b.c; ctx.fillRect(b.x, b.y, b.w, b.h); }
+    if (alive === 0) { level++; tone(880, 0.3, 'square', 0.15); reset(false); }
+    // draw
+    ctx.fillStyle = '#fff'; ctx.fillRect(paddle.x, H - 24, paddle.w, paddle.h);
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, 7); ctx.fillStyle = '#64b4ff'; ctx.fill();
+    if (running) raf = requestAnimationFrame(loop);
+  }
+  c.onmousemove = e => { const r = c.getBoundingClientRect(); paddle.x = Math.max(0, Math.min(W - paddle.w, e.clientX - r.left - paddle.w / 2)); };
+  c.onclick = launch;
+  reset(true); running = true; breakout = { stop: () => { running = false; cancelAnimationFrame(raf); } }; loop();
+}
+
+// ══ CONWAY'S GAME OF LIFE ════════════════════════════════════════════════════
+let life = null;
+function buildLife() {
+  return `<div class="gshell">
+    <div class="grow"><button class="gbtn" id="life-play" onclick="lifeToggle()">▶ Play</button>
+      <button class="gbtn" onclick="lifeStep()">Step</button>
+      <button class="gbtn" onclick="lifeRandom()">Random</button>
+      <button class="gbtn" onclick="lifeClear()">Clear</button>
+      <span>Gen: <b id="life-gen">0</b></span></div>
+    <canvas id="life-canvas" width="480" height="400" style="background:#0a0a16;border-radius:8px;cursor:cell"></canvas>
+    <div class="ghint">Click/drag to toggle cells · 🟦 Glider gun ready in Random</div></div>`;
+}
+function initLife() {
+  const c = document.getElementById('life-canvas'); if (!c) return;
+  const ctx = c.getContext('2d'), CELL = 8, COLS = 60, ROWS = 50;
+  let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0)), gen = 0, timer = null, painting = false;
+  function draw() {
+    ctx.fillStyle = '#0a0a16'; ctx.fillRect(0, 0, c.width, c.height);
+    for (let r = 0; r < ROWS; r++) for (let cc = 0; cc < COLS; cc++) if (grid[r][cc]) { ctx.fillStyle = `hsl(${(r + cc) * 4 % 360},70%,60%)`; ctx.fillRect(cc * CELL, r * CELL, CELL - 1, CELL - 1); }
+    document.getElementById('life-gen').textContent = gen;
+  }
+  function step() { const n = grid.map(r => [...r]); for (let r = 0; r < ROWS; r++) for (let cc = 0; cc < COLS; cc++) { let cnt = 0; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const rr = r + dr, ccc = cc + dc; if (rr >= 0 && rr < ROWS && ccc >= 0 && ccc < COLS) cnt += grid[rr][ccc]; } n[r][cc] = grid[r][cc] ? (cnt === 2 || cnt === 3 ? 1 : 0) : (cnt === 3 ? 1 : 0); } grid = n; gen++; draw(); }
+  function xy(e) { const r = c.getBoundingClientRect(); return [Math.floor((e.clientY - r.top) / CELL), Math.floor((e.clientX - r.left) / CELL)]; }
+  c.onmousedown = e => { painting = true; const [r, cc] = xy(e); if (grid[r]) { grid[r][cc] = grid[r][cc] ? 0 : 1; draw(); } };
+  c.onmousemove = e => { if (!painting) return; const [r, cc] = xy(e); if (grid[r] && !grid[r][cc]) { grid[r][cc] = 1; draw(); } };
+  c.onmouseup = c.onmouseleave = () => painting = false;
+  life = {
+    toggle() { if (timer) { clearInterval(timer); timer = null; document.getElementById('life-play').textContent = '▶ Play'; } else { timer = setInterval(step, 90); document.getElementById('life-play').textContent = '⏸ Pause'; } },
+    step, clear() { grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0)); gen = 0; draw(); },
+    random() { for (let r = 0; r < ROWS; r++) for (let cc = 0; cc < COLS; cc++) grid[r][cc] = Math.random() < 0.3 ? 1 : 0; gen = 0; draw(); },
+    stop() { clearInterval(timer); }
+  };
+  life.random();
+}
+function lifeToggle() { life?.toggle(); } function lifeStep() { life?.step(); } function lifeRandom() { life?.random(); } function lifeClear() { life?.clear(); }
+
+// ══ PIANO ═════════════════════════════════════════════════════════════════════
+const PIANO_KEYS = [
+  { n: 'C4', f: 261.63, k: 'a' }, { n: 'C#4', f: 277.18, k: 'w', b: 1 }, { n: 'D4', f: 293.66, k: 's' },
+  { n: 'D#4', f: 311.13, k: 'e', b: 1 }, { n: 'E4', f: 329.63, k: 'd' }, { n: 'F4', f: 349.23, k: 'f' },
+  { n: 'F#4', f: 369.99, k: 't', b: 1 }, { n: 'G4', f: 392, k: 'g' }, { n: 'G#4', f: 415.3, k: 'y', b: 1 },
+  { n: 'A4', f: 440, k: 'h' }, { n: 'A#4', f: 466.16, k: 'u', b: 1 }, { n: 'B4', f: 493.88, k: 'j' },
+  { n: 'C5', f: 523.25, k: 'k' }, { n: 'C#5', f: 554.37, k: 'o', b: 1 }, { n: 'D5', f: 587.33, k: 'l' },
+  { n: 'D#5', f: 622.25, k: 'p', b: 1 }, { n: 'E5', f: 659.26, k: ';' },
+];
+function buildPiano() {
+  return `<div class="piano-wrap">
+    <div style="text-align:center;padding:10px;color:rgba(255,255,255,.5);font-size:13px">🎹 Play with your mouse or keyboard (A–L, W E T Y U for sharps)</div>
+    <div class="piano-keys"><div class="piano-inner">${PIANO_KEYS.map((k, i) =>
+      `<div class="pkey${k.b ? ' black' : ''}" data-f="${k.f}" data-k="${k.k}" onmousedown="pianoPlay(${k.f},this)"><span class="klabel">${k.k}</span></div>`).join('')}</div></div>
+  </div>`;
+}
+function pianoPlay(f, el) {
+  tone(f, 0.7, 'triangle', 0.25);
+  if (el) { el.classList.add('active'); setTimeout(() => el.classList.remove('active'), 180); }
+}
+function pianoKey(e) {
+  if (!windows['piano'] || windows['piano'].minimized) return;
+  if (e.repeat) return;
+  const el = document.querySelector(`#win-piano .pkey[data-k="${e.key.toLowerCase()}"]`);
+  if (el) pianoPlay(+el.dataset.f, el);
+}
+
+// ══ BEAT MAKER ════════════════════════════════════════════════════════════════
+let beats = null;
+const BEAT_TRACKS = [
+  { name: 'Kick', play: () => { const ac = getAC(), t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(0.01, t + 0.3); g.gain.setValueAtTime(0.8, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3); o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.3); } },
+  { name: 'Snare', play: () => { const ac = getAC(), t = ac.currentTime, b = ac.createBuffer(1, ac.sampleRate * 0.2, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'bandpass'; f.frequency.value = 1500; g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18); s.buffer = b; s.connect(f); f.connect(g); g.connect(ac.destination); s.start(t); } },
+  { name: 'Hi-hat', play: () => { const ac = getAC(), t = ac.currentTime, b = ac.createBuffer(1, ac.sampleRate * 0.05, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'highpass'; f.frequency.value = 8000; g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05); s.buffer = b; s.connect(f); f.connect(g); g.connect(ac.destination); s.start(t); } },
+  { name: 'Clap', play: () => { const ac = getAC(), t = ac.currentTime, b = ac.createBuffer(1, ac.sampleRate * 0.15, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'bandpass'; f.frequency.value = 2000; g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12); s.buffer = b; s.connect(f); f.connect(g); g.connect(ac.destination); s.start(t); } },
+  { name: 'Tom', play: () => tone(120, 0.25, 'sine', 0.4) },
+  { name: 'Bass', play: () => tone(65, 0.3, 'sawtooth', 0.25) },
+];
+function buildBeats() {
+  return `<div class="beats-wrap">
+    <div class="beats-controls">
+      <button class="gbtn" id="beats-play" onclick="beatsToggle()">▶ Play</button>
+      <button class="gbtn" onclick="beatsClear()">Clear</button>
+      <span style="color:#fff;font-size:13px">Tempo</span>
+      <input type="range" min="60" max="180" value="120" id="beats-tempo" style="width:120px" oninput="beatsTempo(this.value)">
+      <span style="color:rgba(255,255,255,.6);font-size:12px" id="beats-bpm">120 BPM</span>
+    </div>
+    <div class="beats-grid" id="beats-grid"></div>
+  </div>`;
+}
+function initBeats() {
+  beats = { pattern: BEAT_TRACKS.map(() => Array(16).fill(false)), step: 0, playing: false, timer: null, bpm: 120 };
+  const g = document.getElementById('beats-grid');
+  g.innerHTML = BEAT_TRACKS.map((t, ti) => `<div class="beat-row"><div class="beat-label">${t.name}</div><div class="beat-cells">${Array.from({ length: 16 }, (_, si) => `<div class="beat-cell" data-t="${ti}" data-s="${si}" onclick="beatsToggleCell(${ti},${si})"></div>`).join('')}</div></div>`).join('');
+}
+function beatsToggleCell(ti, si) { beats.pattern[ti][si] = !beats.pattern[ti][si]; document.querySelector(`.beat-cell[data-t="${ti}"][data-s="${si}"]`).classList.toggle('on', beats.pattern[ti][si]); if (beats.pattern[ti][si]) BEAT_TRACKS[ti].play(); }
+function beatsToggle() {
+  beats.playing = !beats.playing;
+  document.getElementById('beats-play').textContent = beats.playing ? '⏸ Stop' : '▶ Play';
+  if (beats.playing) { const tick = () => { document.querySelectorAll('.beat-cell.playing').forEach(c => c.classList.remove('playing')); document.querySelectorAll(`.beat-cell[data-s="${beats.step}"]`).forEach(c => c.classList.add('playing')); BEAT_TRACKS.forEach((t, ti) => { if (beats.pattern[ti][beats.step]) t.play(); }); beats.step = (beats.step + 1) % 16; }; beats.timer = setInterval(tick, 60000 / beats.bpm / 4); }
+  else { clearInterval(beats.timer); document.querySelectorAll('.beat-cell.playing').forEach(c => c.classList.remove('playing')); }
+}
+function beatsTempo(v) { beats.bpm = +v; document.getElementById('beats-bpm').textContent = v + ' BPM'; if (beats.playing) { beatsToggle(); beatsToggle(); } }
+function beatsClear() { beats.pattern = BEAT_TRACKS.map(() => Array(16).fill(false)); document.querySelectorAll('.beat-cell').forEach(c => c.classList.remove('on')); }
+
+// ══ FRACTAL EXPLORER ══════════════════════════════════════════════════════════
+let fractal = null;
+function buildFractal() {
+  return `<div class="gshell" style="padding:0">
+    <canvas id="fractal-canvas" width="540" height="500" style="cursor:zoom-in"></canvas>
+    <div class="ghint" style="padding:8px">Click to zoom in · right-click to zoom out · <button class="gbtn" style="padding:3px 10px" onclick="fractalReset()">Reset</button></div></div>`;
+}
+function initFractal() {
+  const c = document.getElementById('fractal-canvas'); if (!c) return;
+  const ctx = c.getContext('2d'), W = c.width, H = c.height;
+  let cx = -0.5, cy = 0, scale = 3, maxIter = 100;
+  function render() {
+    const img = ctx.createImageData(W, H), d = img.data;
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      const x0 = cx + (px - W / 2) / W * scale, y0 = cy + (py - H / 2) / H * scale;
+      let x = 0, y = 0, i = 0;
+      while (x * x + y * y < 4 && i < maxIter) { const xt = x * x - y * y + x0; y = 2 * x * y + y0; x = xt; i++; }
+      const idx = (py * W + px) * 4;
+      if (i === maxIter) { d[idx] = d[idx + 1] = d[idx + 2] = 0; }
+      else { const h = (i / maxIter); d[idx] = 9 * (1 - h) * h * h * h * 255; d[idx + 1] = 15 * (1 - h) * (1 - h) * h * h * 255; d[idx + 2] = 8.5 * (1 - h) * (1 - h) * (1 - h) * h * 255; }
+      d[idx + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  c.onclick = e => { const r = c.getBoundingClientRect(); cx += ((e.clientX - r.left) - W / 2) / W * scale; cy += ((e.clientY - r.top) - H / 2) / H * scale; scale *= 0.5; maxIter = Math.min(500, maxIter + 30); render(); };
+  c.oncontextmenu = e => { e.preventDefault(); scale *= 2; maxIter = Math.max(100, maxIter - 30); render(); };
+  fractal = { reset() { cx = -0.5; cy = 0; scale = 3; maxIter = 100; render(); } };
+  render();
+}
+function fractalReset() { fractal?.reset(); }
+
+// ══ MARKDOWN EDITOR ═══════════════════════════════════════════════════════════
+function buildMarkdown() {
+  const sample = `# Welcome to Markdown!\n\nType on the **left**, see it rendered on the *right*.\n\n## Features\n- Lists\n- **Bold** and *italic*\n- \`inline code\`\n- [Links](https://example.com)\n\n> Blockquotes too!\n\n\`\`\`\ncode blocks\n\`\`\`\n\n1. Numbered\n2. Lists`;
+  return `<div class="split">
+    <textarea id="md-input" oninput="mdRender()" spellcheck="false">${sample}</textarea>
+    <div class="md-preview" id="md-output"></div>
+  </div>`;
+}
+function initMarkdown() { mdRender(); }
+function mdRender() {
+  const src = document.getElementById('md-input').value;
+  let h = src
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/```([\s\S]*?)```/g, (m, c) => `<pre><code>${c.trim()}</code></pre>`)
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/^\d+\. (.*)$/gm, '<oli>$1</oli>').replace(/^[-*] (.*)$/gm, '<uli>$1</uli>');
+  h = h.replace(/(<uli>.*<\/uli>\n?)+/g, m => '<ul>' + m.replace(/<\/?uli>/g, t => t === '<uli>' ? '<li>' : '</li>') + '</ul>');
+  h = h.replace(/(<oli>.*<\/oli>\n?)+/g, m => '<ol>' + m.replace(/<\/?oli>/g, t => t === '<oli>' ? '<li>' : '</li>') + '</ol>');
+  h = h.split('\n\n').map(b => /^\s*<(h\d|ul|ol|pre|blockquote)/.test(b.trim()) ? b : (b.trim() ? '<p>' + b.replace(/\n/g, '<br>') + '</p>' : '')).join('');
+  document.getElementById('md-output').innerHTML = h;
+}
+
+// ══ CODE PLAYGROUND ═══════════════════════════════════════════════════════════
+function buildCodepen() {
+  return `<div class="codepen-tabs">
+    <div class="codepen-editors">
+      <div class="codepen-col"><div class="cphead">HTML</div><textarea id="cp-html" oninput="cpRun()" spellcheck="false"></textarea></div>
+      <div class="codepen-col"><div class="cphead">CSS</div><textarea id="cp-css" oninput="cpRun()" spellcheck="false"></textarea></div>
+      <div class="codepen-col" style="border:none"><div class="cphead">JS</div><textarea id="cp-js" oninput="cpRun()" spellcheck="false"></textarea></div>
+    </div>
+    <iframe id="codepen-frame"></iframe>
+  </div>`;
+}
+const CP_DEFAULTS = {
+  html: '<h1>Hello! 👋</h1>\n<button onclick="alert(\'Hi!\')">Click me</button>',
+  css: 'body{font-family:sans-serif;text-align:center;padding:20px;background:#1a1a2e;color:#fff}\nbutton{padding:10px 20px;border:none;border-radius:8px;background:#64b4ff;color:#fff;cursor:pointer}',
+  js: "console.log('Running!');",
+};
+function initCodepen() {
+  document.getElementById('cp-html').value = CP_DEFAULTS.html;
+  document.getElementById('cp-css').value = CP_DEFAULTS.css;
+  document.getElementById('cp-js').value = CP_DEFAULTS.js;
+  cpRun();
+}
+let cpTimer;
+function cpRun() {
+  clearTimeout(cpTimer);
+  cpTimer = setTimeout(() => {
+    const html = document.getElementById('cp-html').value, css = document.getElementById('cp-css').value, js = document.getElementById('cp-js').value;
+    const frame = document.getElementById('codepen-frame');
+    // Build entirely via DOM so the source contains no HTML tag literals
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    doc.open(); doc.close();
+    doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
+    const style = doc.createElement('style'); style.textContent = css; doc.head.appendChild(style);
+    doc.body.innerHTML = html;
+    const sc = doc.createElement('scr' + 'ipt');
+    sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+=String(e)}';
+    doc.body.appendChild(sc);
+  }, 400);
+}
+
+// ══ TYPING TEST ═══════════════════════════════════════════════════════════════
+const TYPING_TEXTS = [
+  'The quick brown fox jumps over the lazy dog while the sun sets behind the mountains.',
+  'Programming is the art of telling another human what one wants the computer to do.',
+  'Success is not final, failure is not fatal, it is the courage to continue that counts.',
+  'A journey of a thousand miles begins with a single step toward the unknown horizon.',
+];
+let typing = null;
+function buildTyping() {
+  return `<div class="typing">
+    <div class="typing-stats">
+      <div class="typing-stat"><b id="typ-wpm">0</b><span>WPM</span></div>
+      <div class="typing-stat"><b id="typ-acc">100%</b><span>Accuracy</span></div>
+      <div class="typing-stat"><b id="typ-time">0s</b><span>Time</span></div>
+    </div>
+    <div class="typing-text" id="typ-text"></div>
+    <input class="typing-input" id="typ-input" placeholder="Start typing here…" oninput="typingCheck(this.value)" autocomplete="off">
+    <button class="gbtn" onclick="initTyping()" style="align-self:center">↻ New Text</button>
+  </div>`;
+}
+function initTyping() {
+  const text = TYPING_TEXTS[Math.floor(Math.random() * TYPING_TEXTS.length)];
+  typing = { text, started: null };
+  const inp = document.getElementById('typ-input'); if (inp) { inp.value = ''; inp.focus(); }
+  document.getElementById('typ-wpm').textContent = '0'; document.getElementById('typ-acc').textContent = '100%'; document.getElementById('typ-time').textContent = '0s';
+  typingRender('');
+}
+function typingRender(typed) {
+  const t = typing.text;
+  document.getElementById('typ-text').innerHTML = t.split('').map((ch, i) => {
+    if (i < typed.length) return `<span class="${typed[i] === ch ? 'ok' : 'bad'}">${ch}</span>`;
+    if (i === typed.length) return `<span class="cur">${ch}</span>`;
+    return `<span>${ch}</span>`;
+  }).join('');
+}
+function typingCheck(typed) {
+  if (!typing.started) typing.started = Date.now();
+  typingRender(typed);
+  const elapsed = (Date.now() - typing.started) / 1000;
+  const words = typed.trim().split(/\s+/).filter(Boolean).length;
+  const wpm = elapsed > 0 ? Math.round(words / elapsed * 60) : 0;
+  let correct = 0; for (let i = 0; i < typed.length; i++) if (typed[i] === typing.text[i]) correct++;
+  const acc = typed.length ? Math.round(correct / typed.length * 100) : 100;
+  document.getElementById('typ-wpm').textContent = wpm;
+  document.getElementById('typ-acc').textContent = acc + '%';
+  document.getElementById('typ-time').textContent = Math.round(elapsed) + 's';
+  if (typed === typing.text) { tone(880, 0.3, 'square', 0.15); notify('⌨️', 'Done!', `${wpm} WPM at ${acc}% accuracy`); }
+}
+
+// ══ WIKIPEDIA ═════════════════════════════════════════════════════════════════
+function buildWiki() {
+  return `<div class="wiki">
+    <div class="wiki-search"><input id="wiki-q" placeholder="Search Wikipedia…" onkeydown="if(event.key==='Enter')wikiSearch()"><button onclick="wikiSearch()">Search</button></div>
+    <div class="wiki-body" id="wiki-body"><div style="color:rgba(255,255,255,.4);text-align:center;padding:30px">🔍 Search for anything — powered by real Wikipedia</div></div>
+  </div>`;
+}
+async function wikiSearch() {
+  const q = document.getElementById('wiki-q').value.trim(); if (!q) return;
+  const body = document.getElementById('wiki-body');
+  body.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:30px">Searching…</div>';
+  try {
+    const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&origin=*&srlimit=8`).then(r => r.json());
+    const hits = r.query.search;
+    if (!hits.length) { body.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:30px">No results</div>'; return; }
+    body.innerHTML = '<div class="wiki-results">' + hits.map(h => `<div class="wiki-result" onclick="wikiOpen('${h.title.replace(/'/g, "\\'")}')"><b>${h.title}</b><p>${h.snippet.replace(/<[^>]+>/g, '')}…</p></div>`).join('') + '</div>';
+  } catch { body.innerHTML = '<div style="color:#ff8a84;text-align:center;padding:30px">Connection error</div>'; }
+}
+async function wikiOpen(title) {
+  const body = document.getElementById('wiki-body');
+  body.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:30px">Loading…</div>';
+  try {
+    const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`).then(r => r.json());
+    body.innerHTML = `<div class="wiki-link" onclick="document.getElementById('wiki-q').value='';wikiSearch()" style="font-size:13px;margin-bottom:10px">← Back to results</div>
+      <h2>${r.title}</h2>${r.thumbnail ? `<img src="${r.thumbnail.source}">` : ''}<p>${r.extract}</p>
+      <p style="margin-top:14px"><a class="wiki-link" href="${r.content_urls?.desktop?.page}" target="_blank">Read full article on Wikipedia →</a></p>`;
+  } catch { body.innerHTML = '<div style="color:#ff8a84;text-align:center;padding:30px">Could not load article</div>'; }
+}
+
+// ══ CHESS ═════════════════════════════════════════════════════════════════════
+let chess = null;
+const CHESS_GLYPH = { P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔', p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+function buildChess() {
+  return `<div class="gshell">
+    <div class="chess-status" id="chess-status">Your move (White)</div>
+    <div class="chess-board" id="chess-board"></div>
+    <button class="gbtn" onclick="initChess()">New Game</button></div>`;
+}
+function initChess() {
+  chess = {
+    board: ['rnbqkbnr','pppppppp','........','........','........','........','PPPPPPPP','RNBQKBNR'].map(r => r.split('')),
+    sel: null, turn: 'w', over: false,
+  };
+  chessDraw();
+}
+function chessColor(p) { return p === '.' ? null : (p === p.toUpperCase() ? 'w' : 'b'); }
+function chessDraw() {
+  const b = document.getElementById('chess-board'); if (!b) return;
+  let html = '';
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = chess.board[r][c], light = (r + c) % 2 === 0;
+    const sel = chess.sel && chess.sel[0] === r && chess.sel[1] === c;
+    const moveDot = chess.sel && chessLegal(chess.sel[0], chess.sel[1], r, c);
+    html += `<div class="chess-sq ${light ? 'light' : 'dark'}${sel ? ' sel' : ''}${moveDot ? ' move' : ''}" onclick="chessClick(${r},${c})">${p !== '.' ? CHESS_GLYPH[p] : ''}</div>`;
+  }
+  b.innerHTML = html;
+}
+function chessLegal(r0, c0, r1, c1) {
+  const p = chess.board[r0][c0]; if (p === '.') return false;
+  if (chessColor(p) === chessColor(chess.board[r1][c1])) return false;
+  const dr = r1 - r0, dc = c1 - c0, t = p.toLowerCase(), adr = Math.abs(dr), adc = Math.abs(dc);
+  const clear = () => { const sr = Math.sign(dr), sc = Math.sign(dc); let r = r0 + sr, c = c0 + sc; while (r !== r1 || c !== c1) { if (chess.board[r][c] !== '.') return false; r += sr; c += sc; } return true; };
+  if (t === 'p') { const dir = p === 'P' ? -1 : 1, start = p === 'P' ? 6 : 1; const tgt = chess.board[r1][c1];
+    if (dc === 0 && dr === dir && tgt === '.') return true;
+    if (dc === 0 && dr === 2 * dir && r0 === start && tgt === '.' && chess.board[r0 + dir][c0] === '.') return true;
+    if (adc === 1 && dr === dir && tgt !== '.') return true; return false; }
+  if (t === 'n') return (adr === 2 && adc === 1) || (adr === 1 && adc === 2);
+  if (t === 'b') return adr === adc && clear();
+  if (t === 'r') return (dr === 0 || dc === 0) && clear();
+  if (t === 'q') return (adr === adc || dr === 0 || dc === 0) && clear();
+  if (t === 'k') return adr <= 1 && adc <= 1;
+  return false;
+}
+function chessClick(r, c) {
+  if (chess.over || chess.turn !== 'w') return;
+  const p = chess.board[r][c];
+  if (chess.sel) {
+    if (chessLegal(chess.sel[0], chess.sel[1], r, c)) { chessMove(chess.sel[0], chess.sel[1], r, c); chess.sel = null; chessDraw();
+      if (!chess.over) { document.getElementById('chess-status').textContent = 'CPU thinking…'; setTimeout(chessCpu, 500); } return; }
+    chess.sel = (chessColor(p) === 'w') ? [r, c] : null;
+  } else if (chessColor(p) === 'w') chess.sel = [r, c];
+  chessDraw();
+}
+function chessMove(r0, c0, r1, c1) {
+  const captured = chess.board[r1][c1];
+  let p = chess.board[r0][c0];
+  if (p === 'P' && r1 === 0) p = 'Q'; if (p === 'p' && r1 === 7) p = 'q'; // promote
+  chess.board[r1][c1] = p; chess.board[r0][c0] = '.';
+  tone(captured !== '.' ? 330 : 440, 0.08, 'square', 0.1);
+  if (captured.toLowerCase() === 'k') { chess.over = true; document.getElementById('chess-status').textContent = chess.turn === 'w' ? '🎉 You win!' : '🤖 CPU wins!'; }
+  chess.turn = chess.turn === 'w' ? 'b' : 'w';
+}
+function chessCpu() {
+  if (chess.over) return;
+  const moves = [];
+  for (let r0 = 0; r0 < 8; r0++) for (let c0 = 0; c0 < 8; c0++) { if (chessColor(chess.board[r0][c0]) !== 'b') continue;
+    for (let r1 = 0; r1 < 8; r1++) for (let c1 = 0; c1 < 8; c1++) if (chessLegal(r0, c0, r1, c1)) { const tgt = chess.board[r1][c1]; const val = tgt === '.' ? 0 : ({ p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }[tgt.toLowerCase()] || 0); moves.push({ r0, c0, r1, c1, val }); } }
+  if (!moves.length) { chess.over = true; document.getElementById('chess-status').textContent = 'Stalemate!'; return; }
+  moves.sort((a, b) => b.val - a.val);
+  const best = moves[0].val > 0 ? moves[0] : moves[Math.floor(Math.random() * moves.length)];
+  chessMove(best.r0, best.c0, best.r1, best.c1);
+  chessDraw();
+  if (!chess.over) document.getElementById('chess-status').textContent = 'Your move (White)';
+}
+
+// ── Global key router for games ───────────────────────────────────────────────
+document.addEventListener('keydown', e => { tetrisKey(e); pianoKey(e); });
+
+// ── App init hooks ────────────────────────────────────────────────────────────
 const appInitHooks = {
   paint: initPaint, snake: initSnake, clock: initClock, sysmon: initSysmon,
   calendar: initCalendar, music: initMusic, appstore: initStore, messages: initMessages,
   g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
   dice: () => {}, colors: initColors,
+  tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
+  beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
+  typing: initTyping, wiki: () => {}, chess: initChess,
 };
 </script>
 </body>
