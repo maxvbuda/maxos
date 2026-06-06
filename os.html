@@ -521,6 +521,25 @@
   #maps-canvas { flex:1; min-height:120px; background:#0a0a16; }
   .leaflet-popup-content { color:#222; font-size:12px; }
 
+  /* App Studio */
+  .custom-frame { width:100%; height:100%; border:none; background:#fff; }
+  .studio { display:flex; height:100%; }
+  .studio-left { flex:1; display:flex; flex-direction:column; min-width:0; border-right:1px solid rgba(255,255,255,.08); }
+  .studio-meta { display:flex; gap:8px; padding:10px; }
+  .studio-icon { width:46px; text-align:center; font-size:20px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:9px; color:#fff; outline:none; }
+  .studio-name { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:9px; color:#fff; padding:0 14px; font-size:14px; outline:none; font-family:inherit; }
+  .studio-tabs { display:flex; gap:4px; padding:0 10px; }
+  .studio-tab { background:rgba(255,255,255,.06); border:none; color:rgba(255,255,255,.55); border-radius:8px 8px 0 0; padding:7px 16px; font-size:12px; cursor:pointer; }
+  .studio-tab.active { background:rgba(0,0,0,.25); color:#fff; }
+  .studio-code { flex:1; background:rgba(0,0,0,.25); border:none; outline:none; color:#d4d4d8; font-family:'Menlo','Cascadia Code',monospace; font-size:12.5px; padding:12px; resize:none; line-height:1.6; }
+  .studio-publish { margin:10px; padding:12px; border:none; border-radius:10px; background:linear-gradient(135deg,#64b4ff,#bf5af2); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+  .studio-publish:hover { filter:brightness(1.1); }
+  .studio-right { width:300px; display:flex; flex-direction:column; flex-shrink:0; }
+  .studio-phead { padding:9px 14px; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,255,255,.4); font-weight:600; }
+  #studio-frame { height:230px; border-bottom:1px solid rgba(255,255,255,.08); border-radius:0; }
+  .studio-list { flex:1; overflow-y:auto; padding:0 8px 8px; display:flex; flex-direction:column; gap:6px; }
+  .studio-item { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.05); border-radius:10px; padding:8px 10px; }
+
   /* Chess */
   .chess-board { display:grid; grid-template-columns:repeat(8,1fr); width:384px; height:384px; border-radius:8px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,.5); }
   .chess-sq { display:flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; user-select:none; }
@@ -677,6 +696,7 @@ function bootOS() {
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
+  loadCustomApps();
   renderDesktop();
   renderStartApps();
   checkServer().then(startUnreadPolling);
@@ -956,6 +976,7 @@ const apps = {
   typing:   { title: 'Typing Test',    short:'Typing',     icon:'⌨️', w:560, h:420, cat:'Productivity', desc:'Measure your words-per-minute',      html: buildTyping },
   wiki:     { title: 'Wikipedia',      short:'Wiki',       icon:'📖', w:600, h:500, cat:'Knowledge',  desc:'Search & read real Wikipedia',        html: buildWiki },
   maps:     { title: 'Maps',           short:'Maps',       icon:'🗺️', w:700, h:540, cat:'Knowledge',  desc:'Interactive world map + search',      html: buildMaps },
+  makeyourownwebsite: { title: 'Make Your Own App', short:'Make App', icon:'🛠️', w:860, h:580, core:true, cat:'Productivity', desc:'Build & publish your own MaxOS apps', html: buildStudio },
 };
 
 // ── App installation / desktop rendering ─────────────────────────────────────
@@ -1035,7 +1056,8 @@ function openApp(id) {
   addTaskbarBtn(id);
   if (id === 'terminal') initTerminal();
   if (id === 'files') setTimeout(() => fmLoad(fmCwd), 50);
-  if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
+  if (apps[id] && apps[id].custom) setTimeout(() => customRender(id), 80);
+  else if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
 }
 
 function focusWindow(id) {
@@ -3436,6 +3458,123 @@ function mapsLocate() {
   );
 }
 
+// ══ APP STUDIO — make & publish your own MaxOS apps ═══════════════════════════
+let customApps = JSON.parse(localStorage.getItem('maxos_customapps') || '{}');
+function saveCustomApps() { localStorage.setItem('maxos_customapps', JSON.stringify(customApps)); }
+function loadCustomApps() { for (const id in customApps) registerCustomApp(customApps[id]); }
+function registerCustomApp(def) {
+  apps[def.id] = {
+    title: def.title, short: def.short || def.title, icon: def.icon || '🧩',
+    w: def.w || 520, h: def.h || 440, cat: 'My Apps', desc: def.desc || 'A custom app', custom: true,
+    html: () => `<iframe class="custom-frame" id="custframe-${def.id}"></iframe>`,
+  };
+}
+function customRender(id) {
+  const def = customApps[id]; if (!def) return;
+  const frame = document.getElementById('custframe-' + id); if (!frame) return;
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open(); doc.close();
+  doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
+  const style = doc.createElement('style'); style.textContent = def.css || ''; doc.head.appendChild(style);
+  doc.body.innerHTML = def.html || '';
+  if (def.js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + def.js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+}
+
+const STUDIO_DEFAULTS = {
+  html: '<div class="card">\n  <h1>👋 My App</h1>\n  <p id="msg">Click the button!</p>\n  <button onclick="go()">Surprise</button>\n</div>',
+  css: 'body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}\n.card{text-align:center}\nbutton{margin-top:14px;padding:10px 22px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer}',
+  js: 'const emojis=["🎉","🚀","🌈","🔥","✨","🦄"];\nfunction go(){ document.getElementById("msg").textContent = emojis[Math.floor(Math.random()*emojis.length)].repeat(3); }',
+};
+let studioTabCur = 'html';
+function buildStudio() {
+  return `<div class="studio">
+    <div class="studio-left">
+      <div class="studio-meta">
+        <input id="st-icon" class="studio-icon" maxlength="2" value="🛠️" title="App icon (emoji)">
+        <input id="st-name" class="studio-name" placeholder="My App Name" value="My App">
+      </div>
+      <div class="studio-tabs">
+        <button class="studio-tab active" data-t="html" onclick="studioTab('html')">HTML</button>
+        <button class="studio-tab" data-t="css" onclick="studioTab('css')">CSS</button>
+        <button class="studio-tab" data-t="js" onclick="studioTab('js')">JS</button>
+      </div>
+      <textarea id="st-html" class="studio-code" spellcheck="false" oninput="studioPreview()"></textarea>
+      <textarea id="st-css" class="studio-code" spellcheck="false" style="display:none" oninput="studioPreview()"></textarea>
+      <textarea id="st-js" class="studio-code" spellcheck="false" style="display:none" oninput="studioPreview()"></textarea>
+      <button class="studio-publish" onclick="studioPublish()">🚀 Publish to MaxOS</button>
+    </div>
+    <div class="studio-right">
+      <div class="studio-phead">Live Preview</div>
+      <iframe id="studio-frame" class="custom-frame"></iframe>
+      <div class="studio-phead">My Published Apps</div>
+      <div id="studio-list" class="studio-list"></div>
+    </div>
+  </div>`;
+}
+function initStudio() {
+  document.getElementById('st-html').value = STUDIO_DEFAULTS.html;
+  document.getElementById('st-css').value = STUDIO_DEFAULTS.css;
+  document.getElementById('st-js').value = STUDIO_DEFAULTS.js;
+  studioTabCur = 'html'; studioTab('html');
+  studioPreview(); studioRenderList();
+}
+function studioTab(t) {
+  studioTabCur = t;
+  ['html', 'css', 'js'].forEach(x => { document.getElementById('st-' + x).style.display = x === t ? 'block' : 'none'; });
+  document.querySelectorAll('.studio-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+}
+function studioInject(frame) {
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open(); doc.close();
+  doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
+  const style = doc.createElement('style'); style.textContent = document.getElementById('st-css').value; doc.head.appendChild(style);
+  doc.body.innerHTML = document.getElementById('st-html').value;
+  const js = document.getElementById('st-js').value;
+  if (js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+}
+let studioTimer;
+function studioPreview() { clearTimeout(studioTimer); studioTimer = setTimeout(() => { const f = document.getElementById('studio-frame'); if (f) studioInject(f); }, 350); }
+function studioSlug(name) {
+  let base = name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app';
+  // built-in apps are reserved; custom apps with same name overwrite
+  if (apps[base] && !customApps[base]) { let n = 1; while (apps[base + (++n)] && !customApps[base + n]); base = base + n; }
+  return base;
+}
+function studioPublish() {
+  const name = document.getElementById('st-name').value.trim() || 'My App';
+  const icon = document.getElementById('st-icon').value.trim() || '🧩';
+  const id = studioSlug(name);
+  const def = { id, title: name, short: name.length > 12 ? name.slice(0, 11) + '…' : name, icon,
+    html: document.getElementById('st-html').value, css: document.getElementById('st-css').value, js: document.getElementById('st-js').value,
+    desc: 'A custom app by ' + (currentUser?.displayName || 'you') };
+  customApps[id] = def; saveCustomApps(); registerCustomApp(def);
+  if (!installedApps.includes(id)) { installedApps.push(id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
+  renderDesktop(); renderStartApps();
+  if (windows['appstore']) renderStoreGrid();
+  studioRenderList();
+  notify('🚀', 'Published!', `${name} is live at ${MAXOS_DOMAIN}/${id}`);
+}
+function studioRenderList() {
+  const el = document.getElementById('studio-list'); if (!el) return;
+  const ids = Object.keys(customApps);
+  if (!ids.length) { el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:12px;padding:8px">No apps yet — build one and hit Publish!</div>'; return; }
+  el.innerHTML = ids.map(id => { const d = customApps[id]; return `<div class="studio-item">
+    <span style="font-size:20px">${d.icon}</span>
+    <div style="flex:1;min-width:0"><div style="color:#fff;font-size:13px">${d.title}</div><div style="color:rgba(255,255,255,.35);font-size:11px;font-family:monospace">/${id}</div></div>
+    <button class="gbtn" style="padding:4px 10px" onclick="openApp('${id}')">Open</button>
+    <button class="gbtn" style="padding:4px 9px;background:rgba(255,95,87,.25)" onclick="studioDelete('${id}')">🗑</button>
+  </div>`; }).join('');
+}
+function studioDelete(id) {
+  delete customApps[id]; saveCustomApps();
+  delete apps[id];
+  installedApps = installedApps.filter(x => x !== id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+  if (windows[id]) closeWindow(id);
+  renderDesktop(); renderStartApps(); studioRenderList();
+  if (windows['appstore']) renderStoreGrid();
+  notify('🗑️', 'Deleted', 'Custom app removed');
+}
+
 // ── Global key router for games ───────────────────────────────────────────────
 document.addEventListener('keydown', e => { tetrisKey(e); pianoKey(e); });
 
@@ -3449,7 +3588,7 @@ const appInitHooks = {
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
-  browser: initBrowser,
+  browser: initBrowser, makeyourownwebsite: initStudio,
 };
 </script>
 </body>
