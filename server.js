@@ -15,38 +15,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
 // ── Serve frontend ────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'os.html')));
 
-// ── Browser proxy: fetch a page server-side and strip frame-blocking headers ──
-// Lets the in-OS browser display sites that set X-Frame-Options / CSP frame-ancestors.
-// Works for simple/static sites; complex JS apps & login-based sites won't fully work.
-app.get('/api/proxy', async (req, res) => {
-  try {
-    let url = req.query.url;
-    if (!url) return res.status(400).send('Missing url');
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-    const r = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36', 'Accept': 'text/html,*/*' },
-      redirect: 'follow',
-    });
-    const ct = r.headers.get('content-type') || 'text/html';
-    // We never forward X-Frame-Options / CSP, so the result is always frameable.
-    if (ct.includes('text/html')) {
-      let html = await r.text();
-      // Inject <base> so the page's relative links/assets resolve against the real origin.
-      const baseTag = `<base href="${r.url}">`;
-      if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, m => m + baseTag);
-      else html = baseTag + html;
-      res.set('Content-Type', 'text/html; charset=utf-8');
-      res.send(html);
-    } else {
-      const buf = Buffer.from(await r.arrayBuffer());
-      res.set('Content-Type', ct);
-      res.send(buf);
-    }
-  } catch (e) {
-    res.status(502).send('<div style="font-family:sans-serif;padding:30px;color:#333">⚠️ Could not load this site through the proxy.<br><small>' + e.message + '</small></div>');
-  }
-});
-
 // ── Schemas ───────────────────────────────────────────────────────────────────
 const UserSchema = new mongoose.Schema({
   username:    { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -275,6 +243,12 @@ app.delete('/api/rm', auth, async (req, res) => {
     await File.deleteOne({ userId: req.user.id, path: p });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Deep links: every non-API path serves the OS (so /calc, /chess, etc. work) ──
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(__dirname, 'os.html'));
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

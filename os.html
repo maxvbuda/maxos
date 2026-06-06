@@ -185,12 +185,30 @@
   .wp-swatch { width:56px; height:38px; border-radius:8px; cursor:pointer; border:2px solid transparent; transition:border-color .15s,transform .1s; }
   .wp-swatch:hover { transform:scale(1.08); } .wp-swatch.selected { border-color:#64b4ff; }
 
-  /* Browser */
+  /* Browser = MaxOS Web portal */
   .mini-browser { display: flex; flex-direction: column; height: 100%; }
-  .browser-bar { display: flex; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.08); }
-  .browser-bar input { flex: 1; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: #fff; padding: 6px 12px; font-size: 13px; outline: none; }
-  .browser-bar button { background: rgba(100,180,255,.3); border: none; color: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
-  #browser-frame { flex: 1; border: none; background: #fff; }
+  .browser-bar { display: flex; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.08); align-items:center; }
+  .browser-bar input { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: #fff; padding: 6px 12px; font-size: 13px; outline: none; }
+  .browser-bar button { background: rgba(100,180,255,.3); border: none; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  .browser-bar button:hover { background: rgba(100,180,255,.45); }
+  .browser-portal { flex:1; overflow-y:auto; padding:0 24px 24px; background:linear-gradient(180deg,rgba(100,180,255,.06),transparent 240px); }
+  .portal-hero { text-align:center; padding:30px 0 20px; }
+  .portal-logo { font-size:54px; }
+  .portal-hero h1 { color:#fff; font-size:28px; font-weight:700; margin-top:6px; letter-spacing:.5px; }
+  .portal-hero p { color:rgba(255,255,255,.5); font-size:13px; margin-top:4px; }
+  .portal-hero p b { color:#64b4ff; }
+  .portal-section { margin-top:18px; }
+  .portal-section h3 { color:rgba(255,255,255,.4); font-size:11px; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; font-weight:600; }
+  .portal-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(108px,1fr)); gap:10px; }
+  .portal-card { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 8px; text-align:center; cursor:pointer; transition:transform .1s,background .12s; }
+  .portal-card:hover { background:rgba(100,180,255,.16); transform:translateY(-2px); }
+  .portal-icon { font-size:32px; }
+  .portal-name { color:#fff; font-size:12px; font-weight:500; margin-top:6px; }
+  .portal-url { color:rgba(255,255,255,.35); font-size:10px; font-family:monospace; margin-top:2px; }
+  .portal-launched, .portal-404 { text-align:center; padding:60px 20px; display:flex; flex-direction:column; align-items:center; }
+  .portal-launch-icon { font-size:70px; } .portal-404 h2 { color:#fff; margin-top:10px; } .portal-launched h2 { color:#fff; margin-top:10px; font-size:24px; }
+  .portal-404 p, .portal-launched p { color:rgba(255,255,255,.5); font-size:14px; margin-top:6px; }
+  .portal-addr { margin-top:14px; background:rgba(0,0,0,.3); border-radius:8px; padding:8px 16px; color:#64b4ff; font-family:monospace; font-size:13px; }
 
   /* Paint */
   .paint-wrap { display:flex; flex-direction:column; height:100%; }
@@ -669,6 +687,14 @@ function bootOS() {
     setTimeout(() => boot.remove(), 700);
     notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
   }, 2000);
+  // Deep link: open the app named in the URL path (e.g. /calc)
+  const seg = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (apps[seg]) setTimeout(() => openApp(seg), 300);
+}
+
+// Reflect the focused app in the address bar (maxos-1oe3.onrender.com/appname)
+function setAppUrl(id) {
+  try { history.replaceState({}, '', (id ? '/' + id : '/') + location.search); } catch {}
 }
 
 let serverOnline = false;
@@ -1025,6 +1051,7 @@ function focusWindow(id) {
   document.querySelectorAll('.taskbar-btn').forEach(b => b.classList.remove('active'));
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.classList.add('active');
+  setAppUrl(id);
 }
 
 function closeWindow(id) {
@@ -1039,7 +1066,12 @@ function closeWindow(id) {
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
-  setTimeout(() => { w.el.remove(); delete windows[id]; }, 160);
+  setTimeout(() => {
+    w.el.remove(); delete windows[id];
+    // Point the URL at another open window, or back to root
+    const remaining = Object.keys(windows);
+    setAppUrl(remaining.length ? remaining[remaining.length - 1] : null);
+  }, 160);
 }
 
 function minimizeWindow(id) {
@@ -1476,35 +1508,72 @@ async function termRun(raw) {
 }
 
 // ── Browser ───────────────────────────────────────────────────────────────────
+// ── Browser = the MaxOS ecosystem portal (maxos-1oe3.onrender.com/appname) ─────
+const MAXOS_DOMAIN = 'maxos-1oe3.onrender.com';
 function buildBrowser() {
   return `<div class="mini-browser">
     <div class="browser-bar">
-      <input id="browser-url" placeholder="Enter URL..." value="https://example.com" onkeydown="if(event.key==='Enter')browserGo()">
+      <button onclick="browserHome()" title="Home">🏠</button>
+      <span style="color:rgba(255,255,255,.35);font-size:13px">${MAXOS_DOMAIN}/</span>
+      <input id="browser-url" placeholder="app name…" style="flex:1;margin-left:-4px" onkeydown="if(event.key==='Enter')browserGo()">
       <button onclick="browserGo()">Go</button>
-      <label style="display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.6);font-size:12px;white-space:nowrap;cursor:pointer" title="Load through the server proxy to bypass sites that block embedding (works for many simple sites)">
-        <input type="checkbox" id="browser-force" style="cursor:pointer"> Force
-      </label>
-      <button onclick="browserOpenTab()" title="Open in a real new tab">↗</button>
     </div>
-    <iframe id="browser-frame" src="https://example.com" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+    <div id="browser-content" class="browser-portal"></div>
   </div>`;
 }
-function browserNormalizeUrl() {
-  let url = document.getElementById('browser-url').value.trim();
-  if (!url) return '';
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  return url;
+function initBrowser() { browserHome(); }
+function browserHome() {
+  const u = document.getElementById('browser-url'); if (u) u.value = '';
+  const c = document.getElementById('browser-content'); if (!c) return;
+  const cats = {};
+  Object.keys(apps).forEach(id => { const a = apps[id]; const cat = a.core ? 'System' : (a.cat || 'Other'); (cats[cat] = cats[cat] || []).push(id); });
+  c.innerHTML = `
+    <div class="portal-hero">
+      <div class="portal-logo">🖥️</div>
+      <h1>MaxOS Web</h1>
+      <p>Your ecosystem — every app lives at <b>${MAXOS_DOMAIN}/app</b></p>
+    </div>
+    ${Object.keys(cats).map(cat => `
+      <div class="portal-section"><h3>${cat}</h3>
+        <div class="portal-grid">${cats[cat].map(id => {
+          const a = apps[id];
+          return `<div class="portal-card" onclick="browserVisit('${id}')">
+            <div class="portal-icon">${a.icon}</div>
+            <div class="portal-name">${a.title}</div>
+            <div class="portal-url">/${id}</div>
+          </div>`;
+        }).join('')}</div>
+      </div>`).join('')}`;
 }
 function browserGo() {
-  const url = browserNormalizeUrl();
-  if (!url) return;
-  const force = document.getElementById('browser-force').checked;
-  const frame = document.getElementById('browser-frame');
-  frame.src = force ? (API + '/api/proxy?url=' + encodeURIComponent(url)) : url;
+  let v = document.getElementById('browser-url').value.trim().toLowerCase();
+  v = v.replace(/^https?:\/\//, '').replace(MAXOS_DOMAIN, '').replace(/^\/+/, '');
+  if (!v || v === 'home') { browserHome(); return; }
+  browserVisit(v);
 }
-function browserOpenTab() {
-  const url = browserNormalizeUrl();
-  if (url) window.open(url, '_blank', 'noopener');
+function browserVisit(id) {
+  const c = document.getElementById('browser-content');
+  const u = document.getElementById('browser-url');
+  if (!apps[id]) {
+    if (u) u.value = id;
+    c.innerHTML = `<div class="portal-404"><div style="font-size:54px">🛰️</div><h2>404 — Page not found</h2>
+      <p><b>${MAXOS_DOMAIN}/${id}</b> doesn't exist in this ecosystem.</p>
+      <button class="gbtn" onclick="browserHome()">← Back to MaxOS Web</button></div>`;
+    return;
+  }
+  if (u) u.value = id;
+  const a = apps[id];
+  openApp(id);
+  c.innerHTML = `<div class="portal-launched">
+    <div class="portal-launch-icon">${a.icon}</div>
+    <h2>${a.title}</h2>
+    <p style="color:rgba(255,255,255,.5)">${a.desc || 'A MaxOS app'}</p>
+    <div class="portal-addr">🔗 ${MAXOS_DOMAIN}/${id}</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="gbtn" onclick="focusWindow('${id}')">Open Window</button>
+      <button class="gbtn" onclick="browserHome()">← Home</button>
+    </div>
+  </div>`;
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -3380,6 +3449,7 @@ const appInitHooks = {
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
+  browser: initBrowser,
 };
 </script>
 </body>
