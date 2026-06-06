@@ -3069,80 +3069,195 @@ async function wikiOpen(title) {
   } catch { body.innerHTML = '<div style="color:#ff8a84;text-align:center;padding:30px">Could not load article</div>'; }
 }
 
-// ══ CHESS ═════════════════════════════════════════════════════════════════════
+// ══ CHESS (full engine: legal moves, castling, checkmate, minimax AI) ═════════
 let chess = null;
 const CHESS_GLYPH = { P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔', p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+const CH_VAL = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+// Piece-square tables (from White's view, rank 0 = Black's back rank)
+const CH_PST = {
+  p: [[0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],[5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],[5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]],
+  n: [[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],[-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],[-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]],
+  b: [[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,10,10,5,0,-10],[-10,5,5,10,10,5,5,-10],[-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],[-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]],
+  r: [[0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]],
+  q: [[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],[0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],[-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]],
+  k: [[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],[20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]],
+};
+const CH_DIRS = { ortho: [[-1,0],[1,0],[0,-1],[0,1]], diag: [[-1,-1],[-1,1],[1,-1],[1,1]] };
+
 function buildChess() {
   return `<div class="gshell">
     <div class="chess-status" id="chess-status">Your move (White)</div>
     <div class="chess-board" id="chess-board"></div>
-    <button class="gbtn" onclick="initChess()">New Game</button></div>`;
+    <div class="grow"><button class="gbtn" onclick="initChess()">New Game</button>
+      <span style="color:rgba(255,255,255,.45);font-size:12px">You play White ♔</span></div></div>`;
 }
 function initChess() {
   chess = {
     board: ['rnbqkbnr','pppppppp','........','........','........','........','PPPPPPPP','RNBQKBNR'].map(r => r.split('')),
-    sel: null, turn: 'w', over: false,
+    sel: null, legal: [], turn: 'w', over: false,
+    castle: { wK: true, wQ: true, bK: true, bQ: true },
   };
-  chessDraw();
+  chessDraw(); chessSetStatus('Your move (White)');
 }
 function chessColor(p) { return p === '.' ? null : (p === p.toUpperCase() ? 'w' : 'b'); }
+function chessSetStatus(t) { const e = document.getElementById('chess-status'); if (e) e.textContent = t; }
+
+// Is square (tr,tc) attacked by color `by`?
+function chessAttacked(board, tr, tc, by) {
+  const pdir = by === 'w' ? 1 : -1; // a `by` pawn sits one rank toward its own side
+  for (const dc of [-1, 1]) { const pr = tr + pdir, pc = tc + dc; if (pr >= 0 && pr < 8 && pc >= 0 && pc < 8) { const p = board[pr][pc]; if (p !== '.' && chessColor(p) === by && p.toLowerCase() === 'p') return true; } }
+  for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) { const r = tr+dr, c = tc+dc; if (r>=0&&r<8&&c>=0&&c<8) { const p = board[r][c]; if (p !== '.' && chessColor(p) === by && p.toLowerCase() === 'n') return true; } }
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const r = tr+dr, c = tc+dc; if (r>=0&&r<8&&c>=0&&c<8) { const p = board[r][c]; if (p !== '.' && chessColor(p) === by && p.toLowerCase() === 'k') return true; } }
+  for (const [dr, dc] of CH_DIRS.ortho) { let r = tr+dr, c = tc+dc; while (r>=0&&r<8&&c>=0&&c<8) { const p = board[r][c]; if (p !== '.') { if (chessColor(p) === by && (p.toLowerCase() === 'r' || p.toLowerCase() === 'q')) return true; break; } r += dr; c += dc; } }
+  for (const [dr, dc] of CH_DIRS.diag) { let r = tr+dr, c = tc+dc; while (r>=0&&r<8&&c>=0&&c<8) { const p = board[r][c]; if (p !== '.') { if (chessColor(p) === by && (p.toLowerCase() === 'b' || p.toLowerCase() === 'q')) return true; break; } r += dr; c += dc; } }
+  return false;
+}
+function chessKing(board, color) { const k = color === 'w' ? 'K' : 'k'; for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (board[r][c] === k) return [r, c]; return null; }
+function chessInCheck(board, color) { const k = chessKing(board, color); return k ? chessAttacked(board, k[0], k[1], color === 'w' ? 'b' : 'w') : false; }
+
+// Pseudo-legal moves for the piece at (r,c)
+function chessPieceMoves(board, r, c, castle) {
+  const p = board[r][c]; if (p === '.') return [];
+  const me = chessColor(p), t = p.toLowerCase(), moves = [];
+  const last = me === 'w' ? 0 : 7;
+  const add = (r1, c1) => { if (r1 < 0 || r1 > 7 || c1 < 0 || c1 > 7) return false; const tp = board[r1][c1]; if (tp !== '.' && chessColor(tp) === me) return false; moves.push({ r0: r, c0: c, r1, c1 }); return tp === '.'; };
+  const pawnAdd = (r1, c1) => { if (r1 === last) moves.push({ r0: r, c0: c, r1, c1, promo: 'q' }); else moves.push({ r0: r, c0: c, r1, c1 }); };
+  if (t === 'p') {
+    const dir = me === 'w' ? -1 : 1, start = me === 'w' ? 6 : 1;
+    if (board[r+dir] && board[r+dir][c] === '.') { pawnAdd(r+dir, c); if (r === start && board[r+2*dir][c] === '.') moves.push({ r0: r, c0: c, r1: r+2*dir, c1: c }); }
+    for (const dc of [-1, 1]) { const r1 = r+dir, c1 = c+dc; if (r1>=0&&r1<8&&c1>=0&&c1<8) { const tp = board[r1][c1]; if (tp !== '.' && chessColor(tp) !== me) pawnAdd(r1, c1); } }
+  } else if (t === 'n') { for (const [dr, dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) add(r+dr, c+dc); }
+  else if (t === 'k') {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (dr || dc) add(r+dr, c+dc);
+    if (castle) chessCastleMoves(board, me, castle, moves);
+  } else { const dirs = t === 'b' ? CH_DIRS.diag : t === 'r' ? CH_DIRS.ortho : CH_DIRS.ortho.concat(CH_DIRS.diag); for (const [dr, dc] of dirs) { let r1 = r+dr, c1 = c+dc; while (add(r1, c1)) { r1 += dr; c1 += dc; } } }
+  return moves;
+}
+function chessCastleMoves(board, me, castle, moves) {
+  const back = me === 'w' ? 7 : 0, opp = me === 'w' ? 'b' : 'w', rook = me === 'w' ? 'R' : 'r';
+  if (chessAttacked(board, back, 4, opp)) return; // can't castle out of check
+  const kSide = me === 'w' ? castle.wK : castle.bK, qSide = me === 'w' ? castle.wQ : castle.bQ;
+  if (kSide && board[back][5] === '.' && board[back][6] === '.' && board[back][7] === rook
+      && !chessAttacked(board, back, 5, opp) && !chessAttacked(board, back, 6, opp))
+    moves.push({ r0: back, c0: 4, r1: back, c1: 6, castle: 'K' });
+  if (qSide && board[back][3] === '.' && board[back][2] === '.' && board[back][1] === '.' && board[back][0] === rook
+      && !chessAttacked(board, back, 3, opp) && !chessAttacked(board, back, 2, opp))
+    moves.push({ r0: back, c0: 4, r1: back, c1: 2, castle: 'Q' });
+}
+// Apply a move to a board copy; returns { board, castle }
+function chessApply(board, castle, m) {
+  const b = board.map(row => row.slice()), nc = { ...castle };
+  let p = b[m.r0][m.c0];
+  if (m.promo) p = chessColor(p) === 'w' ? m.promo.toUpperCase() : m.promo.toLowerCase();
+  b[m.r1][m.c1] = p; b[m.r0][m.c0] = '.';
+  if (m.castle === 'K') { b[m.r1][5] = b[m.r1][7]; b[m.r1][7] = '.'; }
+  if (m.castle === 'Q') { b[m.r1][3] = b[m.r1][0]; b[m.r1][0] = '.'; }
+  const src = board[m.r0][m.c0];
+  if (src === 'K') { nc.wK = nc.wQ = false; } if (src === 'k') { nc.bK = nc.bQ = false; }
+  const touch = (r, c) => { if (r===7&&c===0) nc.wQ=false; if (r===7&&c===7) nc.wK=false; if (r===0&&c===0) nc.bQ=false; if (r===0&&c===7) nc.bK=false; };
+  touch(m.r0, m.c0); touch(m.r1, m.c1);
+  return { board: b, castle: nc };
+}
+// All fully-legal moves for a color
+function chessLegalMoves(board, color, castle) {
+  const out = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    if (board[r][c] === '.' || chessColor(board[r][c]) !== color) continue;
+    for (const m of chessPieceMoves(board, r, c, castle)) {
+      const { board: nb } = chessApply(board, castle, m);
+      if (!chessInCheck(nb, color)) out.push(m);
+    }
+  }
+  return out;
+}
 function chessDraw() {
   const b = document.getElementById('chess-board'); if (!b) return;
   let html = '';
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
     const p = chess.board[r][c], light = (r + c) % 2 === 0;
     const sel = chess.sel && chess.sel[0] === r && chess.sel[1] === c;
-    const moveDot = chess.sel && chessLegal(chess.sel[0], chess.sel[1], r, c);
-    html += `<div class="chess-sq ${light ? 'light' : 'dark'}${sel ? ' sel' : ''}${moveDot ? ' move' : ''}" onclick="chessClick(${r},${c})">${p !== '.' ? CHESS_GLYPH[p] : ''}</div>`;
+    const move = chess.legal.some(m => m.r1 === r && m.c1 === c);
+    html += `<div class="chess-sq ${light ? 'light' : 'dark'}${sel ? ' sel' : ''}${move ? ' move' : ''}" onclick="chessClick(${r},${c})">${p !== '.' ? CHESS_GLYPH[p] : ''}</div>`;
   }
   b.innerHTML = html;
-}
-function chessLegal(r0, c0, r1, c1) {
-  const p = chess.board[r0][c0]; if (p === '.') return false;
-  if (chessColor(p) === chessColor(chess.board[r1][c1])) return false;
-  const dr = r1 - r0, dc = c1 - c0, t = p.toLowerCase(), adr = Math.abs(dr), adc = Math.abs(dc);
-  const clear = () => { const sr = Math.sign(dr), sc = Math.sign(dc); let r = r0 + sr, c = c0 + sc; while (r !== r1 || c !== c1) { if (chess.board[r][c] !== '.') return false; r += sr; c += sc; } return true; };
-  if (t === 'p') { const dir = p === 'P' ? -1 : 1, start = p === 'P' ? 6 : 1; const tgt = chess.board[r1][c1];
-    if (dc === 0 && dr === dir && tgt === '.') return true;
-    if (dc === 0 && dr === 2 * dir && r0 === start && tgt === '.' && chess.board[r0 + dir][c0] === '.') return true;
-    if (adc === 1 && dr === dir && tgt !== '.') return true; return false; }
-  if (t === 'n') return (adr === 2 && adc === 1) || (adr === 1 && adc === 2);
-  if (t === 'b') return adr === adc && clear();
-  if (t === 'r') return (dr === 0 || dc === 0) && clear();
-  if (t === 'q') return (adr === adc || dr === 0 || dc === 0) && clear();
-  if (t === 'k') return adr <= 1 && adc <= 1;
-  return false;
 }
 function chessClick(r, c) {
   if (chess.over || chess.turn !== 'w') return;
   const p = chess.board[r][c];
   if (chess.sel) {
-    if (chessLegal(chess.sel[0], chess.sel[1], r, c)) { chessMove(chess.sel[0], chess.sel[1], r, c); chess.sel = null; chessDraw();
-      if (!chess.over) { document.getElementById('chess-status').textContent = 'CPU thinking…'; setTimeout(chessCpu, 500); } return; }
-    chess.sel = (chessColor(p) === 'w') ? [r, c] : null;
-  } else if (chessColor(p) === 'w') chess.sel = [r, c];
+    const m = chess.legal.find(mv => mv.r1 === r && mv.c1 === c);
+    if (m) { chessDoMove(m); return; }
+    if (chessColor(p) === 'w') chessSelect(r, c); else { chess.sel = null; chess.legal = []; chessDraw(); }
+  } else if (chessColor(p) === 'w') chessSelect(r, c);
+}
+function chessSelect(r, c) {
+  chess.sel = [r, c];
+  chess.legal = chessLegalMoves(chess.board, 'w', chess.castle).filter(m => m.r0 === r && m.c0 === c);
   chessDraw();
 }
-function chessMove(r0, c0, r1, c1) {
-  const captured = chess.board[r1][c1];
-  let p = chess.board[r0][c0];
-  if (p === 'P' && r1 === 0) p = 'Q'; if (p === 'p' && r1 === 7) p = 'q'; // promote
-  chess.board[r1][c1] = p; chess.board[r0][c0] = '.';
-  tone(captured !== '.' ? 330 : 440, 0.08, 'square', 0.1);
-  if (captured.toLowerCase() === 'k') { chess.over = true; document.getElementById('chess-status').textContent = chess.turn === 'w' ? '🎉 You win!' : '🤖 CPU wins!'; }
-  chess.turn = chess.turn === 'w' ? 'b' : 'w';
+function chessDoMove(m) {
+  const cap = chess.board[m.r1][m.c1] !== '.' || m.castle;
+  const res = chessApply(chess.board, chess.castle, m);
+  chess.board = res.board; chess.castle = res.castle;
+  chess.sel = null; chess.legal = []; chess.turn = chess.turn === 'w' ? 'b' : 'w';
+  tone(cap ? 330 : 440, 0.08, 'square', 0.1);
+  chessDraw();
+  if (chessCheckEnd()) return;
+  if (chess.turn === 'b') { chessSetStatus('CPU thinking…'); setTimeout(chessCpu, 60); }
+}
+// Returns true if game ended
+function chessCheckEnd() {
+  const color = chess.turn;
+  const moves = chessLegalMoves(chess.board, color, chess.castle);
+  if (moves.length === 0) {
+    chess.over = true;
+    if (chessInCheck(chess.board, color)) { chessSetStatus(color === 'w' ? 'Checkmate — 🤖 CPU wins!' : 'Checkmate — 🎉 You win!'); notify('♟️', 'Checkmate', color === 'w' ? 'CPU wins' : 'You win!'); }
+    else { chessSetStatus('Stalemate — draw!'); notify('♟️', 'Stalemate', "It's a draw"); }
+    return true;
+  }
+  if (chessInCheck(chess.board, color)) chessSetStatus(color === 'w' ? '⚠️ You are in check!' : 'CPU is in check…');
+  return false;
+}
+// Negamax with alpha-beta; score from side-to-move perspective
+function chessSearch(board, castle, depth, alpha, beta, color) {
+  const moves = chessLegalMoves(board, color, castle);
+  if (moves.length === 0) return { score: chessInCheck(board, color) ? -100000 - depth : 0 };
+  if (depth === 0) return { score: (color === 'w' ? 1 : -1) * chessEval(board) };
+  moves.sort((a, b) => chessCapVal(board, b) - chessCapVal(board, a)); // captures first
+  let best = -Infinity, bestMove = moves[0];
+  for (const m of moves) {
+    const { board: nb, castle: ncas } = chessApply(board, castle, m);
+    const score = -chessSearch(nb, ncas, depth - 1, -beta, -alpha, color === 'w' ? 'b' : 'w').score;
+    if (score > best) { best = score; bestMove = m; }
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return { score: best, move: bestMove };
+}
+function chessCapVal(board, m) { const t = board[m.r1][m.c1]; return t === '.' ? 0 : CH_VAL[t.toLowerCase()]; }
+function chessEval(board) {
+  let s = 0;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = board[r][c]; if (p === '.') continue;
+    const col = chessColor(p), t = p.toLowerCase();
+    const pst = CH_PST[t][col === 'w' ? r : 7 - r][c];
+    s += (col === 'w' ? 1 : -1) * (CH_VAL[t] + pst);
+  }
+  return s; // + favors White
 }
 function chessCpu() {
   if (chess.over) return;
-  const moves = [];
-  for (let r0 = 0; r0 < 8; r0++) for (let c0 = 0; c0 < 8; c0++) { if (chessColor(chess.board[r0][c0]) !== 'b') continue;
-    for (let r1 = 0; r1 < 8; r1++) for (let c1 = 0; c1 < 8; c1++) if (chessLegal(r0, c0, r1, c1)) { const tgt = chess.board[r1][c1]; const val = tgt === '.' ? 0 : ({ p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }[tgt.toLowerCase()] || 0); moves.push({ r0, c0, r1, c1, val }); } }
-  if (!moves.length) { chess.over = true; document.getElementById('chess-status').textContent = 'Stalemate!'; return; }
-  moves.sort((a, b) => b.val - a.val);
-  const best = moves[0].val > 0 ? moves[0] : moves[Math.floor(Math.random() * moves.length)];
-  chessMove(best.r0, best.c0, best.r1, best.c1);
+  // Adapt depth to position size for speed
+  const pieces = chess.board.flat().filter(x => x !== '.').length;
+  const depth = pieces <= 10 ? 4 : 3;
+  const { move } = chessSearch(chess.board, chess.castle, depth, -Infinity, Infinity, 'b');
+  if (!move) { chessCheckEnd(); return; }
+  const cap = chess.board[move.r1][move.c1] !== '.' || move.castle;
+  const res = chessApply(chess.board, chess.castle, move);
+  chess.board = res.board; chess.castle = res.castle; chess.turn = 'w';
+  tone(cap ? 330 : 440, 0.08, 'square', 0.1);
   chessDraw();
-  if (!chess.over) document.getElementById('chess-status').textContent = 'Your move (White)';
+  if (!chessCheckEnd()) chessSetStatus('Your move (White)');
 }
 
 // ── Global key router for games ───────────────────────────────────────────────
