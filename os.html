@@ -488,6 +488,18 @@
   .wiki-result b { color:#fff; } .wiki-result p { color:rgba(255,255,255,.5); font-size:12px; margin-top:3px; }
   .wiki-link { color:#64b4ff; cursor:pointer; }
 
+  /* Maps */
+  .maps-app { display:flex; flex-direction:column; height:100%; }
+  .maps-bar { display:flex; gap:8px; padding:10px; border-bottom:1px solid rgba(255,255,255,.08); align-items:center; }
+  .maps-bar input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:9px 14px; color:#fff; outline:none; font-family:inherit; font-size:13px; }
+  .maps-bar button { background:rgba(100,180,255,.3); border:none; color:#fff; border-radius:10px; padding:9px 14px; cursor:pointer; font-size:13px; white-space:nowrap; }
+  .maps-bar button:hover { background:rgba(100,180,255,.45); }
+  .maps-presets { display:flex; gap:6px; padding:8px 10px 0; flex-wrap:wrap; }
+  .maps-preset { background:rgba(255,255,255,.08); border:none; color:rgba(255,255,255,.7); border-radius:16px; padding:4px 12px; font-size:12px; cursor:pointer; }
+  .maps-preset:hover { background:rgba(255,255,255,.16); color:#fff; }
+  #maps-canvas { flex:1; min-height:120px; background:#0a0a16; }
+  .leaflet-popup-content { color:#222; font-size:12px; }
+
   /* Chess */
   .chess-board { display:grid; grid-template-columns:repeat(8,1fr); width:384px; height:384px; border-radius:8px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,.5); }
   .chess-sq { display:flex; align-items:center; justify-content:center; font-size:30px; cursor:pointer; user-select:none; }
@@ -914,6 +926,7 @@ const apps = {
   codepen:  { title: 'Code Playground',short:'Code',       icon:'🧪', w:760, h:520, cat:'Productivity', desc:'Live HTML/CSS/JS editor + preview',  html: buildCodepen },
   typing:   { title: 'Typing Test',    short:'Typing',     icon:'⌨️', w:560, h:420, cat:'Productivity', desc:'Measure your words-per-minute',      html: buildTyping },
   wiki:     { title: 'Wikipedia',      short:'Wiki',       icon:'📖', w:600, h:500, cat:'Knowledge',  desc:'Search & read real Wikipedia',        html: buildWiki },
+  maps:     { title: 'Maps',           short:'Maps',       icon:'🗺️', w:700, h:540, cat:'Knowledge',  desc:'Interactive world map + search',      html: buildMaps },
 };
 
 // ── App installation / desktop rendering ─────────────────────────────────────
@@ -1015,6 +1028,7 @@ function closeWindow(id) {
   const w = windows[id];
   if (!w) return;
   if (id === 'messages') { clearInterval(msgPollTimer); msgActiveUser = null; }
+  if (id === 'maps' && mapsObj) { mapsObj.remove(); mapsObj = null; mapsMarker = null; }
   if (id === 'tetris') tetris?.stop();
   if (id === 'breakout') breakout?.stop();
   if (id === 'life') life?.stop();
@@ -3260,6 +3274,73 @@ function chessCpu() {
   if (!chessCheckEnd()) chessSetStatus('Your move (White)');
 }
 
+// ══ MAPS (Leaflet + OpenStreetMap + Nominatim search — all free, no key) ══════
+let mapsObj = null, mapsMarker = null, leafletLoading = null;
+const MAPS_PRESETS = [
+  { n: 'New York', lat: 40.7128, lon: -74.006 }, { n: 'London', lat: 51.5074, lon: -0.1278 },
+  { n: 'Tokyo', lat: 35.6895, lon: 139.6917 }, { n: 'Paris', lat: 48.8566, lon: 2.3522 },
+  { n: 'Sydney', lat: -33.8688, lon: 151.2093 }, { n: 'Cairo', lat: 30.0444, lon: 31.2357 },
+];
+function buildMaps() {
+  return `<div class="maps-app">
+    <div class="maps-bar">
+      <input id="maps-q" placeholder="Search any place…" onkeydown="if(event.key==='Enter')mapsSearch()">
+      <button onclick="mapsSearch()">Search</button>
+      <button onclick="mapsLocate()" title="My location">📍 Me</button>
+    </div>
+    <div class="maps-presets">${MAPS_PRESETS.map(p => `<button class="maps-preset" onclick="mapsGoto(${p.lat},${p.lon},'${p.n}')">${p.n}</button>`).join('')}</div>
+    <div id="maps-canvas"></div>
+  </div>`;
+}
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoading) return leafletLoading;
+  leafletLoading = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const sc = document.createElement('scr' + 'ipt');
+    sc.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    sc.onload = resolve; sc.onerror = reject;
+    document.head.appendChild(sc);
+  });
+  return leafletLoading;
+}
+async function initMaps() {
+  const canvas = document.getElementById('maps-canvas');
+  if (!canvas) return;
+  canvas.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:40px">Loading map…</div>';
+  try { await loadLeaflet(); } catch { canvas.innerHTML = '<div style="color:#ff8a84;text-align:center;padding:40px">Map failed to load.<br><small style="color:rgba(255,255,255,.4)">Check your connection.</small></div>'; return; }
+  canvas.innerHTML = '';
+  mapsObj = L.map(canvas, { zoomControl: true }).setView([20, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(mapsObj);
+  setTimeout(() => mapsObj && mapsObj.invalidateSize(), 250);
+}
+function mapsDrop(lat, lon, label, zoom) {
+  if (!mapsObj) return;
+  mapsObj.flyTo([lat, lon], zoom || 12);
+  if (mapsMarker) mapsObj.removeLayer(mapsMarker);
+  mapsMarker = L.marker([lat, lon]).addTo(mapsObj);
+  if (label) mapsMarker.bindPopup(label).openPopup();
+}
+function mapsGoto(lat, lon, name) { mapsDrop(lat, lon, name, 11); }
+async function mapsSearch() {
+  const q = document.getElementById('maps-q').value.trim();
+  if (!q || !mapsObj) return;
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) + '&format=json&limit=1').then(r => r.json());
+    if (!r.length) { notify('🗺️', 'Not found', `No results for "${q}"`); return; }
+    mapsDrop(+r[0].lat, +r[0].lon, r[0].display_name, 13);
+  } catch { notify('🗺️', 'Error', 'Search failed — check connection'); }
+}
+function mapsLocate() {
+  if (!navigator.geolocation) { notify('🗺️', 'Unavailable', 'Geolocation not supported'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => mapsDrop(p.coords.latitude, p.coords.longitude, 'You are here', 14),
+    () => notify('🗺️', 'Location blocked', 'Permission denied')
+  );
+}
+
 // ── Global key router for games ───────────────────────────────────────────────
 document.addEventListener('keydown', e => { tetrisKey(e); pianoKey(e); });
 
@@ -3272,7 +3353,7 @@ const appInitHooks = {
   dice: () => {}, colors: initColors,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
-  typing: initTyping, wiki: () => {}, chess: initChess,
+  typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
 };
 </script>
 </body>
