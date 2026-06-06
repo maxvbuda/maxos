@@ -145,7 +145,18 @@ app.get('/api/messages', auth, async (req, res) => {
       $or: [{ from: me, to: other }, { from: other, to: me }],
     }).sort({ createdAt: 1 }).limit(200);
     await Message.updateMany({ from: other, to: me, read: false }, { read: true });
-    res.json(msgs.map(m => ({ from: m.from, to: m.to, text: m.text, at: m.createdAt })));
+    res.json(msgs.map(m => ({ id: m._id, from: m.from, to: m.to, text: m.text, at: m.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Delete a message (sender only)
+app.delete('/api/messages/:id', auth, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    if (msg.from !== req.user.username) return res.status(403).json({ error: 'You can only delete your own messages' });
+    await msg.deleteOne();
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
