@@ -1481,14 +1481,30 @@ function buildBrowser() {
     <div class="browser-bar">
       <input id="browser-url" placeholder="Enter URL..." value="https://example.com" onkeydown="if(event.key==='Enter')browserGo()">
       <button onclick="browserGo()">Go</button>
+      <label style="display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.6);font-size:12px;white-space:nowrap;cursor:pointer" title="Load through the server proxy to bypass sites that block embedding (works for many simple sites)">
+        <input type="checkbox" id="browser-force" style="cursor:pointer"> Force
+      </label>
+      <button onclick="browserOpenTab()" title="Open in a real new tab">↗</button>
     </div>
-    <iframe id="browser-frame" src="https://example.com" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+    <iframe id="browser-frame" src="https://example.com" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
   </div>`;
 }
-function browserGo() {
+function browserNormalizeUrl() {
   let url = document.getElementById('browser-url').value.trim();
-  if (!url.startsWith('http')) url = 'https://' + url;
-  document.getElementById('browser-frame').src = url;
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url;
+}
+function browserGo() {
+  const url = browserNormalizeUrl();
+  if (!url) return;
+  const force = document.getElementById('browser-force').checked;
+  const frame = document.getElementById('browser-frame');
+  frame.src = force ? (API + '/api/proxy?url=' + encodeURIComponent(url)) : url;
+}
+function browserOpenTab() {
+  const url = browserNormalizeUrl();
+  if (url) window.open(url, '_blank', 'noopener');
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
