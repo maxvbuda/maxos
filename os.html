@@ -3479,7 +3479,7 @@ function maxTranspile(src) {
     let m;
     if (m = line.match(/^set\s+text\s+(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${m[1]}, ${m[2]});`);
     else if (m = line.match(/^set\s+html\s+(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${m[1]}, ${m[2]});`);
-    else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) { if (declared.has(m[1])) out.push(`${m[1]} = ${m[2]};`); else { declared.add(m[1]); out.push(`let ${m[1]} = ${m[2]};`); } }
+    else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) out.push(`${m[1]} = ${m[2]};`); // vars declared globally by maxCompile
     else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} += ${m[1]};`);
     else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} -= ${m[1]};`);
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
@@ -3494,9 +3494,78 @@ function maxTranspile(src) {
   while (stack.length) out.push(stack.pop() === 'fn' ? `});` : `}`); // auto-close
   return out.join('\n');
 }
-function appScript(def) {
-  if (!def.js) return '';
-  return def.lang === 'maxscript' ? (MS_RUNTIME + '\n' + maxTranspile(def.js)) : def.js;
+// MaxScript markup: colors & style keywords
+const MS_COLORS = { red:'#ff5f57', blue:'#64b4ff', green:'#28c840', yellow:'#febc2e', purple:'#bf5af2', orange:'#ff9f0a', pink:'#ff6bcb', black:'#222', white:'#fff', gray:'#8a8a8a', grey:'#8a8a8a', teal:'#30d6c0' };
+const MS_LIGHT = new Set(['white', 'yellow']);
+const MS_BASE_CSS = `body{font-family:system-ui,-apple-system,sans-serif;padding:24px;background:#12122a;color:#fff;margin:0}.ms-el{display:block;margin:12px 0}h1.ms-el{font-size:26px}button.ms-el{padding:12px 24px;border:none;cursor:pointer;color:#fff;font-size:16px;background:#64b4ff;transition:filter .1s}button.ms-el:hover{filter:brightness(1.1)}button.ms-el:active{filter:brightness(.9)}input.ms-el{padding:10px 14px;border-radius:8px;border:1px solid #ccc;font-size:15px;min-width:200px}#ms-output{margin-top:14px;font-family:monospace;color:#9fe}#ms-output div{padding:2px 0}`;
+function msStyle(type, tokens) {
+  let id = null; const label = [], css = [];
+  for (const tk of tokens) {
+    const t = tk.trim(); if (!t) continue;
+    const low = t.toLowerCase();
+    if (t.startsWith('#')) id = t.slice(1).replace(/[^a-zA-Z0-9_-]/g, '');
+    else if (MS_COLORS[low]) { if (type === 'button') { css.push('background:' + MS_COLORS[low], 'color:' + (MS_LIGHT.has(low) ? '#222' : '#fff')); } else css.push('color:' + MS_COLORS[low]); }
+    else if (low === 'round' || low === 'pill') css.push('border-radius:999px');
+    else if (low === 'square') css.push('border-radius:6px');
+    else if (low === 'huge') css.push('font-size:30px');
+    else if (low === 'big') css.push('font-size:21px');
+    else if (low === 'small') css.push('font-size:12px');
+    else if (low === 'bold') css.push('font-weight:700');
+    else if (low === 'center') css.push('text-align:center', 'margin-left:auto', 'margin-right:auto');
+    else if (low === 'shadow') css.push('box-shadow:0 4px 16px rgba(0,0,0,.35)');
+    else label.push(t); // unrecognized token → part of the label
+  }
+  return { id, label: label.join(', '), css: css.join(';') };
+}
+// Compile MaxScript markup → { html, js }. Top-level "type: (props) label" lines
+// become elements; indented lines under a button become its click action.
+function maxCompile(src) {
+  const lines = (src || '').split('\n'), htmlOut = [], handlers = [], initLines = [];
+  let auto = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i], trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+    if (/^\s/.test(raw)) { initLines.push(trimmed); continue; } // stray indented → init code
+    const m = trimmed.match(/^([a-zA-Z]+)\s*:\s*(.*)$/);
+    if (!m) { initLines.push(trimmed); continue; }
+    const type = m[1].toLowerCase();
+    if (!['button', 'title', 'text', 'label', 'input', 'image'].includes(type)) { initLines.push(trimmed); continue; }
+    let rest = m[2], props = [], trailing = rest;
+    const pm = rest.match(/^\(([^)]*)\)\s*(.*)$/);
+    if (pm) { props = pm[1].split(','); trailing = pm[2]; }
+    const sty = msStyle(type, props);
+    const label = (trailing && trailing.trim()) ? trailing.trim() : sty.label;
+    const id = sty.id || (type + (++auto));
+    const st = sty.css ? ` style="${sty.css}"` : '';
+    if (type === 'button') {
+      htmlOut.push(`<button id="${id}" class="ms-el"${st}>${escapeHtml(label || 'Button')}</button>`);
+      const body = [];
+      while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]) || !lines[i + 1].trim())) { i++; if (lines[i].trim()) body.push(lines[i]); }
+      handlers.push(`MS.onClick(${JSON.stringify(id)}, function(){\n${maxTranspile(body.join('\n'))}\n});`);
+    } else if (type === 'title') htmlOut.push(`<h1 id="${id}" class="ms-el"${st}>${escapeHtml(label)}</h1>`);
+    else if (type === 'text' || type === 'label') htmlOut.push(`<p id="${id}" class="ms-el"${st}>${escapeHtml(label)}</p>`);
+    else if (type === 'input') htmlOut.push(`<input id="${id}" class="ms-el" placeholder="${escapeHtml(label)}"${st}>`);
+    else if (type === 'image') htmlOut.push(`<img id="${id}" class="ms-el" src="${escapeHtml(label)}"${st ? st.slice(0, -1) + ';max-width:100%"' : ' style="max-width:100%"'}>`);
+  }
+  // Declare every variable once at the top so handlers share state (not shadow it)
+  const vars = new Set();
+  (src || '').split('\n').forEach(l => {
+    const t = l.trim(); let mm;
+    if (mm = t.match(/^set\s+([a-zA-Z_]\w*)\s+to\b/i)) { if (!/^(text|html)$/i.test(mm[1])) vars.add(mm[1]); }
+    else if (mm = t.match(/^add\s+.+\s+to\s+([a-zA-Z_]\w*)$/i)) vars.add(mm[1]);
+    else if (mm = t.match(/^subtract\s+.+\s+from\s+([a-zA-Z_]\w*)$/i)) vars.add(mm[1]);
+  });
+  const decl = vars.size ? `let ${[...vars].join(', ')};\n` : '';
+  const js = decl + (initLines.length ? maxTranspile(initLines.join('\n')) + '\n' : '') + handlers.join('\n');
+  return { html: htmlOut.join('\n'), js };
+}
+// Returns { html, css, js } ready to inject for any app (JS or MaxScript)
+function compileApp(def) {
+  if (def.lang === 'maxscript') {
+    const c = maxCompile(def.js || '');
+    return { html: (def.html || '') + c.html, css: MS_BASE_CSS + (def.css || ''), js: MS_RUNTIME + '\n' + c.js };
+  }
+  return { html: def.html || '', css: def.css || '', js: def.js || '' };
 }
 
 // ══ Custom apps (stored in MongoDB, shared across all users) ══════════════════
@@ -3516,10 +3585,10 @@ function customRender(id) {
   const doc = frame.contentDocument || frame.contentWindow.document;
   doc.open(); doc.close();
   doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
-  const style = doc.createElement('style'); style.textContent = def.css || ''; doc.head.appendChild(style);
-  doc.body.innerHTML = def.html || '';
-  const js = appScript(def);
-  if (js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+  const out = compileApp(def);
+  const style = doc.createElement('style'); style.textContent = out.css; doc.head.appendChild(style);
+  doc.body.innerHTML = out.html;
+  if (out.js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + out.js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
 }
 // Fetch every community app from the server and register them
 async function loadCustomApps() {
@@ -3549,7 +3618,7 @@ const STUDIO_LANGS = {
   },
   maxscript: {
     label: 'MaxScript',
-    sample: '# MaxScript — plain-English code!\nset count to 0\n\non click "btn":\n    add 1 to count\n    set text "msg" to "Clicked " + count + " times"\nend',
+    sample: '# MaxScript — describe your app like HTML!\nset score to 0\n\ntitle: (center) Potato Clicker 🥔\ntext: (#count, big, center) Potatoes: 0\n\nbutton: (blue, round, potato)\n    add 1 to score\n    set text "count" to "Potatoes: " + score\n\nbutton: (red, round, reset)\n    set score to 0\n    set text "count" to "Potatoes: 0"',
   },
 };
 const STUDIO_DEFAULTS = {
@@ -3603,21 +3672,29 @@ function studioTab(t) {
 function studioLangChange() {
   studioLang = document.getElementById('st-lang').value;
   document.getElementById('st-codetab').textContent = studioLang === 'maxscript' ? 'MaxScript' : 'JS';
-  // swap in the matching sample only if user hasn't customized much
-  document.getElementById('st-js').value = STUDIO_LANGS[studioLang].sample;
+  if (studioLang === 'maxscript') {
+    // MaxScript builds the whole UI itself — clear HTML/CSS so it stands alone
+    document.getElementById('st-html').value = '';
+    document.getElementById('st-css').value = '';
+    document.getElementById('st-js').value = STUDIO_LANGS.maxscript.sample;
+  } else {
+    document.getElementById('st-html').value = STUDIO_DEFAULTS.html;
+    document.getElementById('st-css').value = STUDIO_DEFAULTS.css;
+    document.getElementById('st-js').value = STUDIO_LANGS.js.sample;
+  }
   studioTab('js'); studioPreview();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript', 'set x to 5 · add 1 to x · show x · on click "id": … end · if x is 5: … end · repeat 3 times: … end · set text "id" to x');
+  notify('✨', 'MaxScript — describe your app', 'button: (blue, round, potato) → then indent the click actions · title: (center) Hi · text: (#name, big) Hello · input: (#box) Type here · Actions: set x to 5 · add 1 to x · show x · set text "id" to x · if x is 5: … end · repeat 3 times: … end', 9000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
   doc.open(); doc.close();
   doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
-  const style = doc.createElement('style'); style.textContent = document.getElementById('st-css').value; doc.head.appendChild(style);
-  doc.body.innerHTML = document.getElementById('st-html').value;
-  const js = appScript({ js: document.getElementById('st-js').value, lang: studioLang });
-  if (js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+  const out = compileApp({ html: document.getElementById('st-html').value, css: document.getElementById('st-css').value, js: document.getElementById('st-js').value, lang: studioLang });
+  const style = doc.createElement('style'); style.textContent = out.css; doc.head.appendChild(style);
+  doc.body.innerHTML = out.html;
+  if (out.js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + out.js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
 }
 let studioTimer;
 function studioPreview() { clearTimeout(studioTimer); studioTimer = setTimeout(() => { const f = document.getElementById('studio-frame'); if (f) studioInject(f); }, 350); }
