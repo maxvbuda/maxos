@@ -41,9 +41,27 @@ const MessageSchema = new mongoose.Schema({
 }, { timestamps: true });
 MessageSchema.index({ from: 1, to: 1, createdAt: 1 });
 
+const AppSchema = new mongoose.Schema({
+  id:         { type: String, required: true, unique: true }, // url slug
+  title:      { type: String, required: true },
+  icon:       { type: String, default: '🧩' },
+  html:       { type: String, default: '' },
+  css:        { type: String, default: '' },
+  js:         { type: String, default: '' },   // source (JS or MaxScript)
+  lang:       { type: String, enum: ['js', 'maxscript'], default: 'js' },
+  authorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  authorName: { type: String, required: true },
+  installs:   { type: Number, default: 0 },
+}, { timestamps: true });
+
 const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
+const AppModel = mongoose.model('App', AppSchema);
+
+const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
+const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
+async function uniqueSlug(base) { let id = base, n = 1; while (await AppModel.findOne({ id })) id = base + (++n); return id; }
 
 // ── Seed user filesystem ──────────────────────────────────────────────────────
 async function seedUser(userId, username) {
@@ -177,6 +195,50 @@ app.get('/api/messages/unread', auth, async (req, res) => {
   try {
     const count = await Message.countDocuments({ to: req.user.username, read: false });
     res.json({ count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Custom App Store (community apps in MongoDB) ──────────────────────────────
+// Publish (create or update own app)
+app.post('/api/apps', auth, async (req, res) => {
+  try {
+    const { id, title, icon, html, css, js, lang } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title required' });
+    let doc = null;
+    if (id) { doc = await AppModel.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
+    if (doc) {
+      Object.assign(doc, { title, icon, html, css, js, lang: lang === 'maxscript' ? 'maxscript' : 'js' });
+      await doc.save();
+    } else {
+      const slug = await uniqueSlug(slugify(title));
+      doc = await AppModel.create({ id: slug, title, icon, html, css, js, lang: lang === 'maxscript' ? 'maxscript' : 'js', authorId: req.user.id, authorName: req.user.username });
+    }
+    res.json(serializeApp(doc));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// List all community apps (public)
+app.get('/api/apps', async (req, res) => {
+  try { const list = await AppModel.find().sort({ updatedAt: -1 }).limit(300); res.json(list.map(serializeApp)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Get one app (public — enables shareable deep links)
+app.get('/api/apps/:id', async (req, res) => {
+  try { const d = await AppModel.findOne({ id: req.params.id }); if (!d) return res.status(404).json({ error: 'Not found' }); res.json(serializeApp(d)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Count an install (public)
+app.post('/api/apps/:id/install', async (req, res) => {
+  try { await AppModel.updateOne({ id: req.params.id }, { $inc: { installs: 1 } }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Delete own app
+app.delete('/api/apps/:id', auth, async (req, res) => {
+  try {
+    const d = await AppModel.findOne({ id: req.params.id });
+    if (!d) return res.status(404).json({ error: 'Not found' });
+    if (d.authorId.toString() !== req.user.id) return res.status(403).json({ error: 'You can only delete your own apps' });
+    await d.deleteOne();
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

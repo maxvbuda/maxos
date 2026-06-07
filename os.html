@@ -531,6 +531,10 @@
   .studio-tabs { display:flex; gap:4px; padding:0 10px; }
   .studio-tab { background:rgba(255,255,255,.06); border:none; color:rgba(255,255,255,.55); border-radius:8px 8px 0 0; padding:7px 16px; font-size:12px; cursor:pointer; }
   .studio-tab.active { background:rgba(0,0,0,.25); color:#fff; }
+  #st-lang { margin-left:auto; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:#fff; border-radius:7px; padding:4px 6px; font-size:11px; cursor:pointer; }
+  #st-lang option { background:#1a1a2e; }
+  .studio-help { width:24px; height:24px; border-radius:50%; border:none; background:rgba(255,255,255,.1); color:#fff; cursor:pointer; font-size:13px; margin-left:4px; }
+  .studio-help:hover { background:rgba(100,180,255,.3); }
   .studio-code { flex:1; background:rgba(0,0,0,.25); border:none; outline:none; color:#d4d4d8; font-family:'Menlo','Cascadia Code',monospace; font-size:12.5px; padding:12px; resize:none; line-height:1.6; }
   .studio-publish { margin:10px; padding:12px; border:none; border-radius:10px; background:linear-gradient(135deg,#64b4ff,#bf5af2); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
   .studio-publish:hover { filter:brightness(1.1); }
@@ -696,10 +700,10 @@ function bootOS() {
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
-  loadCustomApps();
   renderDesktop();
   renderStartApps();
   checkServer().then(startUnreadPolling);
+  loadCustomApps(); // async — pulls community apps from MongoDB, re-renders when done
   // fade out boot screen + welcome
   setTimeout(() => {
     if (!boot || boot.style.display === 'none') return;
@@ -707,9 +711,12 @@ function bootOS() {
     setTimeout(() => boot.remove(), 700);
     notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
   }, 2000);
-  // Deep link: open the app named in the URL path (e.g. /calc)
+  // Deep link: open the app named in the URL path (built-in or community app)
   const seg = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-  if (apps[seg]) setTimeout(() => openApp(seg), 300);
+  if (seg && seg !== 'os.html') {
+    if (apps[seg]) setTimeout(() => openApp(seg), 300);
+    else ensureCustomApp(seg).then(ok => { if (ok) openApp(seg); });
+  }
 }
 
 // Reflect the focused app in the address bar (maxos-1oe3.onrender.com/appname)
@@ -1012,6 +1019,8 @@ function installApp(id) {
     renderDesktop(); renderStartApps();
     if (windows['appstore']) renderStoreGrid();
     notify(apps[id].icon, 'Installed', `${apps[id].title} added to your desktop`);
+    // Count installs for community apps
+    if (apps[id].custom) apiFetch('/api/apps/' + encodeURIComponent(id) + '/install', { method: 'POST' });
   }
 }
 
@@ -3459,13 +3468,45 @@ function mapsLocate() {
 }
 
 // ══ APP STUDIO — make & publish your own MaxOS apps ═══════════════════════════
-let customApps = JSON.parse(localStorage.getItem('maxos_customapps') || '{}');
-function saveCustomApps() { localStorage.setItem('maxos_customapps', JSON.stringify(customApps)); }
-function loadCustomApps() { for (const id in customApps) registerCustomApp(customApps[id]); }
+// ══ MAXSCRIPT — a beginner-friendly language that transpiles to JS ════════════
+const MS_RUNTIME = `const MS={out:null,_o(){if(!this.out){this.out=document.getElementById('ms-output');if(!this.out){this.out=document.createElement('div');this.out.id='ms-output';document.body.appendChild(this.out);}}return this.out;},show(v){const d=document.createElement('div');d.textContent=String(v);this._o().appendChild(d);},setText(id,v){const e=document.getElementById(id);if(e)e.textContent=String(v);},setHtml(id,v){const e=document.getElementById(id);if(e)e.innerHTML=String(v);},onClick(id,fn){const e=document.getElementById(id);if(e)e.addEventListener('click',fn);},ask(q){return prompt(q);},random(n){return Math.floor(Math.random()*n);}};`;
+function maxTranspile(src) {
+  const out = [], declared = new Set(), stack = [];
+  const cond = c => c.replace(/\bis not\b/g, '!==').replace(/\bis\b/g, '===').replace(/\band\b/g, '&&').replace(/\bor\b/g, '||');
+  for (let raw of (src || '').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('//')) { out.push(''); continue; }
+    let m;
+    if (m = line.match(/^set\s+text\s+(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${m[1]}, ${m[2]});`);
+    else if (m = line.match(/^set\s+html\s+(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${m[1]}, ${m[2]});`);
+    else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) { if (declared.has(m[1])) out.push(`${m[1]} = ${m[2]};`); else { declared.add(m[1]); out.push(`let ${m[1]} = ${m[2]};`); } }
+    else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} += ${m[1]};`);
+    else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} -= ${m[1]};`);
+    else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
+    else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
+    else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${m[1]}, function(){`); stack.push('fn'); }
+    else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); stack.push('block'); }
+    else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); stack.push('block'); }
+    else if (/^else\s*:?$/i.test(line)) out.push(`} else {`);
+    else if (/^end$/i.test(line)) out.push(stack.pop() === 'fn' ? `});` : `}`);
+    else out.push(line.endsWith(';') || line.endsWith('{') || line.endsWith('}') ? line : line + ';'); // raw JS passthrough
+  }
+  while (stack.length) out.push(stack.pop() === 'fn' ? `});` : `}`); // auto-close
+  return out.join('\n');
+}
+function appScript(def) {
+  if (!def.js) return '';
+  return def.lang === 'maxscript' ? (MS_RUNTIME + '\n' + maxTranspile(def.js)) : def.js;
+}
+
+// ══ Custom apps (stored in MongoDB, shared across all users) ══════════════════
+let customApps = {}; // id -> def, cached from server
 function registerCustomApp(def) {
+  const mine = def.author === currentUser?.username;
   apps[def.id] = {
-    title: def.title, short: def.short || def.title, icon: def.icon || '🧩',
-    w: def.w || 520, h: def.h || 440, cat: 'My Apps', desc: def.desc || 'A custom app', custom: true,
+    title: def.title, short: def.title.length > 12 ? def.title.slice(0, 11) + '…' : def.title, icon: def.icon || '🧩',
+    w: 540, h: 460, cat: mine ? 'My Apps' : 'Community', custom: true,
+    desc: (def.desc || 'A community app') + (def.author ? ' · by @' + def.author : ''),
     html: () => `<iframe class="custom-frame" id="custframe-${def.id}"></iframe>`,
   };
 }
@@ -3477,15 +3518,45 @@ function customRender(id) {
   doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
   const style = doc.createElement('style'); style.textContent = def.css || ''; doc.head.appendChild(style);
   doc.body.innerHTML = def.html || '';
-  if (def.js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + def.js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+  const js = appScript(def);
+  if (js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
+}
+// Fetch every community app from the server and register them
+async function loadCustomApps() {
+  const list = await apiFetch('/api/apps');
+  if (list.error || !Array.isArray(list)) return;
+  // drop previously-registered customs, then re-add
+  Object.keys(customApps).forEach(id => { if (apps[id]) delete apps[id]; });
+  customApps = {};
+  list.forEach(def => { customApps[def.id] = def; registerCustomApp(def); });
+  renderDesktop(); renderStartApps();
+  if (windows['appstore']) renderStoreGrid();
+  if (windows['makeyourownwebsite']) studioRenderList();
+}
+// Deep link: fetch a single app on demand if not already known
+async function ensureCustomApp(id) {
+  if (apps[id]) return true;
+  const def = await apiFetch('/api/apps/' + encodeURIComponent(id));
+  if (def.error || !def.id) return false;
+  customApps[def.id] = def; registerCustomApp(def);
+  return true;
 }
 
-const STUDIO_DEFAULTS = {
-  html: '<div class="card">\n  <h1>👋 My App</h1>\n  <p id="msg">Click the button!</p>\n  <button onclick="go()">Surprise</button>\n</div>',
-  css: 'body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}\n.card{text-align:center}\nbutton{margin-top:14px;padding:10px 22px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer}',
-  js: 'const emojis=["🎉","🚀","🌈","🔥","✨","🦄"];\nfunction go(){ document.getElementById("msg").textContent = emojis[Math.floor(Math.random()*emojis.length)].repeat(3); }',
+const STUDIO_LANGS = {
+  js: {
+    label: 'JavaScript',
+    sample: 'const emojis=["🎉","🚀","🌈","🔥","✨","🦄"];\nfunction go(){ document.getElementById("msg").textContent = emojis[Math.floor(Math.random()*6)].repeat(3); }',
+  },
+  maxscript: {
+    label: 'MaxScript',
+    sample: '# MaxScript — plain-English code!\nset count to 0\n\non click "btn":\n    add 1 to count\n    set text "msg" to "Clicked " + count + " times"\nend',
+  },
 };
-let studioTabCur = 'html';
+const STUDIO_DEFAULTS = {
+  html: '<div class="card">\n  <h1>👋 My App</h1>\n  <p id="msg">Click the button!</p>\n  <button id="btn" onclick="go()">Surprise</button>\n</div>',
+  css: 'body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}\n.card{text-align:center}\nbutton{margin-top:14px;padding:10px 22px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer}',
+};
+let studioLang = 'js', studioEditId = null;
 function buildStudio() {
   return `<div class="studio">
     <div class="studio-left">
@@ -3496,7 +3567,12 @@ function buildStudio() {
       <div class="studio-tabs">
         <button class="studio-tab active" data-t="html" onclick="studioTab('html')">HTML</button>
         <button class="studio-tab" data-t="css" onclick="studioTab('css')">CSS</button>
-        <button class="studio-tab" data-t="js" onclick="studioTab('js')">JS</button>
+        <button class="studio-tab" data-t="js" onclick="studioTab('js')" id="st-codetab">JS</button>
+        <select id="st-lang" onchange="studioLangChange()" title="Logic language">
+          <option value="js">JavaScript</option>
+          <option value="maxscript">MaxScript ✨</option>
+        </select>
+        <button class="studio-help" onclick="studioCheatsheet()" title="MaxScript help">?</button>
       </div>
       <textarea id="st-html" class="studio-code" spellcheck="false" oninput="studioPreview()"></textarea>
       <textarea id="st-css" class="studio-code" spellcheck="false" style="display:none" oninput="studioPreview()"></textarea>
@@ -3512,16 +3588,27 @@ function buildStudio() {
   </div>`;
 }
 function initStudio() {
+  studioEditId = null; studioLang = 'js';
   document.getElementById('st-html').value = STUDIO_DEFAULTS.html;
   document.getElementById('st-css').value = STUDIO_DEFAULTS.css;
-  document.getElementById('st-js').value = STUDIO_DEFAULTS.js;
-  studioTabCur = 'html'; studioTab('html');
-  studioPreview(); studioRenderList();
+  document.getElementById('st-js').value = STUDIO_LANGS.js.sample;
+  document.getElementById('st-lang').value = 'js';
+  document.getElementById('st-codetab').textContent = 'JS';
+  studioTab('html'); studioPreview(); studioRenderList();
 }
 function studioTab(t) {
-  studioTabCur = t;
   ['html', 'css', 'js'].forEach(x => { document.getElementById('st-' + x).style.display = x === t ? 'block' : 'none'; });
   document.querySelectorAll('.studio-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+}
+function studioLangChange() {
+  studioLang = document.getElementById('st-lang').value;
+  document.getElementById('st-codetab').textContent = studioLang === 'maxscript' ? 'MaxScript' : 'JS';
+  // swap in the matching sample only if user hasn't customized much
+  document.getElementById('st-js').value = STUDIO_LANGS[studioLang].sample;
+  studioTab('js'); studioPreview();
+}
+function studioCheatsheet() {
+  notify('✨', 'MaxScript', 'set x to 5 · add 1 to x · show x · on click "id": … end · if x is 5: … end · repeat 3 times: … end · set text "id" to x');
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
@@ -3529,50 +3616,63 @@ function studioInject(frame) {
   doc.documentElement.replaceChildren(doc.createElement('head'), doc.createElement('body'));
   const style = doc.createElement('style'); style.textContent = document.getElementById('st-css').value; doc.head.appendChild(style);
   doc.body.innerHTML = document.getElementById('st-html').value;
-  const js = document.getElementById('st-js').value;
+  const js = appScript({ js: document.getElementById('st-js').value, lang: studioLang });
   if (js) { const sc = doc.createElement('scr' + 'ipt'); sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+="<pre style=\\"color:red;padding:10px\\">"+e+"</pre>"}'; doc.body.appendChild(sc); }
 }
 let studioTimer;
 function studioPreview() { clearTimeout(studioTimer); studioTimer = setTimeout(() => { const f = document.getElementById('studio-frame'); if (f) studioInject(f); }, 350); }
-function studioSlug(name) {
-  let base = name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app';
-  // built-in apps are reserved; custom apps with same name overwrite
-  if (apps[base] && !customApps[base]) { let n = 1; while (apps[base + (++n)] && !customApps[base + n]); base = base + n; }
-  return base;
-}
-function studioPublish() {
+async function studioPublish() {
   const name = document.getElementById('st-name').value.trim() || 'My App';
   const icon = document.getElementById('st-icon').value.trim() || '🧩';
-  const id = studioSlug(name);
-  const def = { id, title: name, short: name.length > 12 ? name.slice(0, 11) + '…' : name, icon,
+  const payload = {
+    id: studioEditId, title: name, icon, lang: studioLang,
     html: document.getElementById('st-html').value, css: document.getElementById('st-css').value, js: document.getElementById('st-js').value,
-    desc: 'A custom app by ' + (currentUser?.displayName || 'you') };
-  customApps[id] = def; saveCustomApps(); registerCustomApp(def);
-  if (!installedApps.includes(id)) { installedApps.push(id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
+  };
+  const def = await apiFetch('/api/apps', { method: 'POST', body: JSON.stringify(payload) });
+  if (def.error) { notify('⚠️', 'Publish failed', def.error); return; }
+  studioEditId = def.id;
+  customApps[def.id] = def; registerCustomApp(def);
+  if (!installedApps.includes(def.id)) { installedApps.push(def.id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
   renderDesktop(); renderStartApps();
   if (windows['appstore']) renderStoreGrid();
   studioRenderList();
-  notify('🚀', 'Published!', `${name} is live at ${MAXOS_DOMAIN}/${id}`);
+  notify('🚀', 'Published!', `${name} is live for everyone at ${MAXOS_DOMAIN}/${def.id}`);
+}
+function studioEdit(id) {
+  const d = customApps[id]; if (!d) return;
+  studioEditId = id; studioLang = d.lang || 'js';
+  document.getElementById('st-name').value = d.title;
+  document.getElementById('st-icon').value = d.icon;
+  document.getElementById('st-html').value = d.html || '';
+  document.getElementById('st-css').value = d.css || '';
+  document.getElementById('st-js').value = d.js || '';
+  document.getElementById('st-lang').value = studioLang;
+  document.getElementById('st-codetab').textContent = studioLang === 'maxscript' ? 'MaxScript' : 'JS';
+  studioTab('html'); studioPreview();
+  notify('✏️', 'Editing', d.title + ' — make changes and Publish to update');
 }
 function studioRenderList() {
   const el = document.getElementById('studio-list'); if (!el) return;
-  const ids = Object.keys(customApps);
-  if (!ids.length) { el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:12px;padding:8px">No apps yet — build one and hit Publish!</div>'; return; }
-  el.innerHTML = ids.map(id => { const d = customApps[id]; return `<div class="studio-item">
+  const mine = Object.values(customApps).filter(d => d.author === currentUser?.username);
+  if (!mine.length) { el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:12px;padding:8px">No apps yet — build one and hit Publish! It\'ll be playable by everyone.</div>'; return; }
+  el.innerHTML = mine.map(d => `<div class="studio-item">
     <span style="font-size:20px">${d.icon}</span>
-    <div style="flex:1;min-width:0"><div style="color:#fff;font-size:13px">${d.title}</div><div style="color:rgba(255,255,255,.35);font-size:11px;font-family:monospace">/${id}</div></div>
-    <button class="gbtn" style="padding:4px 10px" onclick="openApp('${id}')">Open</button>
-    <button class="gbtn" style="padding:4px 9px;background:rgba(255,95,87,.25)" onclick="studioDelete('${id}')">🗑</button>
-  </div>`; }).join('');
+    <div style="flex:1;min-width:0"><div style="color:#fff;font-size:13px">${d.title}</div><div style="color:rgba(255,255,255,.35);font-size:11px;font-family:monospace">/${d.id} · ${d.installs || 0} installs</div></div>
+    <button class="gbtn" style="padding:4px 9px" onclick="studioEdit('${d.id}')">✏️</button>
+    <button class="gbtn" style="padding:4px 9px" onclick="openApp('${d.id}')">▶</button>
+    <button class="gbtn" style="padding:4px 9px;background:rgba(255,95,87,.25)" onclick="studioDelete('${d.id}')">🗑</button>
+  </div>`).join('');
 }
-function studioDelete(id) {
-  delete customApps[id]; saveCustomApps();
-  delete apps[id];
+async function studioDelete(id) {
+  const res = await apiFetch('/api/apps/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (res.error) { notify('⚠️', 'Delete failed', res.error); return; }
+  delete customApps[id]; delete apps[id];
   installedApps = installedApps.filter(x => x !== id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
   if (windows[id]) closeWindow(id);
+  if (studioEditId === id) studioEditId = null;
   renderDesktop(); renderStartApps(); studioRenderList();
   if (windows['appstore']) renderStoreGrid();
-  notify('🗑️', 'Deleted', 'Custom app removed');
+  notify('🗑️', 'Deleted', 'App removed for everyone');
 }
 
 // ── Global key router for games ───────────────────────────────────────────────
