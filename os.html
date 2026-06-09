@@ -837,21 +837,78 @@ async function fsStat(path)            { if (serverOnline) { const r=await apiFe
 async function fsCat(path)             { if (serverOnline) { const r=await apiFetch('/api/cat?path='+encodeURIComponent(path)); if (!r.error) return r; } return localCat(path); }
 async function fsMkdir(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localMkdir(path,name,par); }
 async function fsTouch(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/touch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localTouch(path,name,par); }
-async function fsWrite(path,content)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content})}); if (!r.error) return r; } return localWrite(path,content); }
+async function fsWrite(path,content,auto)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content,auto:!!auto})}); if (!r.error) return r; } return localWrite(path,content); }
 async function fsRm(path)              { if (serverOnline) { const r=await apiFetch('/api/rm?path='+encodeURIComponent(path),{method:'DELETE'}); if (!r.error) return r; } return localRm(path); }
 
 // ── MaxDrive: shared save/open helpers for the file-editing apps ──────────────
 function driveHome() { return `/home/${currentUser?.username || 'user'}`; }
 // Write content, creating the file first if it doesn't exist yet
-async function driveWrite(path, content) {
-  let r = await fsWrite(path, content);
+async function driveWrite(path, content, auto) {
+  let r = await fsWrite(path, content, auto);
   if (r.error) {
     const name = path.split('/').pop();
     const parent = path.slice(0, path.lastIndexOf('/')) || driveHome();
     await fsTouch(path, name, parent);
-    r = await fsWrite(path, content);
+    r = await fsWrite(path, content, auto);
   }
   return r;
+}
+
+// ── Autosave + version history for the file editors ──────────────────────────
+const AUTOSAVE_MS = 15 * 60 * 1000; // 15 minutes
+const editorReg = {
+  editor: {
+    getText: () => document.getElementById('editor-area')?.value,
+    setText: v => { const t = document.getElementById('editor-area'); if (t) t.value = v; },
+    getPath: () => editorCurrentPath,
+    setPath: p => { editorCurrentPath = p; const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = p.split('/').pop(); },
+    defaultName: () => 'Untitled-' + tstamp() + '.txt',
+  },
+  markdown: {
+    getText: () => document.getElementById('md-input')?.value,
+    setText: v => { const t = document.getElementById('md-input'); if (t) { t.value = v; mdRender(); } },
+    getPath: () => mdPath,
+    setPath: p => { mdPath = p; const fn = document.getElementById('md-filename'); if (fn) fn.textContent = p.split('/').pop(); },
+    defaultName: () => 'Untitled-' + tstamp() + '.md',
+  },
+};
+function tstamp() { const d = new Date(); return `${d.getMonth()+1}-${d.getDate()}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`; }
+const autosaveTimers = {};
+// Called on every edit — arms a 15-min timer (only the first edit starts it)
+function autosaveMark(kind) { if (!autosaveTimers[kind]) autosaveTimers[kind] = setTimeout(() => doAutosave(kind), AUTOSAVE_MS); }
+// Called on manual save — cancels the pending autosave (resets the timer)
+function autosaveClear(kind) { clearTimeout(autosaveTimers[kind]); autosaveTimers[kind] = null; }
+async function doAutosave(kind) {
+  autosaveTimers[kind] = null;
+  const ed = editorReg[kind]; const text = ed.getText();
+  if (text == null) return;
+  let path = ed.getPath();
+  if (!path) { path = driveHome() + '/' + ed.defaultName(); ed.setPath(path); }
+  await driveWrite(path, text, true);
+  notify('💾', 'Auto-saved', path.split('/').pop() + ' (15 min of edits)');
+}
+
+// Version history
+async function fileVersions(path) { return apiFetch('/api/versions?path=' + encodeURIComponent(path)); }
+function historyOpen(kind) {
+  const ed = editorReg[kind], path = ed.getPath();
+  if (!path) { notify('🕘', 'No history yet', 'Save the file once to start its history'); return; }
+  fileVersions(path).then(list => {
+    if (list.error || !list.length) { notify('🕘', 'No history yet', 'A version is saved each time you save'); return; }
+    const ov = document.createElement('div'); ov.className = 'drive-modal';
+    ov.innerHTML = `<div class="drive-box"><div class="drive-head">🕘 History — ${path.split('/').pop()}<span style="color:rgba(255,255,255,.4);font-size:12px">click a version to restore it</span></div>
+      <div class="drive-list">${list.map(v => `<div class="drive-file" data-id="${v.id}">${new Date(v.createdAt).toLocaleString()} &nbsp; ${v.auto ? '🤖 auto' : '💾 saved'}<span style="float:right;color:rgba(255,255,255,.3)">${v.size} chars</span></div>`).join('')}</div>
+      <div style="text-align:right;padding:10px"><button class="gbtn" id="h-cancel">Close</button></div></div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('#h-cancel').onclick = close;
+    ov.onclick = e => { if (e.target === ov) close(); };
+    ov.querySelectorAll('.drive-file').forEach(el => el.onclick = async () => {
+      const v = await apiFetch('/api/versions/' + el.dataset.id);
+      if (!v.error) { ed.setText(v.content); notify('🕘', 'Version restored', 'Loaded ' + new Date(v.createdAt).toLocaleTimeString() + ' — Save to keep it'); }
+      close();
+    });
+  });
 }
 // Prompt for a name and save into MaxDrive; returns the saved path (or null)
 async function driveSaveAs(suggested, content) {
@@ -1304,11 +1361,12 @@ function buildEditor() {
       <button onclick="editorOpen()">📂 Open</button>
       <button onclick="saveEditorToMongo()">💾 Save</button>
       <button onclick="editorSaveAs()">Save As</button>
+      <button onclick="historyOpen('editor')">🕘 History</button>
       <button onclick="editorDownload()">⬇ Download</button>
       <button onclick="clearEditor()">🗑 Clear</button>
       <span id="editor-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">untitled</span>
     </div>
-    <textarea id="editor-area" placeholder="Start typing… then Save to MaxDrive"></textarea>
+    <textarea id="editor-area" placeholder="Start typing… then Save to MaxDrive" oninput="autosaveMark('editor')"></textarea>
   </div>`;
 }
 
@@ -1334,6 +1392,7 @@ async function saveEditorToMongo() {
   if (!ta) return;
   if (!editorCurrentPath) return editorSaveAs();
   const res = await driveWrite(editorCurrentPath, ta.value);
+  autosaveClear('editor');
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = res.ok ? '✅ Saved to MaxDrive' : '❌ ' + res.error;
   setTimeout(() => { if (fn) fn.textContent = editorCurrentPath.split('/').pop(); }, 2000);
@@ -1342,7 +1401,7 @@ async function saveEditorToMongo() {
 async function editorSaveAs() {
   const ta = document.getElementById('editor-area'); if (!ta) return;
   const path = await driveSaveAs('document.txt', ta.value);
-  if (path) { editorCurrentPath = path; const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = path.split('/').pop(); }
+  if (path) { editorCurrentPath = path; autosaveClear('editor'); const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = path.split('/').pop(); }
 }
 
 function editorDownload() {
@@ -3145,10 +3204,11 @@ function buildMarkdown() {
       <button onclick="mdOpen()">📂 Open</button>
       <button onclick="mdSave()">💾 Save</button>
       <button onclick="mdSaveAs()">Save As</button>
+      <button onclick="historyOpen('markdown')">🕘 History</button>
       <span id="md-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">untitled.md</span>
     </div>
     <div class="split" style="flex:1">
-      <textarea id="md-input" oninput="mdRender()" spellcheck="false">${sample}</textarea>
+      <textarea id="md-input" oninput="mdRender();autosaveMark('markdown')" spellcheck="false">${sample}</textarea>
       <div class="md-preview" id="md-output"></div>
     </div>
   </div>`;
@@ -3166,12 +3226,13 @@ async function mdSave() {
   const text = document.getElementById('md-input').value;
   if (!mdPath) return mdSaveAs();
   const r = await driveWrite(mdPath, text);
+  autosaveClear('markdown');
   const fn = document.getElementById('md-filename');
   if (fn) { fn.textContent = r.ok ? '✅ Saved' : '❌ ' + r.error; setTimeout(() => fn.textContent = mdPath.split('/').pop(), 2000); }
 }
 async function mdSaveAs() {
   const path = await driveSaveAs('notes.md', document.getElementById('md-input').value);
-  if (path) { mdPath = path; document.getElementById('md-filename').textContent = path.split('/').pop(); }
+  if (path) { mdPath = path; autosaveClear('markdown'); document.getElementById('md-filename').textContent = path.split('/').pop(); }
 }
 function mdRender() {
   const src = document.getElementById('md-input').value;

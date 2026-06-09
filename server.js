@@ -54,10 +54,19 @@ const AppSchema = new mongoose.Schema({
   installs:   { type: Number, default: 0 },
 }, { timestamps: true });
 
+const VersionSchema = new mongoose.Schema({
+  userId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  path:    { type: String, required: true },
+  content: { type: String, default: '' },
+  auto:    { type: Boolean, default: false },
+}, { timestamps: true });
+VersionSchema.index({ userId: 1, path: 1, createdAt: -1 });
+
 const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const AppModel = mongoose.model('App', AppSchema);
+const FileVersion = mongoose.model('FileVersion', VersionSchema);
 
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
@@ -271,10 +280,36 @@ app.get('/api/cat', auth, async (req, res) => {
 
 app.put('/api/write', auth, async (req, res) => {
   try {
-    const { path, content } = req.body;
+    const { path, content, auto } = req.body;
     const file = await File.findOneAndUpdate({ userId: req.user.id, path, type: 'file' }, { content }, { new: true });
     if (!file) return res.status(404).json({ error: 'File not found' });
+    // Snapshot a version whenever the content actually changed
+    const last = await FileVersion.findOne({ userId: req.user.id, path }).sort({ createdAt: -1 });
+    if (!last || last.content !== content) {
+      await FileVersion.create({ userId: req.user.id, path, content, auto: !!auto });
+      const count = await FileVersion.countDocuments({ userId: req.user.id, path });
+      if (count > 50) {
+        const old = await FileVersion.find({ userId: req.user.id, path }).sort({ createdAt: 1 }).limit(count - 50).select('_id');
+        await FileVersion.deleteMany({ _id: { $in: old.map(o => o._id) } });
+      }
+    }
     res.json({ ok: true, path: file.path });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// List versions (newest first) for a file
+app.get('/api/versions', auth, async (req, res) => {
+  try {
+    const list = await FileVersion.find({ userId: req.user.id, path: req.query.path }).sort({ createdAt: -1 }).limit(50).select('auto content createdAt');
+    res.json(list.map(v => ({ id: v._id, auto: v.auto, createdAt: v.createdAt, size: (v.content || '').length })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Get one version's full content
+app.get('/api/versions/:id', auth, async (req, res) => {
+  try {
+    const v = await FileVersion.findById(req.params.id);
+    if (!v || v.userId.toString() !== req.user.id) return res.status(404).json({ error: 'Not found' });
+    res.json({ content: v.content, createdAt: v.createdAt, auto: v.auto });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
