@@ -521,6 +521,14 @@
   #maps-canvas { flex:1; min-height:120px; background:#0a0a16; }
   .leaflet-popup-content { color:#222; font-size:12px; }
 
+  /* MaxDrive file picker modal */
+  .drive-modal { position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,.5); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; }
+  .drive-box { width:380px; max-height:70vh; background:rgba(18,18,38,.98); border:1px solid rgba(255,255,255,.14); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.7); }
+  .drive-head { padding:14px 16px; color:#fff; font-weight:600; font-size:14px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; gap:2px; }
+  .drive-list { flex:1; overflow-y:auto; padding:6px; }
+  .drive-file { padding:10px 12px; border-radius:8px; color:#fff; font-size:13px; cursor:pointer; }
+  .drive-file:hover { background:rgba(100,180,255,.22); }
+
   /* App Studio */
   .custom-frame { width:100%; height:100%; border:none; background:#fff; }
   .studio { display:flex; height:100%; }
@@ -831,6 +839,53 @@ async function fsMkdir(path,name,par)  { if (serverOnline) { const r=await apiFe
 async function fsTouch(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/touch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localTouch(path,name,par); }
 async function fsWrite(path,content)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content})}); if (!r.error) return r; } return localWrite(path,content); }
 async function fsRm(path)              { if (serverOnline) { const r=await apiFetch('/api/rm?path='+encodeURIComponent(path),{method:'DELETE'}); if (!r.error) return r; } return localRm(path); }
+
+// ── MaxDrive: shared save/open helpers for the file-editing apps ──────────────
+function driveHome() { return `/home/${currentUser?.username || 'user'}`; }
+// Write content, creating the file first if it doesn't exist yet
+async function driveWrite(path, content) {
+  let r = await fsWrite(path, content);
+  if (r.error) {
+    const name = path.split('/').pop();
+    const parent = path.slice(0, path.lastIndexOf('/')) || driveHome();
+    await fsTouch(path, name, parent);
+    r = await fsWrite(path, content);
+  }
+  return r;
+}
+// Prompt for a name and save into MaxDrive; returns the saved path (or null)
+async function driveSaveAs(suggested, content) {
+  let name = prompt('Save to MaxDrive as:', suggested);
+  if (!name) return null;
+  name = name.trim();
+  const path = name.startsWith('/') ? name : driveHome() + '/' + name;
+  const r = await driveWrite(path, content);
+  if (r.error) { notify('💾', 'Save failed', r.error); return null; }
+  notify('💾', 'Saved to MaxDrive', path);
+  return path;
+}
+// Modal file picker → resolves { path, name, content } or null
+function drivePick(exts) {
+  return new Promise(async resolve => {
+    const home = driveHome();
+    const all = await fsLs(home);
+    const files = Array.isArray(all) ? all.filter(f => f.type === 'file' && (!exts || exts.some(x => f.name.toLowerCase().endsWith('.' + x)))) : [];
+    const ov = document.createElement('div'); ov.className = 'drive-modal';
+    ov.innerHTML = `<div class="drive-box">
+      <div class="drive-head">📂 Open from MaxDrive <span style="color:rgba(255,255,255,.4);font-size:12px">${home}</span></div>
+      <div class="drive-list">${files.length ? files.map(f => `<div class="drive-file" data-p="${f.path}" data-n="${f.name}">📄 ${f.name}</div>`).join('') : '<div style="color:rgba(255,255,255,.4);padding:18px;text-align:center">No matching files here yet.</div>'}</div>
+      <div style="text-align:right;padding:10px"><button class="gbtn" id="drive-cancel">Cancel</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const close = v => { ov.remove(); resolve(v); };
+    ov.querySelector('#drive-cancel').onclick = () => close(null);
+    ov.onclick = e => { if (e.target === ov) close(null); };
+    ov.querySelectorAll('.drive-file').forEach(el => el.onclick = async () => {
+      const res = await fsCat(el.dataset.p);
+      close({ path: el.dataset.p, name: el.dataset.n, content: res.error ? '' : res.content });
+    });
+  });
+}
 
 // ── State ───────────────────────────────────────────────────────────────────
 let zTop = 200;
@@ -1246,12 +1301,14 @@ let editorCurrentPath = null;
 function buildEditor() {
   return `<div style="display:flex;flex-direction:column;height:100%">
     <div class="editor-toolbar">
-      <span id="editor-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-right:6px">untitled</span>
+      <button onclick="editorOpen()">📂 Open</button>
       <button onclick="saveEditorToMongo()">💾 Save</button>
+      <button onclick="editorSaveAs()">Save As</button>
       <button onclick="editorDownload()">⬇ Download</button>
       <button onclick="clearEditor()">🗑 Clear</button>
+      <span id="editor-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">untitled</span>
     </div>
-    <textarea id="editor-area" placeholder="Start typing… or open a file from File Manager"></textarea>
+    <textarea id="editor-area" placeholder="Start typing… then Save to MaxDrive"></textarea>
   </div>`;
 }
 
@@ -1264,14 +1321,28 @@ async function editorOpenFile(path, name) {
   if (ta) ta.value = res.error ? '(Error: ' + res.error + ')' : res.content;
 }
 
+async function editorOpen() {
+  const picked = await drivePick(['txt', 'md', 'json', 'js', 'csv']);
+  if (!picked) return;
+  editorCurrentPath = picked.path;
+  const ta = document.getElementById('editor-area'); if (ta) ta.value = picked.content;
+  const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = picked.name;
+}
+
 async function saveEditorToMongo() {
   const ta = document.getElementById('editor-area');
   if (!ta) return;
-  if (!editorCurrentPath) { editorDownload(); return; }
-  const res = await fsWrite(editorCurrentPath, ta.value);
+  if (!editorCurrentPath) return editorSaveAs();
+  const res = await driveWrite(editorCurrentPath, ta.value);
   const fn = document.getElementById('editor-filename');
-  if (fn) fn.textContent = res.ok ? '✅ Saved' : '❌ ' + res.error;
+  if (fn) fn.textContent = res.ok ? '✅ Saved to MaxDrive' : '❌ ' + res.error;
   setTimeout(() => { if (fn) fn.textContent = editorCurrentPath.split('/').pop(); }, 2000);
+}
+
+async function editorSaveAs() {
+  const ta = document.getElementById('editor-area'); if (!ta) return;
+  const path = await driveSaveAs('document.txt', ta.value);
+  if (path) { editorCurrentPath = path; const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = path.split('/').pop(); }
 }
 
 function editorDownload() {
@@ -3066,14 +3137,42 @@ function initFractal() {
 function fractalReset() { fractal?.reset(); }
 
 // ══ MARKDOWN EDITOR ═══════════════════════════════════════════════════════════
+let mdPath = null;
 function buildMarkdown() {
   const sample = `# Welcome to Markdown!\n\nType on the **left**, see it rendered on the *right*.\n\n## Features\n- Lists\n- **Bold** and *italic*\n- \`inline code\`\n- [Links](https://example.com)\n\n> Blockquotes too!\n\n\`\`\`\ncode blocks\n\`\`\`\n\n1. Numbered\n2. Lists`;
-  return `<div class="split">
-    <textarea id="md-input" oninput="mdRender()" spellcheck="false">${sample}</textarea>
-    <div class="md-preview" id="md-output"></div>
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="editor-toolbar">
+      <button onclick="mdOpen()">📂 Open</button>
+      <button onclick="mdSave()">💾 Save</button>
+      <button onclick="mdSaveAs()">Save As</button>
+      <span id="md-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">untitled.md</span>
+    </div>
+    <div class="split" style="flex:1">
+      <textarea id="md-input" oninput="mdRender()" spellcheck="false">${sample}</textarea>
+      <div class="md-preview" id="md-output"></div>
+    </div>
   </div>`;
 }
-function initMarkdown() { mdRender(); }
+function initMarkdown() { mdPath = null; mdRender(); }
+async function mdOpen() {
+  const picked = await drivePick(['md', 'txt']);
+  if (!picked) return;
+  mdPath = picked.path;
+  document.getElementById('md-input').value = picked.content;
+  document.getElementById('md-filename').textContent = picked.name;
+  mdRender();
+}
+async function mdSave() {
+  const text = document.getElementById('md-input').value;
+  if (!mdPath) return mdSaveAs();
+  const r = await driveWrite(mdPath, text);
+  const fn = document.getElementById('md-filename');
+  if (fn) { fn.textContent = r.ok ? '✅ Saved' : '❌ ' + r.error; setTimeout(() => fn.textContent = mdPath.split('/').pop(), 2000); }
+}
+async function mdSaveAs() {
+  const path = await driveSaveAs('notes.md', document.getElementById('md-input').value);
+  if (path) { mdPath = path; document.getElementById('md-filename').textContent = path.split('/').pop(); }
+}
 function mdRender() {
   const src = document.getElementById('md-input').value;
   let h = src
@@ -3094,6 +3193,7 @@ function mdRender() {
 // ══ CODE PLAYGROUND ═══════════════════════════════════════════════════════════
 function buildCodepen() {
   return `<div class="codepen-tabs">
+    <div class="editor-toolbar"><button onclick="cpSave()">💾 Save .html to MaxDrive</button><span style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">Code Playground</span></div>
     <div class="codepen-editors">
       <div class="codepen-col"><div class="cphead">HTML</div><textarea id="cp-html" oninput="cpRun()" spellcheck="false"></textarea></div>
       <div class="codepen-col"><div class="cphead">CSS</div><textarea id="cp-css" oninput="cpRun()" spellcheck="false"></textarea></div>
@@ -3129,6 +3229,12 @@ function cpRun() {
     sc.textContent = 'try{' + js + '}catch(e){document.body.innerHTML+=String(e)}';
     doc.body.appendChild(sc);
   }, 400);
+}
+async function cpSave() {
+  const html = document.getElementById('cp-html').value, css = document.getElementById('cp-css').value, js = document.getElementById('cp-js').value;
+  const ST = '<' + 'scr' + 'ipt>', ET = '<' + '/scr' + 'ipt>';
+  const doc = `<!DOCTYPE html>\n<html>\n<head>\n<style>\n${css}\n</style>\n</head>\n<body>\n${html}\n${ST}\n${js}\n${ET}\n</body>\n</html>`;
+  await driveSaveAs('project.html', doc);
 }
 
 // ══ TYPING TEST ═══════════════════════════════════════════════════════════════
