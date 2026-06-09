@@ -3485,6 +3485,12 @@ function maxTranspile(src) {
     else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} -= ${m[1]};`);
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
     else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); stack.push('block'); } // define function w/ inputs
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); stack.push('block'); } // define function
+    else if (m = line.match(/^call\s+([a-zA-Z_]\w*)\s+with\s+(.+)$/i)) out.push(`${m[1]}(${m[2]});`); // run function w/ inputs
+    else if (m = line.match(/^call\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[1]}();`); // run function
+    else if (m = line.match(/^return\s+(.+)$/i)) out.push(`return ${m[1]};`);
+    else if (/^return$/i.test(line)) out.push(`return;`);
     else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${ref(m[1])}, function(){`); stack.push('fn'); }
     else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); stack.push('block'); }
     else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); stack.push('block'); }
@@ -3688,7 +3694,7 @@ function studioLangChange() {
   studioTab('js'); studioPreview();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript — describe your app', 'button: (blue, round, potato) → indent the click actions below it · Name things to update them: "text count: Hi" then "set text count to …" · title: (center) Hi · input box: Type here · Actions: set x to 5 · add 1 to x · show x · if x is 5: … end · repeat 3 times: … end', 10000);
+  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · repeat 3 times: … end. Functions: "to greet: … end" then "call greet" · with inputs: "to add with n: … end" then "call add with 5".', 13000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
