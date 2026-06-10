@@ -484,6 +484,16 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
       }
     } catch (e) { console.log('Index check skipped:', e.message); }
     await File.syncIndexes();
+    // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
+    // otherwise promote the oldest account (the owner).
+    try {
+      const adminList = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (adminList.length) await User.updateMany({ username: { $in: adminList } }, { admin: true });
+      if ((await User.countDocuments({ admin: true })) === 0) {
+        const oldest = await User.findOne().sort({ createdAt: 1 });
+        if (oldest) { oldest.admin = true; await oldest.save(); console.log('🛡️ Promoted oldest account to admin: @' + oldest.username); }
+      }
+    } catch (e) { console.log('Admin bootstrap skipped:', e.message); }
     const port = process.env.PORT || 3001;
     app.listen(port, () => console.log(`🚀 MaxOS server on http://localhost:${port}`));
   })

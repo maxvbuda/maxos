@@ -643,11 +643,13 @@
       <button class="login-tab active" onclick="switchAuthTab('login',this)">Sign In</button>
       <button class="login-tab" onclick="switchAuthTab('register',this)">Create Account</button>
     </div>
-    <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')authSubmit()">
-    <input class="login-input" id="auth-display" type="text" placeholder="Display name" style="display:none" onkeydown="if(event.key==='Enter')authSubmit()">
-    <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')authSubmit()">
+    <form onsubmit="authSubmit();return false" style="display:contents">
+    <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username">
+    <input class="login-input" id="auth-display" type="text" placeholder="Display name" autocomplete="off" style="display:none">
+    <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
     <div class="login-error" id="auth-error"></div>
-    <button class="login-btn" id="auth-btn" onclick="authSubmit()">Sign In</button>
+    <button class="login-btn" id="auth-btn" type="submit">Sign In</button>
+    </form>
     <div class="login-footer">MaxOS — Your personal web desktop</div>
   </div>
 </div>
