@@ -758,6 +758,30 @@ function logout() {
   location.reload();
 }
 
+// Heartbeat: detect suspension/deletion within seconds (no reload needed)
+let heartbeatTimer = null;
+function startHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(async () => {
+    if (!authToken) return;
+    try {
+      const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
+      if (r.status === 403) { const d = await r.json().catch(() => ({})); accountRevoked(d.error || 'Your account has been suspended'); }
+      else if (r.status === 401) accountRevoked('Your account is no longer available');
+    } catch {} // network blips are ignored
+  }, 6000);
+}
+function accountRevoked(msg) {
+  clearInterval(heartbeatTimer);
+  localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
+  // lock the screen immediately
+  document.body.innerHTML = `<div style="position:fixed;inset:0;background:#0d0d1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;font-family:system-ui,sans-serif;z-index:9999999">
+    <div style="font-size:60px">🚫</div>
+    <div style="font-size:22px;font-weight:600">${msg}</div>
+    <button onclick="location.reload()" style="padding:10px 24px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer">Back to login</button>
+  </div>`;
+}
+
 // Check if already logged in
 async function checkExistingSession() {
   if (!authToken) return false;
@@ -789,6 +813,7 @@ function bootOS() {
   renderDesktop();
   renderStartApps();
   checkServer().then(startUnreadPolling);
+  startHeartbeat();
   loadCustomApps(); // async — pulls community apps from MongoDB, re-renders when done
   // fade out boot screen + welcome
   setTimeout(() => {
