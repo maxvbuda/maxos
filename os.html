@@ -980,6 +980,11 @@ async function driveSaveAs(suggested, content) {
   let name = prompt('Save to MaxDrive as:', suggested);
   if (!name) return null;
   name = name.trim();
+  // If the user typed a name without an extension, keep the suggested one
+  // (e.g. "cool spreadsheet" → "cool spreadsheet.sheet") so the file stays
+  // openable by its own app.
+  const sugExt = (suggested.match(/\.[a-z0-9]+$/i) || [''])[0];
+  if (sugExt && !/\.[a-z0-9]+$/i.test(name.split('/').pop())) name += sugExt;
   const path = name.startsWith('/') ? name : driveHome() + '/' + name;
   const r = await driveWrite(path, content);
   if (r.error) { notify('💾', 'Save failed', r.error); return null; }
@@ -4183,7 +4188,11 @@ function sheetsToCsv() {
 }
 async function sheetsSave() {
   const name = document.getElementById('sheets-name').value || 'Untitled Sheet';
-  if (!sheetPath) { const p = await driveSaveAs(name + '.sheet', sheetsToCsv()); if (p) sheetPath = p; return; }
+  if (!sheetPath) {
+    const p = await driveSaveAs(name + '.sheet', sheetsToCsv());
+    if (p) { sheetPath = p; document.getElementById('sheets-name').value = p.split('/').pop().replace(/\.(sheet|csv|maxsheet)$/i, ''); }
+    return;
+  }
   await driveWrite(sheetPath, sheetsToCsv()); notify('📊', 'Saved', name + ' saved to MaxDrive');
 }
 async function sheetsOpen() { const picked = await drivePick(['sheet', 'csv', 'maxsheet']); if (picked) sheetsOpenPath(picked.path, picked.name); }
@@ -4262,7 +4271,11 @@ async function formsSave() {
   const name = document.getElementById('forms-name').value || 'Untitled Form';
   formDef.title = name;
   const content = JSON.stringify(formDef);
-  if (!formPath) { const p = await driveSaveAs(name + '.forms', content); if (p) formPath = p; return; }
+  if (!formPath) {
+    const p = await driveSaveAs(name + '.forms', content);
+    if (p) { formPath = p; const nm = p.split('/').pop().replace(/\.(forms|maxform)$/i, ''); formDef.title = nm; document.getElementById('forms-name').value = nm; }
+    return;
+  }
   await driveWrite(formPath, content); notify('📋', 'Saved', name + ' saved to MaxDrive');
 }
 async function formsOpen() { const picked = await drivePick(['forms', 'maxform']); if (picked) formsOpenPath(picked.path, picked.name); }
