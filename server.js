@@ -11,6 +11,8 @@ app.use(cors());
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
+// Always-admin usernames: 'max' (owner) plus anything in the ADMIN_USERS env var
+const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
 
 // ── Serve frontend ────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'os.html')));
@@ -144,9 +146,8 @@ app.post('/api/auth/register', async (req, res) => {
     const exists = await User.findOne({ username: username.toLowerCase() });
     if (exists) return res.status(409).json({ error: 'Username already taken' });
     const hashed = await bcrypt.hash(password, 10);
-    // First registered user (or one named in ADMIN_USERS) becomes an admin
-    const adminList = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-    const isAdmin = (await User.countDocuments()) === 0 || adminList.includes(username.toLowerCase());
+    // First registered user (or a baked-in / ADMIN_USERS name) becomes an admin
+    const isAdmin = (await User.countDocuments()) === 0 || ADMIN_USERS.includes(username.toLowerCase());
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
@@ -487,8 +488,10 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
     // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
     // otherwise promote the oldest account (the owner).
     try {
-      const adminList = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      if (adminList.length) await User.updateMany({ username: { $in: adminList } }, { admin: true });
+      if (ADMIN_USERS.length) {
+        const r = await User.updateMany({ username: { $in: ADMIN_USERS } }, { admin: true });
+        if (r.modifiedCount) console.log('🛡️ Ensured admins:', ADMIN_USERS.join(', '));
+      }
       if ((await User.countDocuments({ admin: true })) === 0) {
         const oldest = await User.findOne().sort({ createdAt: 1 });
         if (oldest) { oldest.admin = true; await oldest.save(); console.log('🛡️ Promoted oldest account to admin: @' + oldest.username); }
