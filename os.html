@@ -529,6 +529,64 @@
   .drive-file { padding:10px 12px; border-radius:8px; color:#fff; font-size:13px; cursor:pointer; }
   .drive-file:hover { background:rgba(100,180,255,.22); }
 
+  /* ── Max suite (Google-style apps) ── */
+  .gapp { display:flex; flex-direction:column; height:100%; background:#f6f8fc; }
+  .gapp-head { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#fff; border-bottom:1px solid #e3e6ea; flex-shrink:0; }
+  .gapp-head .gicon { font-size:22px; }
+  .gapp-head .gtitle { font-size:16px; font-weight:500; color:#3c4043; }
+  .gapp-head input.gname { border:1px solid transparent; border-radius:6px; padding:5px 8px; font-size:14px; color:#202124; outline:none; font-family:inherit; min-width:140px; }
+  .gapp-head input.gname:hover { border-color:#dadce0; } .gapp-head input.gname:focus { border-color:#1a73e8; }
+  .gbar { display:flex; gap:6px; align-items:center; padding:6px 12px; background:#fff; border-bottom:1px solid #e3e6ea; flex-wrap:wrap; }
+  .gbtn2 { background:#fff; border:1px solid #dadce0; color:#3c4043; border-radius:18px; padding:6px 14px; font-size:13px; cursor:pointer; transition:background .1s; }
+  .gbtn2:hover { background:#f1f3f4; }
+  .gbtn2.primary { background:#1a73e8; color:#fff; border-color:#1a73e8; } .gbtn2.primary:hover { background:#1765cc; }
+  .gbtn2.green { background:#0f9d58; color:#fff; border-color:#0f9d58; } .gbtn2.green:hover { background:#0c8043; }
+  .gbtn2.purple { background:#673ab7; color:#fff; border-color:#673ab7; } .gbtn2.purple:hover { background:#5a32a3; }
+
+  /* MaxDrive */
+  .drive-app { display:flex; flex-direction:column; height:100%; background:#fff; }
+  .drive-top { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid #e3e6ea; }
+  .drive-logo { font-size:22px; } .drive-name { font-size:18px; color:#5f6368; font-weight:500; flex:1; }
+  .drive-new { position:relative; }
+  .drive-newbtn { background:#fff; border:1px solid #dadce0; border-radius:24px; padding:9px 18px; font-size:14px; color:#3c4043; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .drive-newbtn:hover { background:#f8f9fa; box-shadow:0 1px 5px rgba(0,0,0,.15); }
+  .drive-menu { position:absolute; top:44px; left:0; background:#fff; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.2); padding:6px; min-width:180px; z-index:10; display:none; }
+  .drive-menu.open { display:block; }
+  .drive-menu div { padding:9px 14px; border-radius:6px; color:#3c4043; font-size:14px; cursor:pointer; display:flex; gap:10px; align-items:center; }
+  .drive-menu div:hover { background:#f1f3f4; }
+  .drive-path { padding:8px 18px; color:#5f6368; font-size:13px; border-bottom:1px solid #f1f3f4; display:flex; align-items:center; gap:6px; }
+  .drive-path .crumb { cursor:pointer; } .drive-path .crumb:hover { text-decoration:underline; color:#1a73e8; }
+  .drive-grid { flex:1; overflow-y:auto; padding:14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; align-content:start; }
+  .drive-card { background:#fff; border:1px solid #e0e0e0; border-radius:10px; padding:14px; cursor:pointer; transition:box-shadow .12s,border-color .12s; }
+  .drive-card:hover { box-shadow:0 1px 6px rgba(0,0,0,.18); border-color:#d0d0d0; }
+  .drive-card .dc-icon { font-size:30px; } .drive-card .dc-name { color:#3c4043; font-size:13px; margin-top:8px; word-break:break-word; }
+  .drive-card .dc-meta { color:#9aa0a6; font-size:11px; margin-top:2px; }
+  .drive-empty { color:#9aa0a6; text-align:center; padding:50px; grid-column:1/-1; }
+
+  /* Max Sheets */
+  .sheets-wrap { flex:1; overflow:auto; background:#fff; }
+  table.sheet { border-collapse:collapse; font-size:13px; }
+  table.sheet th { background:#f1f3f4; color:#5f6368; font-weight:500; border:1px solid #e0e0e0; min-width:80px; height:24px; position:sticky; top:0; z-index:2; }
+  table.sheet th.rownum { min-width:36px; left:0; z-index:3; }
+  table.sheet td { border:1px solid #e0e0e0; padding:0; min-width:80px; height:24px; }
+  table.sheet td.rownum { background:#f1f3f4; color:#5f6368; text-align:center; font-weight:500; position:sticky; left:0; }
+  table.sheet td input { width:100%; height:24px; border:none; outline:none; padding:0 5px; font-size:13px; font-family:inherit; color:#202124; background:transparent; }
+  table.sheet td input:focus { box-shadow:inset 0 0 0 2px #1a73e8; background:#fff; }
+
+  /* Max Forms */
+  .forms-body { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:14px; align-items:center; }
+  .form-card { background:#fff; border:1px solid #dadce0; border-top:6px solid #673ab7; border-radius:10px; padding:18px; width:100%; max-width:540px; }
+  .form-title-input { font-size:24px; border:none; border-bottom:1px solid #dadce0; outline:none; width:100%; color:#202124; padding:4px 0; font-family:inherit; }
+  .form-q { background:#fff; border:1px solid #dadce0; border-radius:10px; padding:16px; width:100%; max-width:540px; }
+  .form-q input.q-text { font-size:15px; border:none; border-bottom:1px solid #dadce0; outline:none; width:100%; padding:6px 0; color:#202124; font-family:inherit; }
+  .form-q .q-opt { display:flex; align-items:center; gap:8px; margin-top:8px; color:#3c4043; font-size:14px; }
+  .form-q .q-opt input.opt-text { border:none; border-bottom:1px solid #f1f3f4; outline:none; flex:1; font-family:inherit; font-size:14px; color:#202124; }
+  .form-q .q-foot { display:flex; gap:8px; align-items:center; margin-top:12px; border-top:1px solid #f1f3f4; padding-top:10px; }
+  .form-q select { border:1px solid #dadce0; border-radius:6px; padding:5px; color:#3c4043; font-family:inherit; }
+  .form-q .q-del { margin-left:auto; cursor:pointer; color:#5f6368; }
+  .form-fill .form-q input.q-text { border:none; pointer-events:none; font-weight:500; }
+  .forms-prevbtn { background:#fff; }
+
   /* App Studio */
   .custom-frame { width:100%; height:100%; border:none; background:#fff; }
   .studio { display:flex; height:100%; }
@@ -1057,9 +1115,12 @@ document.addEventListener('click', e => {
 const apps = {
   // ── Core apps (always on desktop) ──
   files:    { title: 'File Manager',   short:'Files',     icon: '📁', w: 520, h: 380, core:true, html: buildFiles },
+  maxdrive: { title: 'MaxDrive',       short:'MaxDrive',  icon: '🗂️', w: 660, h: 480, core:true, html: buildDrive },
   appstore: { title: 'App Store',      short:'App Store', icon: '🛍️', w: 640, h: 500, core:true, html: buildStore },
   messages: { title: 'Messages',       short:'Messages',  icon: '💬', w: 620, h: 460, core:true, html: buildMessages },
-  editor:   { title: 'Text Editor',    short:'Editor',    icon: '📝', w: 600, h: 420, core:true, html: buildEditor },
+  editor:   { title: 'Max Docs',       short:'Max Docs',  icon: '📘', w: 640, h: 460, core:true, html: buildEditor },
+  sheets:   { title: 'Max Sheets',     short:'Max Sheets',icon: '📊', w: 720, h: 500, core:true, html: buildSheets },
+  forms:    { title: 'Max Forms',      short:'Max Forms', icon: '📋', w: 640, h: 540, core:true, html: buildForms },
   terminal: { title: 'Terminal',       short:'Terminal',  icon: '💻', w: 560, h: 360, core:true, html: buildTerminal },
   browser:  { title: 'Browser',        short:'Browser',   icon: '🌐', w: 700, h: 500, core:true, html: buildBrowser },
   settings: { title: 'Settings',       short:'Settings',  icon: '⚙️', w: 420, h: 420, core:true, html: buildSettings },
@@ -1070,7 +1131,7 @@ const apps = {
   music:    { title: 'Music Player',   short:'Music',      icon:'🎵', w:340, h:480, cat:'Media',      desc:'5 synthesized tracks',        html: buildMusic },
   clock:    { title: 'Clock',          short:'Clock',      icon:'🕐', w:380, h:340, cat:'Utilities',  desc:'Clock, stopwatch & timer',    html: buildClock },
   calendar: { title: 'Calendar',       short:'Calendar',   icon:'📅', w:380, h:380, cat:'Utilities',  desc:'Month view with events',      html: buildCalendar },
-  sysmon:   { title: 'System Monitor', short:'System',     icon:'📊', w:480, h:380, cat:'Utilities',  desc:'CPU, RAM & processes',        html: buildSysmon },
+  sysmon:   { title: 'System Monitor', short:'System',     icon:'📡', w:480, h:380, cat:'Utilities',  desc:'CPU, RAM & processes',        html: buildSysmon },
   snake:    { title: 'Snake',          short:'Snake',      icon:'🐍', w:420, h:480, cat:'Games',      desc:'Classic arcade snake',        html: buildSnake },
   g2048:    { title: '2048',           short:'2048',       icon:'🔢', w:380, h:480, cat:'Games',      desc:'Slide tiles to reach 2048',   html: build2048 },
   ttt:      { title: 'Tic-Tac-Toe',    short:'Tic-Tac-Toe',icon:'⭕', w:340, h:440, cat:'Games',      desc:'Play vs a friend or the CPU', html: buildTTT },
@@ -1090,8 +1151,8 @@ const apps = {
   piano:    { title: 'Piano',          short:'Piano',      icon:'🎹', w:640, h:360, cat:'Creativity', desc:'Playable synth — mouse & keyboard',   html: buildPiano },
   beats:    { title: 'Beat Maker',     short:'Beats',      icon:'🥁', w:560, h:460, cat:'Creativity', desc:'16-step drum machine sequencer',      html: buildBeats },
   fractal:  { title: 'Fractal Explorer',short:'Fractal',   icon:'🌀', w:560, h:560, cat:'Creativity', desc:'Zoom into the infinite Mandelbrot set', html: buildFractal },
-  markdown: { title: 'Markdown Editor',short:'Markdown',   icon:'📑', w:700, h:480, cat:'Productivity', desc:'Write Markdown with live preview',   html: buildMarkdown },
-  codepen:  { title: 'Code Playground',short:'Code',       icon:'🧪', w:760, h:520, cat:'Productivity', desc:'Live HTML/CSS/JS editor + preview',  html: buildCodepen },
+  markdown: { title: 'Max MD',         short:'Max MD',     icon:'📝', w:720, h:480, cat:'Productivity', desc:'Markdown editor with live preview',  html: buildMarkdown },
+  codepen:  { title: 'Max Code',       short:'Max Code',   icon:'🧪', w:760, h:520, cat:'Productivity', desc:'Live HTML/CSS/JS editor + preview',  html: buildCodepen },
   typing:   { title: 'Typing Test',    short:'Typing',     icon:'⌨️', w:560, h:420, cat:'Productivity', desc:'Measure your words-per-minute',      html: buildTyping },
   wiki:     { title: 'Wikipedia',      short:'Wiki',       icon:'📖', w:600, h:500, cat:'Knowledge',  desc:'Search & read real Wikipedia',        html: buildWiki },
   maps:     { title: 'Maps',           short:'Maps',       icon:'🗺️', w:700, h:540, cat:'Knowledge',  desc:'Interactive world map + search',      html: buildMaps },
@@ -3928,6 +3989,243 @@ async function studioDelete(id) {
   notify('🗑️', 'Deleted', 'App removed for everyone');
 }
 
+// ══ MAXDRIVE — Google-Drive-style file browser for MaxOS ══════════════════════
+let driveCwd = null;
+function buildDrive() {
+  return `<div class="drive-app">
+    <div class="drive-top">
+      <span class="drive-logo">🗂️</span><span class="drive-name">MaxDrive</span>
+      <div class="drive-new">
+        <button class="drive-newbtn" onclick="driveToggleNew(event)">＋ New</button>
+        <div class="drive-menu" id="drive-menu">
+          <div onclick="driveNew('doc')">📘 Max Docs</div>
+          <div onclick="driveNew('sheet')">📊 Max Sheets</div>
+          <div onclick="driveNew('form')">📋 Max Form</div>
+          <div onclick="driveNew('md')">📝 Max MD</div>
+          <div onclick="driveNewFolder()">📁 New Folder</div>
+        </div>
+      </div>
+    </div>
+    <div class="drive-path" id="drive-path"></div>
+    <div class="drive-grid" id="drive-grid"></div>
+  </div>`;
+}
+function initDrive() { driveCwd = driveHome(); driveLoad(); }
+function driveToggleNew(e) { e.stopPropagation(); document.getElementById('drive-menu').classList.toggle('open'); }
+document.addEventListener('click', () => document.getElementById('drive-menu')?.classList.remove('open'));
+async function driveLoad() {
+  const grid = document.getElementById('drive-grid'), pathEl = document.getElementById('drive-path');
+  if (!grid) return;
+  // breadcrumbs
+  const parts = driveCwd.split('/').filter(Boolean);
+  let acc = '';
+  pathEl.innerHTML = parts.map((p, i) => { acc += '/' + p; const path = acc; return `<span class="crumb" onclick="driveGo('${path}')">${i === 1 ? '🏠 ' + p : p}</span>${i < parts.length - 1 ? ' › ' : ''}`; }).join('');
+  grid.innerHTML = '<div class="drive-empty">Loading…</div>';
+  const items = await fsLs(driveCwd);
+  if (items.error || !Array.isArray(items)) { grid.innerHTML = `<div class="drive-empty">${items.error || 'Error'}</div>`; return; }
+  if (!items.length) { grid.innerHTML = '<div class="drive-empty">This folder is empty.<br>Click ＋ New to create something.</div>'; return; }
+  grid.innerHTML = items.map(f => {
+    const icon = f.type === 'directory' ? '📁' : driveIcon(f.name);
+    return `<div class="drive-card" ondblclick="driveOpen('${f.path}','${f.type}','${f.name.replace(/'/g, "")}')">
+      <div class="dc-icon">${icon}</div><div class="dc-name">${f.name}</div>
+      <div class="dc-meta">${f.type === 'directory' ? 'Folder' : driveKind(f.name)}</div></div>`;
+  }).join('');
+}
+function driveGo(path) { driveCwd = path; driveLoad(); }
+function driveIcon(name) {
+  const e = name.split('.').pop().toLowerCase();
+  return ({ md:'📝', txt:'📄', doc:'📘', csv:'📊', maxsheet:'📊', maxform:'📋', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
+}
+function driveKind(name) {
+  const e = name.split('.').pop().toLowerCase();
+  return ({ md:'Max MD', txt:'Text', csv:'Max Sheets', maxsheet:'Max Sheets', maxform:'Max Form', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
+}
+// Open a file in the right Max app based on extension
+function driveOpen(path, type, name) {
+  if (type === 'directory') { driveCwd = path; driveLoad(); return; }
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'md') { openApp('markdown'); setTimeout(() => mdOpenPath(path, name), 300); }
+  else if (ext === 'csv' || ext === 'maxsheet') { openApp('sheets'); setTimeout(() => sheetsOpenPath(path, name), 300); }
+  else if (ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
+  else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
+}
+async function driveNew(kind) {
+  document.getElementById('drive-menu')?.classList.remove('open');
+  const map = { doc: ['Untitled Doc', '.txt', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.csv', 'sheets'], form: ['Untitled Form', '.maxform', 'forms'] };
+  const [defName, ext, app] = map[kind];
+  let name = prompt('Name your new ' + kind + ':', defName); if (!name) return;
+  if (!name.includes('.')) name += ext;
+  const path = driveCwd + '/' + name;
+  await fsTouch(path, name, driveCwd);
+  await driveWrite(path, kind === 'form' ? '{"title":"Untitled Form","questions":[]}' : '');
+  driveLoad();
+  driveOpen(path, 'file', name);
+}
+async function driveNewFolder() {
+  document.getElementById('drive-menu')?.classList.remove('open');
+  const name = prompt('Folder name:'); if (!name) return;
+  await fsMkdir(driveCwd + '/' + name, name, driveCwd);
+  driveLoad();
+}
+// Let Markdown open a specific path (used by MaxDrive)
+async function mdOpenPath(path, name) {
+  const res = await fsCat(path); mdPath = path;
+  const inp = document.getElementById('md-input'); if (inp) { inp.value = res.error ? '' : res.content; mdRender(); }
+  const fn = document.getElementById('md-filename'); if (fn) fn.textContent = name;
+}
+
+// ══ MAX SHEETS — spreadsheet with formulas ════════════════════════════════════
+const SHEET_COLS = 12, SHEET_ROWS = 30;
+let sheetData = {}, sheetPath = null;
+function buildSheets() {
+  return `<div class="gapp">
+    <div class="gapp-head"><span class="gicon">📊</span><input class="gname" id="sheets-name" value="Untitled Sheet"></div>
+    <div class="gbar">
+      <button class="gbtn2" onclick="sheetsOpen()">📂 Open</button>
+      <button class="gbtn2 green" onclick="sheetsSave()">💾 Save</button>
+      <button class="gbtn2" onclick="sheetsAddRow()">＋ Row</button>
+      <span style="color:#5f6368;font-size:12px;margin-left:6px">Type =A1+B1 or =SUM(A1:A5) for formulas</span>
+    </div>
+    <div class="sheets-wrap"><table class="sheet" id="sheet-table"></table></div>
+  </div>`;
+}
+function initSheets() { sheetData = {}; sheetPath = null; sheetRows = SHEET_ROWS; sheetRender(); }
+let sheetRows = SHEET_ROWS;
+function colLabel(i) { return String.fromCharCode(65 + i); }
+function sheetRender() {
+  const t = document.getElementById('sheet-table'); if (!t) return;
+  let html = '<tr><th class="rownum"></th>';
+  for (let c = 0; c < SHEET_COLS; c++) html += `<th>${colLabel(c)}</th>`;
+  html += '</tr>';
+  for (let r = 1; r <= sheetRows; r++) {
+    html += `<tr><td class="rownum">${r}</td>`;
+    for (let c = 0; c < SHEET_COLS; c++) {
+      const ref = colLabel(c) + r, raw = sheetData[ref] || '';
+      const val = raw.startsWith('=') ? sheetEval(raw) : raw;
+      html += `<td><input data-ref="${ref}" value="${String(val).replace(/"/g, '&quot;')}" onfocus="sheetFocus(this)" onblur="sheetBlur(this)" onkeydown="sheetKey(event,this)"></td>`;
+    }
+    html += '</tr>';
+  }
+  t.innerHTML = html;
+}
+function sheetFocus(el) { el.value = sheetData[el.dataset.ref] || ''; } // show raw formula
+function sheetBlur(el) {
+  const ref = el.dataset.ref, v = el.value;
+  if (v === '') delete sheetData[ref]; else sheetData[ref] = v;
+  sheetRender(); // recompute everything
+}
+function sheetKey(e, el) { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } }
+let sheetDepth = 0;
+function sheetCellVal(ref) { const raw = sheetData[ref]; if (raw == null || raw === '') return 0; if (raw.startsWith('=')) { const v = sheetEval(raw); return isNaN(parseFloat(v)) ? 0 : parseFloat(v); } return isNaN(parseFloat(raw)) ? raw : parseFloat(raw); }
+function sheetEval(formula) {
+  if (sheetDepth > 30) return '#LOOP';
+  sheetDepth++;
+  try {
+    let expr = formula.slice(1);
+    // SUM(A1:B3)
+    expr = expr.replace(/SUM\(([A-Z]\d+):([A-Z]\d+)\)/gi, (m, a, b) => {
+      const c1 = a.charCodeAt(0) - 65, r1 = +a.slice(1), c2 = b.charCodeAt(0) - 65, r2 = +b.slice(1);
+      let sum = 0;
+      for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) sum += parseFloat(sheetCellVal(colLabel(c) + r)) || 0;
+      return sum;
+    });
+    expr = expr.replace(/([A-Z]\d+)/g, (m) => { const v = sheetCellVal(m); return typeof v === 'number' ? v : JSON.stringify(v); });
+    const res = Function('"use strict";return (' + expr + ')')();
+    return res;
+  } catch { return '#ERR'; }
+  finally { sheetDepth--; }
+}
+function sheetAddRow() { sheetRows += 5; sheetRender(); }
+async function sheetsOpenPath(path, name) {
+  const res = await fsCat(path); if (res.error) return;
+  sheetPath = path; document.getElementById('sheets-name').value = name.replace(/\.(csv|maxsheet)$/, '');
+  sheetData = {};
+  res.content.split('\n').forEach((line, r) => { line.split(',').forEach((cell, c) => { if (cell !== '' && c < SHEET_COLS) sheetData[colLabel(c) + (r + 1)] = cell; }); });
+  sheetRows = Math.max(SHEET_ROWS, res.content.split('\n').length + 2);
+  sheetRender();
+}
+function sheetsToCsv() {
+  let maxR = 0, maxC = 0;
+  Object.keys(sheetData).forEach(ref => { const c = ref.charCodeAt(0) - 65, r = +ref.slice(1); if (r > maxR) maxR = r; if (c > maxC) maxC = c; });
+  const lines = [];
+  for (let r = 1; r <= maxR; r++) { const row = []; for (let c = 0; c <= maxC; c++) row.push(sheetData[colLabel(c) + r] || ''); lines.push(row.join(',')); }
+  return lines.join('\n');
+}
+async function sheetsSave() {
+  const name = document.getElementById('sheets-name').value || 'Untitled Sheet';
+  if (!sheetPath) { const p = await driveSaveAs(name + '.csv', sheetsToCsv()); if (p) sheetPath = p; return; }
+  await driveWrite(sheetPath, sheetsToCsv()); notify('📊', 'Saved', name + ' saved to MaxDrive');
+}
+async function sheetsOpen() { const picked = await drivePick(['csv', 'maxsheet']); if (picked) sheetsOpenPath(picked.path, picked.name); }
+
+// ══ MAX FORMS — form builder ══════════════════════════════════════════════════
+let formDef = { title: 'Untitled Form', questions: [] }, formPath = null, formFillMode = false;
+function buildForms() {
+  return `<div class="gapp">
+    <div class="gapp-head"><span class="gicon">📋</span><input class="gname" id="forms-name" value="Untitled Form"></div>
+    <div class="gbar">
+      <button class="gbtn2" onclick="formsOpen()">📂 Open</button>
+      <button class="gbtn2 purple" onclick="formsSave()">💾 Save</button>
+      <button class="gbtn2" onclick="formsAdd('short')">＋ Question</button>
+      <button class="gbtn2" id="forms-toggle" onclick="formsToggleFill()">👁 Preview</button>
+    </div>
+    <div class="forms-body" id="forms-body"></div>
+  </div>`;
+}
+function initForms() { formDef = { title: 'Untitled Form', questions: [{ q: 'Untitled Question', type: 'short', options: [] }] }; formPath = null; formFillMode = false; formsRender(); }
+function formsRender() {
+  const body = document.getElementById('forms-body'); if (!body) return;
+  document.getElementById('forms-toggle').textContent = formFillMode ? '✏️ Edit' : '👁 Preview';
+  if (formFillMode) { formsRenderFill(body); return; }
+  body.innerHTML = `<div class="form-card"><input class="form-title-input" value="${formDef.title.replace(/"/g, '&quot;')}" oninput="formDef.title=this.value;document.getElementById('forms-name').value=this.value"></div>`
+    + formDef.questions.map((q, i) => `<div class="form-q">
+      <input class="q-text" value="${q.q.replace(/"/g, '&quot;')}" placeholder="Question" oninput="formDef.questions[${i}].q=this.value">
+      ${['short', 'paragraph'].includes(q.type) ? '' : q.options.map((o, oi) => `<div class="q-opt">${q.type === 'checkbox' ? '☐' : '○'}<input class="opt-text" value="${o.replace(/"/g, '&quot;')}" oninput="formDef.questions[${i}].options[${oi}]=this.value"><span style="cursor:pointer;color:#999" onclick="formsDelOpt(${i},${oi})">✕</span></div>`).join('') + `<div class="q-opt" style="color:#1a73e8;cursor:pointer" onclick="formsAddOpt(${i})">＋ Add option</div>`}
+      <div class="q-foot">
+        <select onchange="formsType(${i},this.value)">
+          <option value="short"${q.type === 'short' ? ' selected' : ''}>Short answer</option>
+          <option value="paragraph"${q.type === 'paragraph' ? ' selected' : ''}>Paragraph</option>
+          <option value="choice"${q.type === 'choice' ? ' selected' : ''}>Multiple choice</option>
+          <option value="checkbox"${q.type === 'checkbox' ? ' selected' : ''}>Checkboxes</option>
+          <option value="dropdown"${q.type === 'dropdown' ? ' selected' : ''}>Dropdown</option>
+        </select>
+        <span class="q-del" onclick="formsDel(${i})">🗑 Delete</span>
+      </div></div>`).join('');
+}
+function formsRenderFill(body) {
+  body.innerHTML = `<div class="form-card"><div style="font-size:24px;color:#202124">${formDef.title}</div></div>`
+    + formDef.questions.map(q => `<div class="form-q">
+      <div style="font-size:15px;color:#202124;margin-bottom:8px">${q.q || 'Question'}</div>
+      ${q.type === 'short' ? '<input class="opt-text" placeholder="Your answer" style="border-bottom:1px solid #dadce0;width:60%">'
+        : q.type === 'paragraph' ? '<textarea style="width:100%;border:1px solid #dadce0;border-radius:6px;min-height:60px;font-family:inherit;padding:6px"></textarea>'
+        : q.type === 'dropdown' ? `<select style="padding:6px;border-radius:6px;border:1px solid #dadce0">${q.options.map(o => `<option>${o}</option>`).join('')}</select>`
+        : q.options.map(o => `<div class="q-opt"><input type="${q.type === 'checkbox' ? 'checkbox' : 'radio'}" name="q${formDef.questions.indexOf(q)}"> ${o}</div>`).join('')}
+    </div>`).join('')
+    + `<button class="gbtn2 purple" style="max-width:540px;width:100%" onclick="notify('📋','Submitted!','This is a preview — responses aren\\'t stored yet')">Submit</button>`;
+}
+function formsAdd() { formDef.questions.push({ q: '', type: 'short', options: ['Option 1'] }); formsRender(); }
+function formsDel(i) { formDef.questions.splice(i, 1); formsRender(); }
+function formsType(i, t) { formDef.questions[i].type = t; if (['choice', 'checkbox', 'dropdown'].includes(t) && !formDef.questions[i].options.length) formDef.questions[i].options = ['Option 1']; formsRender(); }
+function formsAddOpt(i) { formDef.questions[i].options.push('Option ' + (formDef.questions[i].options.length + 1)); formsRender(); }
+function formsDelOpt(i, oi) { formDef.questions[i].options.splice(oi, 1); formsRender(); }
+function formsToggleFill() { formFillMode = !formFillMode; formsRender(); }
+async function formsSave() {
+  const name = document.getElementById('forms-name').value || 'Untitled Form';
+  formDef.title = name;
+  const content = JSON.stringify(formDef);
+  if (!formPath) { const p = await driveSaveAs(name + '.maxform', content); if (p) formPath = p; return; }
+  await driveWrite(formPath, content); notify('📋', 'Saved', name + ' saved to MaxDrive');
+}
+async function formsOpen() { const picked = await drivePick(['maxform']); if (picked) formsOpenPath(picked.path, picked.name); }
+async function formsOpenPath(path, name) {
+  const res = await fsCat(path); if (res.error) return;
+  try { formDef = JSON.parse(res.content); } catch { formDef = { title: name, questions: [] }; }
+  if (!formDef.questions) formDef.questions = [];
+  formPath = path; formFillMode = false;
+  document.getElementById('forms-name').value = formDef.title || name;
+  formsRender();
+}
+
 // ── Global key router for games ───────────────────────────────────────────────
 document.addEventListener('keydown', e => { tetrisKey(e); pianoKey(e); });
 
@@ -3942,6 +4240,7 @@ const appInitHooks = {
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
   browser: initBrowser, makeyourownwebsite: initStudio,
+  maxdrive: initDrive, sheets: initSheets, forms: initForms,
 };
 </script>
 </body>
