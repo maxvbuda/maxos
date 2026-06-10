@@ -777,9 +777,12 @@ function bootOS() {
     setTimeout(() => boot.remove(), 700);
     notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
   }, 2000);
-  // Deep link: open the app named in the URL path (built-in or community app)
-  const seg = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-  if (seg && seg !== 'os.html') {
+  // Deep link: /s/<id> opens a shared form/sheet; /<app> opens an app
+  const rawPath = location.pathname.replace(/^\/+|\/+$/g, '');
+  const seg = rawPath.toLowerCase();
+  if (rawPath.startsWith('s/')) {
+    setTimeout(() => openShared(rawPath.slice(2)), 400);
+  } else if (seg && seg !== 'os.html') {
     if (apps[seg]) setTimeout(() => openApp(seg), 300);
     else ensureCustomApp(seg).then(ok => { if (ok) openApp(seg); });
   }
@@ -4083,13 +4086,14 @@ function buildSheets() {
     <div class="gbar">
       <button class="gbtn2" onclick="sheetsOpen()">📂 Open</button>
       <button class="gbtn2 green" onclick="sheetsSave()">💾 Save</button>
+      <button class="gbtn2" onclick="sheetsShare()">🔗 Share</button>
       <button class="gbtn2" onclick="sheetsAddRow()">＋ Row</button>
       <span style="color:#5f6368;font-size:12px;margin-left:6px">Type =A1+B1 or =SUM(A1:A5) for formulas</span>
     </div>
     <div class="sheets-wrap"><table class="sheet" id="sheet-table"></table></div>
   </div>`;
 }
-function initSheets() { sheetData = {}; sheetPath = null; sheetRows = SHEET_ROWS; sheetRender(); }
+function initSheets() { sheetData = {}; sheetPath = null; sharedSheetId = null; sheetRows = SHEET_ROWS; sheetRender(); }
 let sheetRows = SHEET_ROWS;
 function colLabel(i) { return String.fromCharCode(65 + i); }
 function sheetRender() {
@@ -4136,13 +4140,16 @@ function sheetEval(formula) {
   finally { sheetDepth--; }
 }
 function sheetAddRow() { sheetRows += 5; sheetRender(); }
+function sheetsSetCsv(csv) {
+  sheetData = {};
+  (csv || '').split('\n').forEach((line, r) => { line.split(',').forEach((cell, c) => { if (cell !== '' && c < SHEET_COLS) sheetData[colLabel(c) + (r + 1)] = cell; }); });
+  sheetRows = Math.max(SHEET_ROWS, (csv || '').split('\n').length + 2);
+  sheetRender();
+}
 async function sheetsOpenPath(path, name) {
   const res = await fsCat(path); if (res.error) return;
   sheetPath = path; document.getElementById('sheets-name').value = name.replace(/\.(csv|maxsheet)$/, '');
-  sheetData = {};
-  res.content.split('\n').forEach((line, r) => { line.split(',').forEach((cell, c) => { if (cell !== '' && c < SHEET_COLS) sheetData[colLabel(c) + (r + 1)] = cell; }); });
-  sheetRows = Math.max(SHEET_ROWS, res.content.split('\n').length + 2);
-  sheetRender();
+  sheetsSetCsv(res.content);
 }
 function sheetsToCsv() {
   let maxR = 0, maxC = 0;
@@ -4166,13 +4173,15 @@ function buildForms() {
     <div class="gbar">
       <button class="gbtn2" onclick="formsOpen()">📂 Open</button>
       <button class="gbtn2 purple" onclick="formsSave()">💾 Save</button>
+      <button class="gbtn2" onclick="formsShare()">🔗 Share</button>
+      <button class="gbtn2" onclick="formsResponses()">📊 Responses</button>
       <button class="gbtn2" onclick="formsAdd('short')">＋ Question</button>
       <button class="gbtn2" id="forms-toggle" onclick="formsToggleFill()">👁 Preview</button>
     </div>
     <div class="forms-body" id="forms-body"></div>
   </div>`;
 }
-function initForms() { formDef = { title: 'Untitled Form', questions: [{ q: 'Untitled Question', type: 'short', options: [] }] }; formPath = null; formFillMode = false; formsRender(); }
+function initForms() { formDef = { title: 'Untitled Form', questions: [{ q: 'Untitled Question', type: 'short', options: [] }] }; formPath = null; formFillMode = false; formSharedId = null; formRespondMode = false; formsRender(); }
 function formsRender() {
   const body = document.getElementById('forms-body'); if (!body) return;
   document.getElementById('forms-toggle').textContent = formFillMode ? '✏️ Edit' : '👁 Preview';
@@ -4193,15 +4202,32 @@ function formsRender() {
       </div></div>`).join('');
 }
 function formsRenderFill(body) {
-  body.innerHTML = `<div class="form-card"><div style="font-size:24px;color:#202124">${formDef.title}</div></div>`
-    + formDef.questions.map(q => `<div class="form-q">
+  body.innerHTML = `<div class="form-card"><div style="font-size:24px;color:#202124">${formDef.title}</div>${formRespondMode ? '<div style="color:#5f6368;font-size:12px;margin-top:4px">Fill this out and submit your response</div>' : ''}</div>`
+    + formDef.questions.map((q, qi) => `<div class="form-q">
       <div style="font-size:15px;color:#202124;margin-bottom:8px">${q.q || 'Question'}</div>
-      ${q.type === 'short' ? '<input class="opt-text" placeholder="Your answer" style="border-bottom:1px solid #dadce0;width:60%">'
-        : q.type === 'paragraph' ? '<textarea style="width:100%;border:1px solid #dadce0;border-radius:6px;min-height:60px;font-family:inherit;padding:6px"></textarea>'
-        : q.type === 'dropdown' ? `<select style="padding:6px;border-radius:6px;border:1px solid #dadce0">${q.options.map(o => `<option>${o}</option>`).join('')}</select>`
-        : q.options.map(o => `<div class="q-opt"><input type="${q.type === 'checkbox' ? 'checkbox' : 'radio'}" name="q${formDef.questions.indexOf(q)}"> ${o}</div>`).join('')}
+      ${q.type === 'short' ? `<input class="opt-text" data-qi="${qi}" placeholder="Your answer" style="border-bottom:1px solid #dadce0;width:60%">`
+        : q.type === 'paragraph' ? `<textarea data-qi="${qi}" style="width:100%;border:1px solid #dadce0;border-radius:6px;min-height:60px;font-family:inherit;padding:6px"></textarea>`
+        : q.type === 'dropdown' ? `<select data-qi="${qi}" style="padding:6px;border-radius:6px;border:1px solid #dadce0">${q.options.map(o => `<option>${o}</option>`).join('')}</select>`
+        : q.options.map(o => `<div class="q-opt"><input type="${q.type === 'checkbox' ? 'checkbox' : 'radio'}" data-qi="${qi}" name="q${qi}" value="${o.replace(/"/g, '&quot;')}"> ${o}</div>`).join('')}
     </div>`).join('')
-    + `<button class="gbtn2 purple" style="max-width:540px;width:100%" onclick="notify('📋','Submitted!','This is a preview — responses aren\\'t stored yet')">Submit</button>`;
+    + `<button class="gbtn2 purple" style="max-width:540px;width:100%" onclick="formsSubmit()">Submit</button>`;
+}
+function formsGather() {
+  return formDef.questions.map((q, qi) => {
+    let a = '';
+    if (q.type === 'checkbox') a = [...document.querySelectorAll(`#forms-body input[data-qi="${qi}"]:checked`)].map(x => x.value);
+    else if (q.type === 'choice') { const sel = document.querySelector(`#forms-body input[name="q${qi}"]:checked`); a = sel ? sel.value : ''; }
+    else { const el = document.querySelector(`#forms-body [data-qi="${qi}"]`); a = el ? el.value : ''; }
+    return { q: q.q, a };
+  });
+}
+async function formsSubmit() {
+  const answers = formsGather();
+  if (formRespondMode && formSharedId) {
+    const r = await apiFetch('/api/shared/' + formSharedId + '/respond', { method: 'POST', body: JSON.stringify({ answers }) });
+    if (r.error) { notify('⚠️', 'Submit failed', r.error); return; }
+    notify('✅', 'Response submitted!', 'Thank you — your answers were recorded');
+  } else notify('📋', 'Preview only', 'Publish & Share the form to collect real responses');
 }
 function formsAdd() { formDef.questions.push({ q: '', type: 'short', options: ['Option 1'] }); formsRender(); }
 function formsDel(i) { formDef.questions.splice(i, 1); formsRender(); }
@@ -4221,9 +4247,79 @@ async function formsOpenPath(path, name) {
   const res = await fsCat(path); if (res.error) return;
   try { formDef = JSON.parse(res.content); } catch { formDef = { title: name, questions: [] }; }
   if (!formDef.questions) formDef.questions = [];
-  formPath = path; formFillMode = false;
+  formPath = path; formFillMode = false; formSharedId = null; formRespondMode = false;
   document.getElementById('forms-name').value = formDef.title || name;
   formsRender();
+}
+
+// ══ SHARING — publish Forms & Sheets, collect responses ══════════════════════
+let sharedSheetId = null, formSharedId = null, formRespondMode = false;
+async function shareDoc(type, title, content, currentId) {
+  const r = await apiFetch('/api/shared', { method: 'POST', body: JSON.stringify({ id: currentId, type, title, content }) });
+  if (r.error) { notify('⚠️', 'Publish failed', r.error); return null; }
+  return r.id;
+}
+function shareModal(id, kind) {
+  const url = `https://${MAXOS_DOMAIN}/s/${id}`;
+  const ov = document.createElement('div'); ov.className = 'drive-modal';
+  ov.innerHTML = `<div class="drive-box"><div class="drive-head">🔗 ${kind} published!</div>
+    <div style="padding:16px">
+      <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:10px">Anyone with this link can ${kind === 'Form' ? 'open and fill it out' : 'view it'}:</p>
+      <div style="display:flex;gap:8px"><input id="share-url" readonly value="${url}" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:9px 12px;font-size:13px">
+      <button class="gbtn" onclick="copyShare('${url}')">Copy</button></div>
+    </div>
+    <div style="text-align:right;padding:10px"><button class="gbtn" id="share-close">Done</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#share-close').onclick = () => ov.remove();
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+}
+function copyShare(url) { navigator.clipboard?.writeText(url); notify('🔗', 'Copied!', 'Share link copied to clipboard'); }
+
+async function sheetsShare() {
+  const title = document.getElementById('sheets-name').value || 'Untitled Sheet';
+  const id = await shareDoc('sheet', title, sheetsToCsv(), sharedSheetId);
+  if (id) { sharedSheetId = id; shareModal(id, 'Sheet'); }
+}
+async function formsShare() {
+  const title = document.getElementById('forms-name').value || 'Untitled Form';
+  formDef.title = title;
+  const id = await shareDoc('form', title, JSON.stringify(formDef), formSharedId);
+  if (id) { formSharedId = id; shareModal(id, 'Form'); }
+}
+async function formsResponses() {
+  if (!formSharedId) { notify('📊', 'Share first', 'Publish the form with 🔗 Share to collect responses'); return; }
+  const list = await apiFetch('/api/shared/' + formSharedId + '/responses');
+  if (list.error) { notify('⚠️', 'Error', list.error); return; }
+  const ov = document.createElement('div'); ov.className = 'drive-modal';
+  ov.innerHTML = `<div class="drive-box" style="width:480px"><div class="drive-head">📊 Responses (${list.length})</div>
+    <div class="drive-list">${list.length ? list.map(r => `<div style="padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08)"><div style="color:rgba(255,255,255,.4);font-size:11px">@${r.by} · ${new Date(r.at).toLocaleString()}</div>${(r.answers || []).map(a => `<div style="color:#fff;font-size:13px;margin-top:3px"><b style="color:rgba(255,255,255,.55)">${a.q}:</b> ${Array.isArray(a.a) ? a.a.join(', ') : (a.a || '—')}</div>`).join('')}</div>`).join('') : '<div style="color:rgba(255,255,255,.4);padding:20px;text-align:center">No responses yet</div>'}</div>
+    <div style="text-align:right;padding:10px"><button class="gbtn" id="resp-close">Close</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#resp-close').onclick = () => ov.remove();
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+}
+// Open a shared doc by id (from a /s/<id> link)
+async function openShared(id) {
+  const doc = await apiFetch('/api/shared/' + id);
+  if (doc.error || !doc.id) { notify('🔗', 'Link not found', 'That shared document does not exist'); return; }
+  if (doc.type === 'form') {
+    openApp('forms');
+    setTimeout(() => {
+      try { formDef = JSON.parse(doc.content); } catch { formDef = { title: doc.title, questions: [] }; }
+      if (!formDef.questions) formDef.questions = [];
+      formSharedId = doc.id; formRespondMode = true; formFillMode = true; formPath = null;
+      const nm = document.getElementById('forms-name'); if (nm) nm.value = formDef.title || doc.title;
+      formsRender();
+      notify('📋', 'Filling: ' + (doc.title || 'Form'), 'Shared by @' + doc.author);
+    }, 300);
+  } else {
+    openApp('sheets');
+    setTimeout(() => {
+      sheetsSetCsv(doc.content); sharedSheetId = doc.id; sheetPath = null;
+      const nm = document.getElementById('sheets-name'); if (nm) nm.value = doc.title;
+      notify('📊', 'Viewing: ' + doc.title, 'Shared by @' + doc.author);
+    }, 300);
+  }
 }
 
 // ── Global key router for games ───────────────────────────────────────────────

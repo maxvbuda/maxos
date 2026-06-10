@@ -62,11 +62,32 @@ const VersionSchema = new mongoose.Schema({
 }, { timestamps: true });
 VersionSchema.index({ userId: 1, path: 1, createdAt: -1 });
 
+const SharedSchema = new mongoose.Schema({
+  id:         { type: String, required: true, unique: true }, // share slug
+  type:       { type: String, enum: ['form', 'sheet'], required: true },
+  title:      { type: String, default: 'Untitled' },
+  content:    { type: String, default: '' }, // form JSON or sheet CSV
+  authorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  authorName: { type: String, required: true },
+  views:      { type: Number, default: 0 },
+}, { timestamps: true });
+
+const ResponseSchema = new mongoose.Schema({
+  sharedId:   { type: String, required: true },
+  answers:    { type: Array, default: [] },
+  byName:     { type: String, default: 'anonymous' },
+}, { timestamps: true });
+ResponseSchema.index({ sharedId: 1, createdAt: -1 });
+
 const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const AppModel = mongoose.model('App', AppSchema);
 const FileVersion = mongoose.model('FileVersion', VersionSchema);
+const Shared = mongoose.model('Shared', SharedSchema);
+const Response = mongoose.model('Response', ResponseSchema);
+
+const serializeShared = d => ({ id: d.id, type: d.type, title: d.title, content: d.content, author: d.authorName, views: d.views });
 
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
@@ -248,6 +269,47 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
     if (d.authorId.toString() !== req.user.id) return res.status(403).json({ error: 'You can only delete your own apps' });
     await d.deleteOne();
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Shared documents (publish Forms & Sheets) ────────────────────────────────
+// Publish or update a shared form/sheet
+app.post('/api/shared', auth, async (req, res) => {
+  try {
+    const { id, type, title, content } = req.body;
+    if (!type || !['form', 'sheet'].includes(type)) return res.status(400).json({ error: 'Bad type' });
+    let doc = null;
+    if (id) { doc = await Shared.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
+    if (doc) { Object.assign(doc, { title, content }); await doc.save(); }
+    else { const slug = await (async b => { let s = b, n = 1; while (await Shared.findOne({ id: s })) s = b + (++n); return s; })(slugify(title) || type); doc = await Shared.create({ id: slug, type, title, content, authorId: req.user.id, authorName: req.user.username }); }
+    res.json(serializeShared(doc));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Fetch a shared doc (public, so anyone with the link can view/fill)
+app.get('/api/shared/:id', async (req, res) => {
+  try {
+    const d = await Shared.findOneAndUpdate({ id: req.params.id }, { $inc: { views: 1 } }, { new: true });
+    if (!d) return res.status(404).json({ error: 'Not found' });
+    res.json(serializeShared(d));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Submit a response to a shared form
+app.post('/api/shared/:id/respond', auth, async (req, res) => {
+  try {
+    const d = await Shared.findOne({ id: req.params.id });
+    if (!d || d.type !== 'form') return res.status(404).json({ error: 'Form not found' });
+    await Response.create({ sharedId: req.params.id, answers: req.body.answers || [], byName: req.user.username });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// View responses (owner only)
+app.get('/api/shared/:id/responses', auth, async (req, res) => {
+  try {
+    const d = await Shared.findOne({ id: req.params.id });
+    if (!d) return res.status(404).json({ error: 'Not found' });
+    if (d.authorId.toString() !== req.user.id) return res.status(403).json({ error: 'Only the owner can view responses' });
+    const list = await Response.find({ sharedId: req.params.id }).sort({ createdAt: -1 }).limit(500);
+    res.json(list.map(r => ({ answers: r.answers, by: r.byName, at: r.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
