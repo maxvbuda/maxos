@@ -529,6 +529,16 @@
   .drive-file { padding:10px 12px; border-radius:8px; color:#fff; font-size:13px; cursor:pointer; }
   .drive-file:hover { background:rgba(100,180,255,.22); }
 
+  /* Admin panel */
+  .admin { display:flex; flex-direction:column; height:100%; }
+  .admin-head { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .admin-list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .admin-user { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 12px; }
+  .admin-user.susp { opacity:.6; }
+  .admin-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#64b4ff,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; flex-shrink:0; }
+  .admin-badge { font-size:9px; font-weight:700; background:rgba(100,180,255,.3); color:#9cf; padding:1px 6px; border-radius:6px; vertical-align:middle; }
+  .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
+
   /* ── Max suite (Google-style apps) ── */
   .gapp { display:flex; flex-direction:column; height:100%; background:#f6f8fc; }
   .gapp-head { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#fff; border-bottom:1px solid #e3e6ea; flex-shrink:0; }
@@ -730,7 +740,8 @@ async function authSubmit() {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
     authToken = data.token;
-    currentUser = { username: data.username, displayName: data.displayName };
+    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin };
+    if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
     localStorage.setItem('maxos_token', authToken);
     localStorage.setItem('maxos_user', JSON.stringify(currentUser));
     document.getElementById('login-screen').style.display = 'none';
@@ -752,8 +763,14 @@ async function checkExistingSession() {
   if (!authToken) return false;
   try {
     const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
-    if (r.ok) { const d = await r.json(); currentUser = d; return true; }
+    if (r.ok) {
+      const d = await r.json();
+      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin };
+      if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
+      return true;
+    }
   } catch {}
+  // 401/404 → the account was deleted or token invalid: force logout
   localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
   return false;
 }
@@ -1135,6 +1152,7 @@ const apps = {
   terminal: { title: 'Terminal',       short:'Terminal',  icon: '💻', w: 560, h: 360, core:true, html: buildTerminal },
   browser:  { title: 'Browser',        short:'Browser',   icon: '🌐', w: 700, h: 500, core:true, html: buildBrowser },
   settings: { title: 'Settings',       short:'Settings',  icon: '⚙️', w: 420, h: 420, core:true, html: buildSettings },
+  admin:    { title: 'Admin Panel',    short:'Admin',     icon: '🛡️', w: 600, h: 520, core:true, adminOnly:true, html: buildAdmin },
 
   // ── Store apps (installable) ──
   calc:     { title: 'Calculator',     short:'Calculator', icon:'🧮', w:300, h:440, cat:'Utilities',  desc:'Basic & keyboard calculator', html: buildCalc },
@@ -1172,9 +1190,14 @@ const apps = {
 
 // ── App installation / desktop rendering ─────────────────────────────────────
 let installedApps = JSON.parse(localStorage.getItem('maxos_installed') || '["calc","music","snake","notes"]');
+// Persist the installed list to the account (MongoDB), not just this browser
+function saveInstalled() {
+  localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+  apiFetch('/api/me/installed', { method: 'PUT', body: JSON.stringify({ installed: installedApps }) });
+}
 
-function isInstalled(id) { return apps[id].core || installedApps.includes(id); }
-function desktopApps() { return Object.keys(apps).filter(isInstalled); }
+function isInstalled(id) { return apps[id] && (apps[id].core || installedApps.includes(id)); }
+function desktopApps() { return Object.keys(apps).filter(id => isInstalled(id) && !(apps[id].adminOnly && !currentUser?.admin)); }
 
 function renderDesktop() {
   const c = document.getElementById('desktop-icons');
@@ -1199,7 +1222,7 @@ function renderStartApps() {
 function installApp(id) {
   if (!installedApps.includes(id)) {
     installedApps.push(id);
-    localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+    saveInstalled();
     renderDesktop(); renderStartApps();
     if (windows['appstore']) renderStoreGrid();
     notify(apps[id].icon, 'Installed', `${apps[id].title} added to your desktop`);
@@ -1210,7 +1233,7 @@ function installApp(id) {
 
 function uninstallApp(id) {
   installedApps = installedApps.filter(x => x !== id);
-  localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+  saveInstalled();
   if (windows[id]) closeWindow(id);
   renderDesktop(); renderStartApps();
   if (windows['appstore']) renderStoreGrid();
@@ -1219,6 +1242,8 @@ function uninstallApp(id) {
 
 // ── Open / focus window ──────────────────────────────────────────────────────
 function openApp(id) {
+  if (!apps[id]) return;
+  if (apps[id].adminOnly && !currentUser?.admin) { notify('🛡️', 'Admins only', 'You do not have access to that.'); return; }
   if (windows[id]) { focusWindow(id); return; }
 
   const app = apps[id];
@@ -1768,7 +1793,7 @@ function browserHome() {
   const u = document.getElementById('browser-url'); if (u) u.value = '';
   const c = document.getElementById('browser-content'); if (!c) return;
   const cats = {};
-  Object.keys(apps).forEach(id => { const a = apps[id]; const cat = a.core ? 'System' : (a.cat || 'Other'); (cats[cat] = cats[cat] || []).push(id); });
+  Object.keys(apps).forEach(id => { const a = apps[id]; if (a.adminOnly && !currentUser?.admin) return; const cat = a.core ? 'System' : (a.cat || 'Other'); (cats[cat] = cats[cat] || []).push(id); });
   c.innerHTML = `
     <div class="portal-hero">
       <div class="portal-logo">🖥️</div>
@@ -3966,7 +3991,7 @@ async function studioPublish() {
   if (def.error) { notify('⚠️', 'Publish failed', def.error); return; }
   studioEditId = def.id;
   customApps[def.id] = def; registerCustomApp(def);
-  if (!installedApps.includes(def.id)) { installedApps.push(def.id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
+  if (!installedApps.includes(def.id)) { installedApps.push(def.id); saveInstalled(); }
   renderDesktop(); renderStartApps();
   if (windows['appstore']) renderStoreGrid();
   studioRenderList();
@@ -4001,7 +4026,7 @@ async function studioDelete(id) {
   const res = await apiFetch('/api/apps/' + encodeURIComponent(id), { method: 'DELETE' });
   if (res.error) { notify('⚠️', 'Delete failed', res.error); return; }
   delete customApps[id]; delete apps[id];
-  installedApps = installedApps.filter(x => x !== id); localStorage.setItem('maxos_installed', JSON.stringify(installedApps));
+  installedApps = installedApps.filter(x => x !== id); saveInstalled();
   if (windows[id]) closeWindow(id);
   if (studioEditId === id) studioEditId = null;
   renderDesktop(); renderStartApps(); studioRenderList();
@@ -4358,6 +4383,44 @@ async function openShared(id) {
   }
 }
 
+// ══ ADMIN PANEL ═══════════════════════════════════════════════════════════════
+function buildAdmin() {
+  return `<div class="admin">
+    <div class="admin-head"><span style="font-size:22px">🛡️</span><div><div style="color:#fff;font-weight:600">Admin Panel</div><div style="color:rgba(255,255,255,.45);font-size:12px">Manage MaxOS accounts</div></div>
+      <button class="gbtn" style="margin-left:auto" onclick="adminLoad()">↻ Refresh</button></div>
+    <div class="admin-list" id="admin-list"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
+  </div>`;
+}
+function initAdmin() { adminLoad(); }
+async function adminLoad() {
+  const el = document.getElementById('admin-list'); if (!el) return;
+  const users = await apiFetch('/api/admin/users');
+  if (users.error) { el.innerHTML = `<div style="color:#ff8a84;padding:20px">${users.error}</div>`; return; }
+  el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
+    <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
+    <div style="flex:1;min-width:0">
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
+    </div>
+    ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
+      `<button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
+       <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>`}
+  </div>`).join('') || '<div style="color:rgba(255,255,255,.4);padding:20px">No users.</div>';
+}
+async function adminSuspend(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspend', { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🛡️', r.suspended ? 'Suspended' : 'Unsuspended', '@' + username);
+  adminLoad();
+}
+async function adminDelete(username) {
+  if (!confirm('Permanently delete @' + username + ' and all their files? This cannot be undone.')) return;
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username), { method: 'DELETE' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🗑️', 'Account deleted', '@' + username + ' has been removed');
+  adminLoad();
+}
+
 // ── Global key router for games ───────────────────────────────────────────────
 document.addEventListener('keydown', e => { tetrisKey(e); pianoKey(e); });
 
@@ -4372,7 +4435,7 @@ const appInitHooks = {
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
   browser: initBrowser, makeyourownwebsite: initStudio,
-  maxdrive: initDrive, sheets: initSheets, forms: initForms,
+  maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin,
 };
 </script>
 </body>

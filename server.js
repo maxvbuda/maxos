@@ -20,6 +20,9 @@ const UserSchema = new mongoose.Schema({
   username:    { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:    { type: String, required: true },
   displayName: { type: String, default: '' },
+  installed:   { type: [String], default: ['calc', 'music', 'snake', 'notes'] },
+  suspended:   { type: Boolean, default: false },
+  admin:       { type: Boolean, default: false },
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -113,16 +116,23 @@ async function seedUser(userId, username) {
   ]);
 }
 
-// ── Auth middleware ───────────────────────────────────────────────────────────
-function auth(req, res, next) {
+// ── Auth middleware (verifies the account still exists & isn't suspended) ─────
+async function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
-  }
+  let payload;
+  try { payload = jwt.verify(token, JWT_SECRET); }
+  catch { return res.status(401).json({ error: 'Invalid or expired token' }); }
+  // A signed token isn't enough — the account must still exist in MongoDB
+  const user = await User.findById(payload.id);
+  if (!user) return res.status(401).json({ error: 'Account no longer exists' });
+  if (user.suspended) return res.status(403).json({ error: 'Account suspended' });
+  req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin };
+  next();
+}
+function adminOnly(req, res, next) {
+  if (!req.user.admin) return res.status(403).json({ error: 'Admins only' });
+  next();
 }
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
@@ -134,10 +144,13 @@ app.post('/api/auth/register', async (req, res) => {
     const exists = await User.findOne({ username: username.toLowerCase() });
     if (exists) return res.status(409).json({ error: 'Username already taken' });
     const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, password: hashed, displayName: displayName || username });
+    // First registered user (or one named in ADMIN_USERS) becomes an admin
+    const adminList = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const isAdmin = (await User.countDocuments()) === 0 || adminList.includes(username.toLowerCase());
+    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -147,16 +160,54 @@ app.post('/api/auth/login', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     const user = await User.findOne({ username: username.toLowerCase() });
     if (!user) return res.status(401).json({ error: 'Invalid username or password' });
+    if (user.suspended) return res.status(403).json({ error: 'This account has been suspended' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  res.json({ username: req.user.username, displayName: req.user.displayName });
+  const u = await User.findById(req.user.id).select('username displayName admin installed');
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, installed: u.installed });
+});
+
+// Persist the user's installed apps (so it's not just a browser token)
+app.put('/api/me/installed', auth, async (req, res) => {
+  try { await User.updateOne({ _id: req.user.id }, { installed: Array.isArray(req.body.installed) ? req.body.installed : [] }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Admin routes ──────────────────────────────────────────────────────────────
+app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
+  try {
+    const users = await User.find().select('username displayName suspended admin createdAt').sort({ createdAt: 1 });
+    const counts = {};
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, admin: u.admin, createdAt: u.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res) => {
+  try {
+    const u = await User.findOne({ username: req.params.username.toLowerCase() });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    if (u.username === req.user.username) return res.status(400).json({ error: 'You cannot suspend yourself' });
+    u.suspended = !u.suspended; await u.save();
+    res.json({ ok: true, suspended: u.suspended });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/admin/users/:username', auth, adminOnly, async (req, res) => {
+  try {
+    const uname = req.params.username.toLowerCase();
+    if (uname === req.user.username) return res.status(400).json({ error: 'You cannot delete yourself' });
+    const u = await User.findOne({ username: uname });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    await u.deleteOne();
+    await File.deleteMany({ userId: u._id });
+    await FileVersion.deleteMany({ userId: u._id });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Messaging routes ──────────────────────────────────────────────────────────
