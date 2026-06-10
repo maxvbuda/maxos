@@ -51,6 +51,20 @@ const ChatSchema = new mongoose.Schema({
   text:    { type: String, required: true },
 }, { timestamps: true });
 ChatSchema.index({ channel: 1, createdAt: 1 });
+
+const PostSchema = new mongoose.Schema({
+  author:   { type: String, required: true },
+  text:     { type: String, required: true },
+  bg:       { type: Number, default: -1 },       // colored-status background index (-1 = plain)
+  likes:    { type: [String], default: [] },     // usernames who liked
+  comments: { type: [{ from: String, text: String, at: { type: Date, default: Date.now } }], default: [] },
+}, { timestamps: true });
+PostSchema.index({ createdAt: -1 });
+
+const ChannelSchema = new mongoose.Schema({
+  name:      { type: String, required: true, unique: true, lowercase: true, trim: true },
+  createdBy: { type: String, default: '' },
+}, { timestamps: true });
 MessageSchema.index({ from: 1, to: 1, createdAt: 1 });
 
 const AppSchema = new mongoose.Schema({
@@ -95,6 +109,8 @@ const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
 const Chat    = mongoose.model('Chat', ChatSchema);
+const Post    = mongoose.model('Post', PostSchema);
+const Channel = mongoose.model('Channel', ChannelSchema);
 const AppModel = mongoose.model('App', AppSchema);
 const FileVersion = mongoose.model('FileVersion', VersionSchema);
 const Shared = mongoose.model('Shared', SharedSchema);
@@ -300,6 +316,69 @@ app.post('/api/chat/:channel', auth, async (req, res) => {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty message' });
     const m = await Chat.create({ channel: req.params.channel.toLowerCase(), from: req.user.username, text: req.body.text.trim() });
     res.json({ from: m.from, text: m.text, at: m.createdAt });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Channel management (add / delete / list)
+app.get('/api/channels', auth, async (req, res) => {
+  try {
+    let list = await Channel.find().sort({ createdAt: 1 });
+    if (!list.length) { await Channel.insertMany(['general', 'random', 'ideas'].map(name => ({ name, createdBy: 'system' }))); list = await Channel.find().sort({ createdAt: 1 }); }
+    res.json(list.map(c => c.name));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/channels', auth, async (req, res) => {
+  try {
+    const name = (req.body.name || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
+    if (!name) return res.status(400).json({ error: 'Invalid channel name' });
+    if (await Channel.findOne({ name })) return res.status(409).json({ error: 'Channel already exists' });
+    await Channel.create({ name, createdBy: req.user.username });
+    res.json({ ok: true, name });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/channels/:name', auth, async (req, res) => {
+  try {
+    const name = req.params.name.toLowerCase();
+    if (name === 'general') return res.status(400).json({ error: 'The #general channel cannot be deleted' });
+    await Channel.deleteOne({ name });
+    await Chat.deleteMany({ channel: name });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── MaxSocial — public feed with likes & comments ────────────────────────────
+const serializePost = (p, me) => ({ id: p._id, author: p.author, text: p.text, bg: p.bg, at: p.createdAt, likes: p.likes.length, liked: p.likes.includes(me), comments: p.comments.map(c => ({ from: c.from, text: c.text, at: c.at })) });
+app.get('/api/posts', auth, async (req, res) => {
+  try { const posts = await Post.find().sort({ createdAt: -1 }).limit(100); res.json(posts.map(p => serializePost(p, req.user.username))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/posts', auth, async (req, res) => {
+  try {
+    if (!req.body.text?.trim()) return res.status(400).json({ error: 'Say something!' });
+    const p = await Post.create({ author: req.user.username, text: req.body.text.trim().slice(0, 1000), bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    res.json(serializePost(p, req.user.username));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/posts/:id/like', auth, async (req, res) => {
+  try {
+    const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
+    const i = p.likes.indexOf(req.user.username);
+    if (i >= 0) p.likes.splice(i, 1); else p.likes.push(req.user.username);
+    await p.save(); res.json({ likes: p.likes.length, liked: i < 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/posts/:id/comment', auth, async (req, res) => {
+  try {
+    if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty comment' });
+    const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
+    p.comments.push({ from: req.user.username, text: req.body.text.trim().slice(0, 500) });
+    await p.save(); res.json(serializePost(p, req.user.username));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/posts/:id', auth, async (req, res) => {
+  try {
+    const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
+    if (p.author !== req.user.username && !req.user.admin) return res.status(403).json({ error: 'Not your post' });
+    await p.deleteOne(); res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
