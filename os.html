@@ -900,6 +900,7 @@ async function fsMkdir(path,name,par)  { if (serverOnline) { const r=await apiFe
 async function fsTouch(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/touch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localTouch(path,name,par); }
 async function fsWrite(path,content,auto)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content,auto:!!auto})}); if (!r.error) return r; } return localWrite(path,content); }
 async function fsRm(path)              { if (serverOnline) { const r=await apiFetch('/api/rm?path='+encodeURIComponent(path),{method:'DELETE'}); if (!r.error) return r; } return localRm(path); }
+async function fsAllFiles()            { if (serverOnline) { const r=await apiFetch('/api/files'); if (Array.isArray(r)) return r; } return Object.keys(localFs.files).map(p => ({ name: p.split('/').pop(), path: p })); }
 
 // ── MaxDrive: shared save/open helpers for the file-editing apps ──────────────
 function driveHome() { return `/home/${currentUser?.username || 'user'}`; }
@@ -985,13 +986,12 @@ async function driveSaveAs(suggested, content) {
 // Modal file picker → resolves { path, name, content } or null
 function drivePick(exts) {
   return new Promise(async resolve => {
-    const home = driveHome();
-    const all = await fsLs(home);
-    const files = Array.isArray(all) ? all.filter(f => f.type === 'file' && (!exts || exts.some(x => f.name.toLowerCase().endsWith('.' + x)))) : [];
+    const all = await fsAllFiles(); // search the whole drive, not just home
+    const files = (Array.isArray(all) ? all : []).filter(f => !exts || exts.some(x => f.name.toLowerCase().endsWith('.' + x)));
     const ov = document.createElement('div'); ov.className = 'drive-modal';
     ov.innerHTML = `<div class="drive-box">
-      <div class="drive-head">📂 Open from MaxDrive <span style="color:rgba(255,255,255,.4);font-size:12px">${home}</span></div>
-      <div class="drive-list">${files.length ? files.map(f => `<div class="drive-file" data-p="${f.path}" data-n="${f.name}">📄 ${f.name}</div>`).join('') : '<div style="color:rgba(255,255,255,.4);padding:18px;text-align:center">No matching files here yet.</div>'}</div>
+      <div class="drive-head">📂 Open from MaxDrive <span style="color:rgba(255,255,255,.4);font-size:12px">${exts ? exts.map(e => '.' + e).join(' ') : 'all files'}</span></div>
+      <div class="drive-list">${files.length ? files.map(f => `<div class="drive-file" data-p="${f.path}" data-n="${f.name}">📄 ${f.name}<div style="color:rgba(255,255,255,.3);font-size:11px;font-family:monospace">${f.path.replace(/\/[^/]+$/, '') || '/'}</div></div>`).join('') : '<div style="color:rgba(255,255,255,.4);padding:18px;text-align:center">No matching files in your drive yet.</div>'}</div>
       <div style="text-align:right;padding:10px"><button class="gbtn" id="drive-cancel">Cancel</button></div>
     </div>`;
     document.body.appendChild(ov);
@@ -1444,7 +1444,7 @@ async function editorOpenFile(path, name) {
 }
 
 async function editorOpen() {
-  const picked = await drivePick(['txt', 'md', 'json', 'js', 'csv']);
+  const picked = await drivePick(['docs', 'txt', 'md', 'json', 'js', 'csv', 'html']);
   if (!picked) return;
   editorCurrentPath = picked.path;
   const ta = document.getElementById('editor-area'); if (ta) ta.value = picked.content;
@@ -1464,7 +1464,7 @@ async function saveEditorToMongo() {
 
 async function editorSaveAs() {
   const ta = document.getElementById('editor-area'); if (!ta) return;
-  const path = await driveSaveAs('document.txt', ta.value);
+  const path = await driveSaveAs('document.docs', ta.value);
   if (path) { editorCurrentPath = path; autosaveClear('editor'); const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = path.split('/').pop(); }
 }
 
@@ -4037,24 +4037,24 @@ async function driveLoad() {
 function driveGo(path) { driveCwd = path; driveLoad(); }
 function driveIcon(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ md:'📝', txt:'📄', doc:'📘', csv:'📊', maxsheet:'📊', maxform:'📋', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
+  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
 }
 function driveKind(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ md:'Max MD', txt:'Text', csv:'Max Sheets', maxsheet:'Max Sheets', maxform:'Max Form', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
+  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
 function driveOpen(path, type, name) {
   if (type === 'directory') { driveCwd = path; driveLoad(); return; }
   const ext = name.split('.').pop().toLowerCase();
   if (ext === 'md') { openApp('markdown'); setTimeout(() => mdOpenPath(path, name), 300); }
-  else if (ext === 'csv' || ext === 'maxsheet') { openApp('sheets'); setTimeout(() => sheetsOpenPath(path, name), 300); }
-  else if (ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
+  else if (ext === 'sheet' || ext === 'csv' || ext === 'maxsheet') { openApp('sheets'); setTimeout(() => sheetsOpenPath(path, name), 300); }
+  else if (ext === 'forms' || ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
   else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
 }
 async function driveNew(kind) {
   document.getElementById('drive-menu')?.classList.remove('open');
-  const map = { doc: ['Untitled Doc', '.txt', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.csv', 'sheets'], form: ['Untitled Form', '.maxform', 'forms'] };
+  const map = { doc: ['Untitled Doc', '.docs', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.sheet', 'sheets'], form: ['Untitled Form', '.forms', 'forms'] };
   const [defName, ext, app] = map[kind];
   let name = prompt('Name your new ' + kind + ':', defName); if (!name) return;
   if (!name.includes('.')) name += ext;
@@ -4148,7 +4148,7 @@ function sheetsSetCsv(csv) {
 }
 async function sheetsOpenPath(path, name) {
   const res = await fsCat(path); if (res.error) return;
-  sheetPath = path; document.getElementById('sheets-name').value = name.replace(/\.(csv|maxsheet)$/, '');
+  sheetPath = path; document.getElementById('sheets-name').value = name.replace(/\.(sheet|csv|maxsheet)$/, '');
   sheetsSetCsv(res.content);
 }
 function sheetsToCsv() {
@@ -4160,10 +4160,10 @@ function sheetsToCsv() {
 }
 async function sheetsSave() {
   const name = document.getElementById('sheets-name').value || 'Untitled Sheet';
-  if (!sheetPath) { const p = await driveSaveAs(name + '.csv', sheetsToCsv()); if (p) sheetPath = p; return; }
+  if (!sheetPath) { const p = await driveSaveAs(name + '.sheet', sheetsToCsv()); if (p) sheetPath = p; return; }
   await driveWrite(sheetPath, sheetsToCsv()); notify('📊', 'Saved', name + ' saved to MaxDrive');
 }
-async function sheetsOpen() { const picked = await drivePick(['csv', 'maxsheet']); if (picked) sheetsOpenPath(picked.path, picked.name); }
+async function sheetsOpen() { const picked = await drivePick(['sheet', 'csv', 'maxsheet']); if (picked) sheetsOpenPath(picked.path, picked.name); }
 
 // ══ MAX FORMS — form builder ══════════════════════════════════════════════════
 let formDef = { title: 'Untitled Form', questions: [] }, formPath = null, formFillMode = false;
@@ -4239,10 +4239,10 @@ async function formsSave() {
   const name = document.getElementById('forms-name').value || 'Untitled Form';
   formDef.title = name;
   const content = JSON.stringify(formDef);
-  if (!formPath) { const p = await driveSaveAs(name + '.maxform', content); if (p) formPath = p; return; }
+  if (!formPath) { const p = await driveSaveAs(name + '.forms', content); if (p) formPath = p; return; }
   await driveWrite(formPath, content); notify('📋', 'Saved', name + ' saved to MaxDrive');
 }
-async function formsOpen() { const picked = await drivePick(['maxform']); if (picked) formsOpenPath(picked.path, picked.name); }
+async function formsOpen() { const picked = await drivePick(['forms', 'maxform']); if (picked) formsOpenPath(picked.path, picked.name); }
 async function formsOpenPath(path, name) {
   const res = await fsCat(path); if (res.error) return;
   try { formDef = JSON.parse(res.content); } catch { formDef = { title: name, questions: [] }; }

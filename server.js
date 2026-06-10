@@ -324,6 +324,14 @@ app.get('/api/ls', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// All files anywhere in the user's drive (flat) — used by the Open picker
+app.get('/api/files', auth, async (req, res) => {
+  try {
+    const files = await File.find({ userId: req.user.id, type: 'file' }).select('name path updatedAt').sort({ path: 1 });
+    res.json(files.map(f => ({ name: f.name, path: f.path })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/stat', auth, async (req, res) => {
   try {
     const file = await File.findOne({ userId: req.user.id, path: req.query.path }).select('name type path');
