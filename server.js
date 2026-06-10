@@ -44,6 +44,13 @@ const MessageSchema = new mongoose.Schema({
   text:     { type: String, required: true },
   read:     { type: Boolean, default: false },
 }, { timestamps: true });
+
+const ChatSchema = new mongoose.Schema({
+  channel: { type: String, required: true },    // e.g. "general"
+  from:    { type: String, required: true },
+  text:    { type: String, required: true },
+}, { timestamps: true });
+ChatSchema.index({ channel: 1, createdAt: 1 });
 MessageSchema.index({ from: 1, to: 1, createdAt: 1 });
 
 const AppSchema = new mongoose.Schema({
@@ -87,6 +94,7 @@ ResponseSchema.index({ sharedId: 1, createdAt: -1 });
 const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
+const Chat    = mongoose.model('Chat', ChatSchema);
 const AppModel = mongoose.model('App', AppSchema);
 const FileVersion = mongoose.model('FileVersion', VersionSchema);
 const Shared = mongoose.model('Shared', SharedSchema);
@@ -277,6 +285,21 @@ app.get('/api/messages/unread', auth, async (req, res) => {
   try {
     const count = await Message.countDocuments({ to: req.user.username, read: false });
     res.json({ count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Team chat (Slack-style channels, shared by everyone) ──────────────────────
+app.get('/api/chat/:channel', auth, async (req, res) => {
+  try {
+    const msgs = await Chat.find({ channel: req.params.channel.toLowerCase() }).sort({ createdAt: 1 }).limit(100);
+    res.json(msgs.map(m => ({ from: m.from, text: m.text, at: m.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/chat/:channel', auth, async (req, res) => {
+  try {
+    if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty message' });
+    const m = await Chat.create({ channel: req.params.channel.toLowerCase(), from: req.user.username, text: req.body.text.trim() });
+    res.json({ from: m.from, text: m.text, at: m.createdAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -539,6 +539,43 @@
   .admin-badge { font-size:9px; font-weight:700; background:rgba(100,180,255,.3); color:#9cf; padding:1px 6px; border-radius:6px; vertical-align:middle; }
   .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
 
+  /* Max Chat (Slack) */
+  .chat-app { display:flex; height:100%; }
+  .chat-side { width:180px; background:rgba(0,0,0,.25); display:flex; flex-direction:column; flex-shrink:0; padding:8px; }
+  .chat-ws { color:#fff; font-weight:700; font-size:15px; padding:8px 8px 12px; border-bottom:1px solid rgba(255,255,255,.08); margin-bottom:8px; }
+  .chat-side-h { color:rgba(255,255,255,.4); font-size:11px; text-transform:uppercase; letter-spacing:1px; padding:4px 8px; }
+  .chat-chan { color:rgba(255,255,255,.7); font-size:14px; padding:6px 10px; border-radius:7px; cursor:pointer; }
+  .chat-chan:hover { background:rgba(255,255,255,.08); }
+  .chat-chan.active { background:rgba(100,180,255,.25); color:#fff; }
+  .chat-me { margin-top:auto; display:flex; align-items:center; gap:8px; padding:8px; color:rgba(255,255,255,.6); font-size:12px; border-top:1px solid rgba(255,255,255,.08); }
+  .chat-me { } .chat-me span { color:rgba(255,255,255,.5); }
+  .chat-main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .chat-head { padding:14px 16px; color:#fff; font-weight:700; font-size:16px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .chat-thread { flex:1; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:14px; }
+  .chat-msg { display:flex; gap:10px; }
+  .chat-ava { width:34px; height:34px; border-radius:8px; background:linear-gradient(135deg,#64b4ff,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; flex-shrink:0; }
+  .chat-meta { color:#fff; font-size:13px; } .chat-meta b { font-weight:600; } .chat-meta span { color:rgba(255,255,255,.35); font-size:11px; margin-left:6px; }
+  .chat-text { color:rgba(255,255,255,.85); font-size:14px; margin-top:2px; word-break:break-word; }
+  .chat-inputbar { display:flex; gap:8px; padding:12px 16px; border-top:1px solid rgba(255,255,255,.08); }
+  .chat-input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:10px; padding:10px 14px; color:#fff; outline:none; font-family:inherit; font-size:14px; }
+  .chat-send { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:10px; width:42px; cursor:pointer; font-size:15px; }
+
+  /* Max Board (Trello) */
+  .board-app { display:flex; flex-direction:column; height:100%; }
+  .board-cols { flex:1; display:flex; gap:12px; padding:14px; overflow-x:auto; align-items:flex-start; }
+  .board-col { background:rgba(255,255,255,.05); border-radius:12px; width:220px; flex-shrink:0; display:flex; flex-direction:column; max-height:100%; }
+  .board-col-h { color:#fff; font-weight:600; font-size:13px; padding:12px 14px 8px; display:flex; justify-content:space-between; }
+  .board-col-h span { color:rgba(255,255,255,.35); }
+  .board-cards { flex:1; overflow-y:auto; padding:0 8px; display:flex; flex-direction:column; gap:8px; min-height:30px; }
+  .board-card { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:10px 12px; color:#fff; font-size:13px; cursor:grab; position:relative; }
+  .board-card:hover { background:rgba(255,255,255,.16); }
+  .board-card:active { cursor:grabbing; }
+  .board-del { position:absolute; top:6px; right:8px; color:rgba(255,255,255,.3); cursor:pointer; font-size:11px; opacity:0; }
+  .board-card:hover .board-del { opacity:1; }
+  .board-del:hover { color:#ff5f57; }
+  .board-add { color:rgba(255,255,255,.5); font-size:13px; padding:10px 14px; cursor:pointer; border-radius:8px; }
+  .board-add:hover { background:rgba(255,255,255,.08); color:#fff; }
+
   /* ── Max suite (Google-style apps) ── */
   .gapp { display:flex; flex-direction:column; height:100%; background:#f6f8fc; }
   .gapp-head { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#fff; border-bottom:1px solid #e3e6ea; flex-shrink:0; }
@@ -1212,6 +1249,8 @@ const apps = {
   typing:   { title: 'Typing Test',    short:'Typing',     icon:'⌨️', w:560, h:420, cat:'Productivity', desc:'Measure your words-per-minute',      html: buildTyping },
   wiki:     { title: 'Wikipedia',      short:'Wiki',       icon:'📖', w:600, h:500, cat:'Knowledge',  desc:'Search & read real Wikipedia',        html: buildWiki },
   maps:     { title: 'Maps',           short:'Maps',       icon:'🗺️', w:700, h:540, cat:'Knowledge',  desc:'Interactive world map + search',      html: buildMaps },
+  chat:     { title: 'Max Chat',       short:'Max Chat',   icon:'🗨️', w:680, h:520, cat:'Work',       desc:'Slack-style team channels',           html: buildChat },
+  board:    { title: 'Max Board',      short:'Max Board',  icon:'📌', w:760, h:520, cat:'Work',       desc:'Trello-style kanban board',           html: buildBoard },
   makeyourownwebsite: { title: 'Make Your Own App', short:'Make App', icon:'🛠️', w:860, h:580, core:true, cat:'Productivity', desc:'Build & publish your own MaxOS apps', html: buildStudio },
 };
 
@@ -1325,6 +1364,7 @@ function closeWindow(id) {
   const w = windows[id];
   if (!w) return;
   if (id === 'messages') { clearInterval(msgPollTimer); msgActiveUser = null; }
+  if (id === 'chat') clearInterval(chatTimer);
   if (id === 'maps' && mapsObj) { mapsObj.remove(); mapsObj = null; mapsMarker = null; }
   if (id === 'tetris') tetris?.stop();
   if (id === 'breakout') breakout?.stop();
@@ -4410,6 +4450,109 @@ async function openShared(id) {
   }
 }
 
+// ══ MAX CHAT — Slack-style team channels ═════════════════════════════════════
+const CHAT_CHANNELS = ['general', 'random', 'ideas', 'help', 'dev'];
+let chatChannel = 'general', chatTimer = null;
+function buildChat() {
+  return `<div class="chat-app">
+    <div class="chat-side">
+      <div class="chat-ws">🗨️ MaxChat</div>
+      <div class="chat-side-h">Channels</div>
+      ${CHAT_CHANNELS.map(c => `<div class="chat-chan${c === chatChannel ? ' active' : ''}" id="chan-${c}" onclick="chatOpen('${c}')"># ${c}</div>`).join('')}
+      <div class="chat-me">${(currentUser?.username || '?')[0].toUpperCase()} <span>@${currentUser?.username || 'you'}</span></div>
+    </div>
+    <div class="chat-main">
+      <div class="chat-head" id="chat-head"># general</div>
+      <div class="chat-thread" id="chat-thread"></div>
+      <div class="chat-inputbar">
+        <input class="chat-input" id="chat-input" placeholder="Message #general" onkeydown="if(event.key==='Enter')chatSend()">
+        <button class="chat-send" onclick="chatSend()">➤</button>
+      </div>
+    </div>
+  </div>`;
+}
+function initChat() {
+  if (!serverOnline) { document.getElementById('chat-thread').innerHTML = '<div style="color:rgba(255,255,255,.4);padding:20px">Max Chat needs a server connection.</div>'; return; }
+  chatOpen('general');
+  chatTimer = setInterval(() => { if (windows['chat']) chatLoad(true); }, 4000);
+}
+function chatOpen(c) {
+  chatChannel = c;
+  document.querySelectorAll('.chat-chan').forEach(e => e.classList.toggle('active', e.id === 'chan-' + c));
+  document.getElementById('chat-head').textContent = '# ' + c;
+  document.getElementById('chat-input').placeholder = 'Message #' + c;
+  chatLoad();
+}
+async function chatLoad(keepScroll) {
+  const msgs = await apiFetch('/api/chat/' + chatChannel);
+  const thread = document.getElementById('chat-thread');
+  if (!thread || msgs.error) return;
+  const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
+  thread.innerHTML = msgs.length ? msgs.map(m => {
+    const mine = m.from === currentUser.username;
+    const t = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div class="chat-msg"><div class="chat-ava">${m.from[0].toUpperCase()}</div><div><div class="chat-meta"><b>${m.from}</b> <span>${t}</span></div><div class="chat-text">${escapeHtml(m.text)}</div></div></div>`;
+  }).join('') : '<div style="color:rgba(255,255,255,.35);padding:20px;text-align:center">No messages yet in #' + chatChannel + ' — say hi! 👋</div>';
+  if (!keepScroll || atBottom) thread.scrollTop = thread.scrollHeight;
+}
+async function chatSend() {
+  const inp = document.getElementById('chat-input'); const text = inp.value.trim();
+  if (!text) return; inp.value = '';
+  const r = await apiFetch('/api/chat/' + chatChannel, { method: 'POST', body: JSON.stringify({ text }) });
+  if (r.error) { notify('🗨️', 'Failed', r.error); return; }
+  chatLoad();
+}
+
+// ══ MAX BOARD — Trello-style kanban ═══════════════════════════════════════════
+const BOARD_COLS = ['To Do', 'In Progress', 'Done'];
+let boardData = null, boardPath = null, boardDrag = null;
+function buildBoard() {
+  return `<div class="board-app">
+    <div class="editor-toolbar">
+      <button onclick="boardOpen()">📂 Open</button>
+      <button onclick="boardSave()">💾 Save</button>
+      <button onclick="boardSaveAs()">Save As</button>
+      <span id="board-name" style="color:rgba(255,255,255,.45);font-size:12px;margin-left:auto">Untitled Board</span>
+    </div>
+    <div class="board-cols" id="board-cols"></div>
+  </div>`;
+}
+function initBoard() {
+  boardData = { 'To Do': ['Welcome to Max Board 📌', 'Drag cards between columns'], 'In Progress': ['Build something cool'], 'Done': ['Sign up for MaxOS ✅'] };
+  boardPath = null; boardRender();
+}
+function boardRender() {
+  const el = document.getElementById('board-cols'); if (!el) return;
+  el.innerHTML = BOARD_COLS.map(col => `<div class="board-col" ondragover="event.preventDefault()" ondrop="boardDrop('${col}')">
+    <div class="board-col-h">${col} <span>${(boardData[col] || []).length}</span></div>
+    <div class="board-cards">${(boardData[col] || []).map((card, i) => `<div class="board-card" draggable="true" ondragstart="boardDragStart('${col}',${i})">${escapeHtml(card)}<span class="board-del" onclick="boardDel('${col}',${i})">✕</span></div>`).join('')}</div>
+    <div class="board-add" onclick="boardAdd('${col}')">＋ Add card</div>
+  </div>`).join('');
+}
+function boardAdd(col) { const t = prompt('New card:'); if (t && t.trim()) { boardData[col].push(t.trim()); boardRender(); } }
+function boardDel(col, i) { boardData[col].splice(i, 1); boardRender(); }
+function boardDragStart(col, i) { boardDrag = { col, i }; }
+function boardDrop(col) {
+  if (!boardDrag) return;
+  const card = boardData[boardDrag.col].splice(boardDrag.i, 1)[0];
+  boardData[col].push(card); boardDrag = null; boardRender();
+}
+async function boardSave() {
+  if (!boardPath) return boardSaveAs();
+  await driveWrite(boardPath, JSON.stringify(boardData)); notify('📌', 'Saved', boardPath.split('/').pop());
+}
+async function boardSaveAs() {
+  const p = await driveSaveAs('board.board', JSON.stringify(boardData));
+  if (p) { boardPath = p; document.getElementById('board-name').textContent = p.split('/').pop(); }
+}
+async function boardOpen() {
+  const picked = await drivePick(['board']);
+  if (!picked) return;
+  try { boardData = JSON.parse(picked.content); } catch { return notify('📌', 'Error', 'Not a valid board'); }
+  BOARD_COLS.forEach(c => { if (!boardData[c]) boardData[c] = []; });
+  boardPath = picked.path; document.getElementById('board-name').textContent = picked.name; boardRender();
+}
+
 // ══ ADMIN PANEL ═══════════════════════════════════════════════════════════════
 function buildAdmin() {
   return `<div class="admin">
@@ -4463,6 +4606,7 @@ const appInitHooks = {
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
   browser: initBrowser, makeyourownwebsite: initStudio,
   maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin,
+  chat: initChat, board: initBoard,
 };
 </script>
 </body>
