@@ -4151,6 +4151,7 @@ function buildDrive() {
           <div onclick="driveNew('doc')">📘 Max Docs</div>
           <div onclick="driveNew('sheet')">📊 Max Sheets</div>
           <div onclick="driveNew('form')">📋 Max Form</div>
+          <div onclick="driveNew('board')">📌 Max Board</div>
           <div onclick="driveNew('md')">📝 Max MD</div>
           <div onclick="driveNewFolder()">📁 New Folder</div>
         </div>
@@ -4195,11 +4196,11 @@ async function driveDelete(i) {
 function driveGo(path) { driveCwd = path; driveLoad(); }
 function driveIcon(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
+  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', board:'📌', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
 }
 function driveKind(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
+  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
 function driveOpen(path, type, name) {
@@ -4208,17 +4209,20 @@ function driveOpen(path, type, name) {
   if (ext === 'md') { openApp('markdown'); setTimeout(() => mdOpenPath(path, name), 300); }
   else if (ext === 'sheet' || ext === 'csv' || ext === 'maxsheet') { openApp('sheets'); setTimeout(() => sheetsOpenPath(path, name), 300); }
   else if (ext === 'forms' || ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
+  else if (ext === 'board') { openApp('board'); setTimeout(() => boardOpenPath(path, name), 300); }
   else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
 }
 async function driveNew(kind) {
   document.getElementById('drive-menu')?.classList.remove('open');
-  const map = { doc: ['Untitled Doc', '.docs', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.sheet', 'sheets'], form: ['Untitled Form', '.forms', 'forms'] };
+  const map = { doc: ['Untitled Doc', '.docs', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.sheet', 'sheets'], form: ['Untitled Form', '.forms', 'forms'], board: ['Untitled Board', '.board', 'board'] };
   const [defName, ext, app] = map[kind];
   let name = prompt('Name your new ' + kind + ':', defName); if (!name) return;
   if (!name.includes('.')) name += ext;
   const path = driveCwd + '/' + name;
   await fsTouch(path, name, driveCwd);
-  await driveWrite(path, kind === 'form' ? '{"title":"Untitled Form","questions":[]}' : '');
+  const starter = kind === 'form' ? '{"title":"Untitled Form","questions":[]}'
+    : kind === 'board' ? '{"To Do":[],"In Progress":[],"Done":[]}' : '';
+  await driveWrite(path, starter);
   driveLoad();
   driveOpen(path, 'file', name);
 }
@@ -4612,9 +4616,16 @@ async function boardSaveAs() {
 async function boardOpen() {
   const picked = await drivePick(['board']);
   if (!picked) return;
-  try { boardData = JSON.parse(picked.content); } catch { return notify('📌', 'Error', 'Not a valid board'); }
-  BOARD_COLS.forEach(c => { if (!boardData[c]) boardData[c] = []; });
-  boardPath = picked.path; document.getElementById('board-name').textContent = picked.name; boardRender();
+  boardLoadContent(picked.content, picked.path, picked.name);
+}
+async function boardOpenPath(path, name) {
+  const res = await fsCat(path); if (res.error) return;
+  boardLoadContent(res.content, path, name);
+}
+function boardLoadContent(content, path, name) {
+  try { boardData = content ? JSON.parse(content) : {}; } catch { return notify('📌', 'Error', 'Not a valid board'); }
+  BOARD_COLS.forEach(c => { if (!Array.isArray(boardData[c])) boardData[c] = []; });
+  boardPath = path; const el = document.getElementById('board-name'); if (el) el.textContent = name.replace(/\.board$/, ''); boardRender();
 }
 
 // ══ MAXSOCIAL — public feed with likes & comments ════════════════════════════
