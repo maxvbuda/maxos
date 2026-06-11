@@ -494,21 +494,26 @@ app.post('/api/shared', auth, async (req, res) => {
     }
 
     // If now private, add files to allowed users' drives (new additions only)
+    let shareErrors = [];
     if (doc.visibility === 'private' && doc.allow && doc.allow.length > 0) {
       const newUsers = doc.allow.filter(u => !oldAllow.includes(u));
       for (const username of newUsers) {
         const user = await User.findOne({ username });
-        if (user) {
-          try {
-            await addSharedToUserDrive(user._id, type, title, content, req.user.username);
-          } catch (e) {
-            console.error(`Failed to add shared doc to ${username}:`, e.message);
-          }
+        if (!user) {
+          shareErrors.push(`User "${username}" not found`);
+          continue;
+        }
+        try {
+          await addSharedToUserDrive(user._id, type, title, content, req.user.username);
+        } catch (e) {
+          shareErrors.push(`Failed to add file to ${username}: ${e.message}`);
         }
       }
     }
 
-    res.json(serializeShared(doc, true));
+    const resp = serializeShared(doc, true);
+    if (shareErrors.length > 0) resp.shareErrors = shareErrors;
+    res.json(resp);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Fetch a shared doc (public, so anyone with the link can view/fill)
