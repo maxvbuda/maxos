@@ -514,9 +514,7 @@ app.post('/api/shared', auth, async (req, res) => {
       }
     }
 
-    const resp = serializeShared(doc, true);
-    resp._debug_share = shareDebug;
-    if (shareErrors.length > 0) resp.shareErrors = shareErrors;
+    const resp = { ...serializeShared(doc, true), shareDebug, shareErrors };
     res.json(resp);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
