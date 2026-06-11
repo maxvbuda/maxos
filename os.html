@@ -4313,40 +4313,14 @@ async function driveLoad() {
   const items = await fsLs(driveCwd);
   if (items.error || !Array.isArray(items)) { grid.innerHTML = `<div class="drive-empty">${items.error || 'Error'}</div>`; return; }
   if (!items.length) { grid.innerHTML = '<div class="drive-empty">This folder is empty.<br>Click ＋ New to create something.</div>'; return; }
+  driveItems = items;
   grid.innerHTML = items.map((f, i) => {
     const icon = f.type === 'directory' ? '📁' : driveIcon(f.name);
-    const escapedName = f.name.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    return `<div class="drive-card" data-i="${i}">
-      <button class="dc-del" title="Delete" data-i="${i}">🗑</button>
+    return `<div class="drive-card" data-i="${i}" onclick="driveCardClick(${i})">
+      <button class="dc-del" title="Delete" data-i="${i}" onclick="event.stopPropagation();driveDelete(${i})">🗑</button>
       <div class="dc-icon">${icon}</div><div class="dc-name">${f.name}</div>
       <div class="dc-meta">${f.type === 'directory' ? 'Folder' : driveKind(f.name)}</div></div>`;
   }).join('');
-  driveItems = items;
-
-  // Add event listeners for iPad/Desktop differences
-  grid.querySelectorAll('.drive-card').forEach(card => {
-    const i = parseInt(card.dataset.i);
-    const f = driveItems[i];
-    if (!f) return;
-
-    const handler = (e) => {
-      if (e.target.classList.contains('dc-del')) return; // don't open on delete button
-      driveOpen(f.path, f.type, f.name);
-    };
-    if (deviceMode === 'ipad') {
-      card.addEventListener('click', handler);
-    } else {
-      card.addEventListener('dblclick', handler);
-    }
-  });
-
-  // Delete button handlers
-  grid.querySelectorAll('.dc-del').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      driveDelete(parseInt(btn.dataset.i));
-    });
-  });
 }
 let driveItems = [];
 async function driveDelete(i) {
@@ -4367,6 +4341,27 @@ function driveKind(name) {
   return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
+let driveClickTime = 0;
+function driveCardClick(i) {
+  const f = driveItems[i];
+  if (!f) return;
+
+  // On iPad, single click opens. On Desktop, check for double-click.
+  if (deviceMode === 'ipad') {
+    driveOpen(f.path, f.type, f.name);
+  } else {
+    // Desktop: require double-click
+    const now = Date.now();
+    if (driveClickTime > 0 && now - driveClickTime < 300) {
+      // Double click detected
+      driveOpen(f.path, f.type, f.name);
+      driveClickTime = 0;
+    } else {
+      driveClickTime = now;
+    }
+  }
+}
+
 function driveOpen(path, type, name) {
   if (type === 'directory') { driveCwd = path; driveLoad(); return; }
   const ext = name.split('.').pop().toLowerCase();
