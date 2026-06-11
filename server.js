@@ -442,6 +442,23 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Add a shared doc to recipient's MaxDrive
+async function addSharedToUserDrive(userId, type, title, content, fromUser) {
+  try {
+    const user = await User.findById(userId);
+    if (!user) return;
+    const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
+    const ext = extMap[type] || '.txt';
+    const sharedDir = `/home/${user.username}/Shared with me`;
+    // Ensure "Shared with me" folder exists
+    await File.findOneAndUpdate({ userId, path: sharedDir, type: 'directory' }, { type: 'directory', name: 'Shared with me', parent: `/home/${user.username}` }, { upsert: true });
+    // Create file in that folder
+    const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
+    const filepath = `${sharedDir}/${filename}${ext}`;
+    await File.findOneAndUpdate({ userId, path: filepath }, { name: `${filename}${ext}`, type: 'file', content, parent: sharedDir }, { upsert: true });
+  } catch (e) { /* ignore — don't fail the share if file copy fails */ }
+}
+
 // ── Shared documents (publish Forms & Sheets) ────────────────────────────────
 // Publish or update a shared form/sheet
 app.post('/api/shared', auth, async (req, res) => {
@@ -453,6 +470,10 @@ app.post('/api/shared', auth, async (req, res) => {
     const vis = typeof visibility === 'undefined' ? undefined : (visibility === 'private' ? 'private' : 'public');
     let doc = null;
     if (id) { doc = await Shared.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
+
+    // Track old allow list to detect changes
+    const oldAllow = doc ? (doc.allow || []) : [];
+
     if (doc) {
       Object.assign(doc, { title, content });
       if (typeof vis !== 'undefined') doc.visibility = vis;
@@ -462,6 +483,16 @@ app.post('/api/shared', auth, async (req, res) => {
       const slug = await (async b => { let s = b, n = 1; while (await Shared.findOne({ id: s })) s = b + (++n); return s; })(slugify(title) || type);
       doc = await Shared.create({ id: slug, type, title, content, authorId: req.user.id, authorName: req.user.username, visibility: vis || 'public', allow: normUsers(allow) });
     }
+
+    // If now private, add files to allowed users' drives (new additions only)
+    if (doc.visibility === 'private' && doc.allow && doc.allow.length > 0) {
+      const newUsers = doc.allow.filter(u => !oldAllow.includes(u));
+      for (const username of newUsers) {
+        const user = await User.findOne({ username: username.toLowerCase() });
+        if (user) await addSharedToUserDrive(user._id, type, title, content, req.user.username);
+      }
+    }
+
     res.json(serializeShared(doc, true));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
