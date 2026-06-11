@@ -1630,7 +1630,8 @@ async function fmLoad(path) {
 
   grid.innerHTML = files.map(f => {
     const icon = f.type === 'directory' ? '📁' : fileIcon(f.name);
-    return `<div class="fm-item" ondblclick="fmOpen('${f.path}','${f.type}','${f.name}')">
+    const event = deviceMode === 'ipad' ? 'onclick' : 'ondblclick';
+    return `<div class="fm-item" ${event}="fmOpen('${f.path}','${f.type}','${f.name}')">
       <span class="icon">${icon}</span><span>${f.name}</span>
     </div>`;
   }).join('');
