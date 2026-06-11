@@ -1630,7 +1630,8 @@ async function fmLoad(path) {
 
   grid.innerHTML = files.map(f => {
     const icon = f.type === 'directory' ? '📁' : fileIcon(f.name);
-    const event = deviceMode === 'ipad' ? 'onclick' : 'ondblclick';
+    // Touch devices open on a single tap; mouse opens on double-click.
+    const event = isTouchDevice() ? 'onclick' : 'ondblclick';
     return `<div class="fm-item" ${event}="fmOpen('${f.path}','${f.type}','${f.name}')">
       <span class="icon">${icon}</span><span>${f.name}</span>
     </div>`;
@@ -4341,19 +4342,25 @@ function driveKind(name) {
   return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
-let driveClickTime = 0;
+// True on iPad/iPhone/touchscreens regardless of the saved deviceMode setting.
+function isTouchDevice() {
+  return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+}
+let driveClickTime = 0, driveClickIdx = -1;
 function driveCardClick(i) {
   const f = driveItems[i];
   if (!f) return;
-
-  // Both iPad and Desktop use double-click
-  const now = Date.now();
-  if (driveClickTime > 0 && now - driveClickTime < 300) {
-    // Double click detected
+  // Touch devices: a single tap opens. Mouse: require a double-click.
+  if (isTouchDevice()) {
     driveOpen(f.path, f.type, f.name);
-    driveClickTime = 0;
+    return;
+  }
+  const now = Date.now();
+  if (driveClickIdx === i && now - driveClickTime < 400) {
+    driveOpen(f.path, f.type, f.name);
+    driveClickTime = 0; driveClickIdx = -1;
   } else {
-    driveClickTime = now;
+    driveClickTime = now; driveClickIdx = i;
   }
 }
 
