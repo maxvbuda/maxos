@@ -4315,7 +4315,8 @@ async function driveLoad() {
   if (!items.length) { grid.innerHTML = '<div class="drive-empty">This folder is empty.<br>Click ＋ New to create something.</div>'; return; }
   grid.innerHTML = items.map((f, i) => {
     const icon = f.type === 'directory' ? '📁' : driveIcon(f.name);
-    return `<div class="drive-card" data-i="${i}" ondblclick="driveOpen('${f.path}','${f.type}','${f.name.replace(/'/g, "")}')">
+    const event = deviceMode === 'ipad' ? 'onclick' : 'ondblclick';
+    return `<div class="drive-card" data-i="${i}" ${event}="driveOpen('${f.path}','${f.type}','${f.name.replace(/'/g, "")}')">
       <button class="dc-del" title="Delete" onclick="event.stopPropagation();driveDelete(${i})">🗑</button>
       <div class="dc-icon">${icon}</div><div class="dc-name">${f.name}</div>
       <div class="dc-meta">${f.type === 'directory' ? 'Folder' : driveKind(f.name)}</div></div>`;
