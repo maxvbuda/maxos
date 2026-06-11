@@ -444,29 +444,28 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
 
 // Add a shared doc to recipient's MaxDrive
 async function addSharedToUserDrive(userId, type, title, content, fromUser) {
-  try {
-    const user = await User.findById(userId);
-    if (!user) return;
-    const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
-    const ext = extMap[type] || '.txt';
-    const sharedDir = `/home/${user.username}/Shared with me`;
-    const homeDir = `/home/${user.username}`;
-    // Ensure "Shared with me" folder exists
-    const dirExists = await File.findOne({ userId, path: sharedDir });
-    if (!dirExists) {
-      await File.create({ userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: homeDir });
-    }
-    // Create file in that folder
-    const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
-    const filepath = `${sharedDir}/${filename}${ext}`;
-    const fileExists = await File.findOne({ userId, path: filepath });
-    if (!fileExists) {
-      await File.create({ userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir });
-    } else {
-      // If file already exists, update content
-      await File.findOneAndUpdate({ userId, path: filepath }, { content });
-    }
-  } catch (e) { /* ignore — don't fail the share if file copy fails */ }
+  const user = await User.findById(userId);
+  if (!user) throw new Error('User not found');
+  const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
+  const ext = extMap[type] || '.txt';
+  const sharedDir = `/home/${user.username}/Shared with me`;
+  const homeDir = `/home/${user.username}`;
+  // Ensure "Shared with me" folder exists
+  const dirExists = await File.findOne({ userId, path: sharedDir });
+  if (!dirExists) {
+    await File.create({ userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: homeDir });
+  }
+  // Create file in that folder
+  const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
+  const filepath = `${sharedDir}/${filename}${ext}`;
+  const fileExists = await File.findOne({ userId, path: filepath });
+  if (!fileExists) {
+    const f = await File.create({ userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir });
+    return f;
+  } else {
+    // If file already exists, update content
+    return await File.findOneAndUpdate({ userId, path: filepath }, { content }, { new: true });
+  }
 }
 
 // ── Shared documents (publish Forms & Sheets) ────────────────────────────────
@@ -498,8 +497,14 @@ app.post('/api/shared', auth, async (req, res) => {
     if (doc.visibility === 'private' && doc.allow && doc.allow.length > 0) {
       const newUsers = doc.allow.filter(u => !oldAllow.includes(u));
       for (const username of newUsers) {
-        const user = await User.findOne({ username: username.toLowerCase() });
-        if (user) await addSharedToUserDrive(user._id, type, title, content, req.user.username);
+        const user = await User.findOne({ username });
+        if (user) {
+          try {
+            await addSharedToUserDrive(user._id, type, title, content, req.user.username);
+          } catch (e) {
+            console.error(`Failed to add shared doc to ${username}:`, e.message);
+          }
+        }
       }
     }
 
