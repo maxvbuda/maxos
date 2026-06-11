@@ -4346,19 +4346,14 @@ function driveCardClick(i) {
   const f = driveItems[i];
   if (!f) return;
 
-  // On iPad, single click opens. On Desktop, check for double-click.
-  if (deviceMode === 'ipad') {
+  // Both iPad and Desktop use double-click
+  const now = Date.now();
+  if (driveClickTime > 0 && now - driveClickTime < 300) {
+    // Double click detected
     driveOpen(f.path, f.type, f.name);
+    driveClickTime = 0;
   } else {
-    // Desktop: require double-click
-    const now = Date.now();
-    if (driveClickTime > 0 && now - driveClickTime < 300) {
-      // Double click detected
-      driveOpen(f.path, f.type, f.name);
-      driveClickTime = 0;
-    } else {
-      driveClickTime = now;
-    }
+    driveClickTime = now;
   }
 }
 
