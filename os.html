@@ -4467,43 +4467,76 @@ async function formsOpenPath(path, name) {
 
 // ══ SHARING — publish Forms & Sheets, collect responses ══════════════════════
 let sharedSheetId = null, formSharedId = null, formRespondMode = false, sharedDocId = null;
-async function shareDoc(type, title, content, currentId) {
-  const r = await apiFetch('/api/shared', { method: 'POST', body: JSON.stringify({ id: currentId, type, title, content }) });
+// Returns the full server share object ({id,type,title,content,visibility,allow}) or null.
+// visibility/allow are omitted on a plain (re)publish so the server keeps existing audience settings.
+async function shareDoc(type, title, content, currentId, visibility, allow) {
+  const body = { id: currentId, type, title, content };
+  if (typeof visibility !== 'undefined') { body.visibility = visibility; body.allow = allow || []; }
+  const r = await apiFetch('/api/shared', { method: 'POST', body: JSON.stringify(body) });
   if (r.error) { notify('⚠️', 'Publish failed', r.error); return null; }
-  return r.id;
+  return r;
 }
-function shareModal(id, kind) {
-  const url = `https://${MAXOS_DOMAIN}/s/${id}`;
+function shareModal(share, kind) {
+  const url = `https://${MAXOS_DOMAIN}/s/${share.id}`;
+  const verb = kind === 'Form' ? 'open this form' : 'view this';
   const ov = document.createElement('div'); ov.className = 'drive-modal';
-  ov.innerHTML = `<div class="drive-box"><div class="drive-head">🔗 ${kind} published!</div>
-    <div style="padding:16px">
-      <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:10px">Anyone with this link can ${kind === 'Form' ? 'open and fill it out' : 'view it'}:</p>
-      <div style="display:flex;gap:8px"><input id="share-url" readonly value="${url}" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:9px 12px;font-size:13px">
-      <button class="gbtn" onclick="copyShare('${url}')">Copy</button></div>
-    </div>
-    <div style="text-align:right;padding:10px"><button class="gbtn" id="share-close">Done</button></div></div>`;
+  ov.innerHTML = `<div class="drive-box" style="width:440px"></div>`;
+  const box = ov.querySelector('.drive-box');
+  const parseAllow = () => { const ta = ov.querySelector('#share-allow'); return ta ? ta.value.split(/[\s,]+/).map(s => s.trim().toLowerCase().replace(/^@/, '')).filter(Boolean) : (share.allow || []); };
+  const render = () => {
+    const priv = share.visibility === 'private';
+    box.innerHTML = `<div class="drive-head">🔗 ${kind} published!</div>
+      <div style="padding:16px">
+        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:8px">Share link:</p>
+        <div style="display:flex;gap:8px;margin-bottom:18px">
+          <input id="share-url" readonly value="${url}" style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:9px 12px;font-size:13px">
+          <button class="gbtn" id="share-copy">Copy</button></div>
+        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:8px">Who can ${verb}?</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="gbtn share-aud" data-vis="public" style="flex:1;${!priv ? 'background:rgba(110,160,255,.35);border-color:rgba(110,160,255,.6)' : ''}">🌐 Anyone with link</button>
+          <button class="gbtn share-aud" data-vis="private" style="flex:1;${priv ? 'background:rgba(110,160,255,.35);border-color:rgba(110,160,255,.6)' : ''}">🔒 Specific people</button>
+        </div>
+        <div id="share-people" style="display:${priv ? 'block' : 'none'}">
+          <p style="color:rgba(255,255,255,.45);font-size:12px;margin-bottom:6px">Usernames allowed (comma or space separated):</p>
+          <textarea id="share-allow" rows="2" placeholder="alice, bob, charlie" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:9px 12px;font-size:13px;resize:vertical">${(share.allow || []).join(', ')}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px"><button class="gbtn" id="share-save">Save access</button><button class="gbtn" id="share-close">Done</button></div>`;
+    ov.querySelector('#share-copy').onclick = () => copyShare(url);
+    ov.querySelector('#share-close').onclick = () => ov.remove();
+    ov.querySelectorAll('.share-aud').forEach(b => b.onclick = () => { share.allow = parseAllow(); share.visibility = b.dataset.vis; render(); });
+    ov.querySelector('#share-save').onclick = async () => {
+      const vis = share.visibility, allow = vis === 'private' ? parseAllow() : [];
+      const updated = await shareDoc(share.type, share.title, share.content, share.id, vis, allow);
+      if (updated) {
+        Object.assign(share, updated);
+        notify('🔒', 'Access updated', vis === 'private' ? `Only ${allow.length} ${allow.length === 1 ? 'person' : 'people'} can ${verb}` : 'Anyone with the link can ' + verb);
+        render();
+      }
+    };
+  };
   document.body.appendChild(ov);
-  ov.querySelector('#share-close').onclick = () => ov.remove();
+  render();
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
 }
 function copyShare(url) { navigator.clipboard?.writeText(url); notify('🔗', 'Copied!', 'Share link copied to clipboard'); }
 
 async function sheetsShare() {
   const title = document.getElementById('sheets-name').value || 'Untitled Sheet';
-  const id = await shareDoc('sheet', title, sheetsToCsv(), sharedSheetId);
-  if (id) { sharedSheetId = id; shareModal(id, 'Sheet'); }
+  const r = await shareDoc('sheet', title, sheetsToCsv(), sharedSheetId);
+  if (r) { sharedSheetId = r.id; shareModal(r, 'Sheet'); }
 }
 async function formsShare() {
   const title = document.getElementById('forms-name').value || 'Untitled Form';
   formDef.title = title;
-  const id = await shareDoc('form', title, JSON.stringify(formDef), formSharedId);
-  if (id) { formSharedId = id; shareModal(id, 'Form'); }
+  const r = await shareDoc('form', title, JSON.stringify(formDef), formSharedId);
+  if (r) { formSharedId = r.id; shareModal(r, 'Form'); }
 }
 async function docsShare() {
   const fn = document.getElementById('editor-filename')?.textContent || '';
   const title = (editorCurrentPath ? editorCurrentPath.split('/').pop() : fn).replace(/\.(docs|html?|txt|md)$/i, '') || 'Untitled Doc';
-  const id = await shareDoc('doc', title, editorGetContent(), sharedDocId);
-  if (id) { sharedDocId = id; shareModal(id, 'Doc'); }
+  const r = await shareDoc('doc', title, editorGetContent(), sharedDocId);
+  if (r) { sharedDocId = r.id; shareModal(r, 'Doc'); }
 }
 async function formsResponses() {
   if (!formSharedId) { notify('📊', 'Share first', 'Publish the form with 🔗 Share to collect responses'); return; }
@@ -4519,8 +4552,11 @@ async function formsResponses() {
 }
 // Open a shared doc by id (from a /s/<id> link)
 async function openShared(id) {
-  const doc = await apiFetch('/api/shared/' + id);
-  if (doc.error || !doc.id) { notify('🔗', 'Link not found', 'That shared document does not exist'); return; }
+  let doc, status = 0;
+  try { const r = await fetch(API + '/api/shared/' + id, { headers: authHeaders() }); status = r.status; doc = await r.json(); }
+  catch { notify('🔗', 'Offline', 'Could not reach the server'); return; }
+  if (status === 401 || status === 403) { notify('🔒', 'Access restricted', doc.error || 'You don’t have permission to view this'); return; }
+  if (!doc || doc.error || !doc.id) { notify('🔗', 'Link not found', 'That shared document does not exist'); return; }
   if (doc.type === 'form') {
     openApp('forms');
     setTimeout(() => {

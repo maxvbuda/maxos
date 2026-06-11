@@ -96,6 +96,8 @@ const SharedSchema = new mongoose.Schema({
   authorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   authorName: { type: String, required: true },
   views:      { type: Number, default: 0 },
+  visibility: { type: String, enum: ['public', 'private'], default: 'public' }, // public = anyone w/ link; private = owner + allow list
+  allow:      { type: [String], default: [] }, // lowercased usernames allowed to view when private
 }, { timestamps: true });
 
 const ResponseSchema = new mongoose.Schema({
@@ -116,7 +118,9 @@ const FileVersion = mongoose.model('FileVersion', VersionSchema);
 const Shared = mongoose.model('Shared', SharedSchema);
 const Response = mongoose.model('Response', ResponseSchema);
 
-const serializeShared = d => ({ id: d.id, type: d.type, title: d.title, content: d.content, author: d.authorName, views: d.views });
+// `allow` (the viewer list) is only revealed to the owner, never to plain viewers
+const serializeShared = (d, isOwner) => ({ id: d.id, type: d.type, title: d.title, content: d.content, author: d.authorName, views: d.views, visibility: d.visibility || 'public', ...(isOwner ? { allow: d.allow || [] } : {}) });
+const normUsers = a => Array.isArray(a) ? [...new Set(a.map(u => String(u).trim().toLowerCase().replace(/^@/, '')).filter(Boolean))] : [];
 
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
@@ -158,6 +162,18 @@ async function auth(req, res, next) {
 }
 function adminOnly(req, res, next) {
   if (!req.user.admin) return res.status(403).json({ error: 'Admins only' });
+  next();
+}
+// Like auth, but never rejects — sets req.user only when a valid, active token is present
+async function optionalAuth(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      const user = await User.findById(payload.id);
+      if (user && !user.suspended) req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin };
+    } catch { /* ignore — treat as anonymous */ }
+  }
   next();
 }
 
@@ -430,21 +446,37 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
 // Publish or update a shared form/sheet
 app.post('/api/shared', auth, async (req, res) => {
   try {
-    const { id, type, title, content } = req.body;
+    const { id, type, title, content, visibility, allow } = req.body;
     if (!type || !['form', 'sheet', 'doc'].includes(type)) return res.status(400).json({ error: 'Bad type' });
+    // Only touch audience settings when the client explicitly sends them, so a plain
+    // re-publish (Save) keeps the existing visibility instead of resetting to public.
+    const vis = typeof visibility === 'undefined' ? undefined : (visibility === 'private' ? 'private' : 'public');
     let doc = null;
     if (id) { doc = await Shared.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
-    if (doc) { Object.assign(doc, { title, content }); await doc.save(); }
-    else { const slug = await (async b => { let s = b, n = 1; while (await Shared.findOne({ id: s })) s = b + (++n); return s; })(slugify(title) || type); doc = await Shared.create({ id: slug, type, title, content, authorId: req.user.id, authorName: req.user.username }); }
-    res.json(serializeShared(doc));
+    if (doc) {
+      Object.assign(doc, { title, content });
+      if (typeof vis !== 'undefined') doc.visibility = vis;
+      if (typeof allow !== 'undefined') doc.allow = normUsers(allow);
+      await doc.save();
+    } else {
+      const slug = await (async b => { let s = b, n = 1; while (await Shared.findOne({ id: s })) s = b + (++n); return s; })(slugify(title) || type);
+      doc = await Shared.create({ id: slug, type, title, content, authorId: req.user.id, authorName: req.user.username, visibility: vis || 'public', allow: normUsers(allow) });
+    }
+    res.json(serializeShared(doc, true));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Fetch a shared doc (public, so anyone with the link can view/fill)
-app.get('/api/shared/:id', async (req, res) => {
+app.get('/api/shared/:id', optionalAuth, async (req, res) => {
   try {
-    const d = await Shared.findOneAndUpdate({ id: req.params.id }, { $inc: { views: 1 } }, { new: true });
+    const d = await Shared.findOne({ id: req.params.id });
     if (!d) return res.status(404).json({ error: 'Not found' });
-    res.json(serializeShared(d));
+    const isOwner = req.user && d.authorId.toString() === req.user.id;
+    if ((d.visibility || 'public') === 'private' && !isOwner) {
+      if (!req.user) return res.status(401).json({ error: 'Sign in to view this private document' });
+      if (!(d.allow || []).includes(req.user.username.toLowerCase())) return res.status(403).json({ error: "You don't have access to this document" });
+    }
+    if (!isOwner) { d.views = (d.views || 0) + 1; await d.save(); } // count a view only once access is granted
+    res.json(serializeShared(d, isOwner));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Submit a response to a shared form
@@ -452,6 +484,9 @@ app.post('/api/shared/:id/respond', auth, async (req, res) => {
   try {
     const d = await Shared.findOne({ id: req.params.id });
     if (!d || d.type !== 'form') return res.status(404).json({ error: 'Form not found' });
+    const isOwner = d.authorId.toString() === req.user.id;
+    if ((d.visibility || 'public') === 'private' && !isOwner && !(d.allow || []).includes(req.user.username.toLowerCase()))
+      return res.status(403).json({ error: "You don't have access to this form" });
     await Response.create({ sharedId: req.params.id, answers: req.body.answers || [], byName: req.user.username });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
