@@ -807,6 +807,7 @@
   <button class="dock-btn" id="dock-home" onclick="toggleStartMenu()" title="Apps">🖥️</button>
   <div id="dock-apps" style="display:flex;gap:8px;overflow-x:auto;max-width:calc(100vw - 140px)"></div>
   <button class="dock-btn" id="dock-spotlight" onclick="toggleSpotlight()" title="Search">🔍</button>
+  <button class="dock-btn" id="dock-logout" onclick="ipadLogoutMenu()" title="Account">👤</button>
 </div>
 
 <!-- Start Menu -->
@@ -882,6 +883,19 @@ function logout() {
   localStorage.removeItem('maxos_user');
   authToken = null; currentUser = null;
   location.reload();
+}
+
+function ipadLogoutMenu() {
+  const menu = document.createElement('div');
+  menu.className = 'drive-modal';
+  menu.innerHTML = `<div class="drive-box" style="width:240px;bottom:100px;position:fixed;left:50%;transform:translateX(-50%)">
+    <div class="drive-head">Account</div>
+    <div class="start-item" onclick="openApp('settings');this.closest('.drive-modal').remove()"><span class="icon">⚙️</span> Settings</div>
+    <div class="ctx-sep" style="margin:4px 0"></div>
+    <div class="start-item" onclick="logout()" style="color:#ff5f57"><span class="icon">🚪</span> Sign Out</div>
+  </div>`;
+  document.body.appendChild(menu);
+  menu.onclick = e => { if (e.target === menu) menu.remove(); };
 }
 
 // Heartbeat: detect suspension/deletion within seconds (no reload needed)
