@@ -137,6 +137,7 @@ async function seedUser(userId, username) {
     { userId, path: h,                    name: username,     type: 'directory', parent: '/home' },
     { userId, path: `${h}/documents`,     name: 'documents',  type: 'directory', parent: h },
     { userId, path: `${h}/pictures`,      name: 'pictures',   type: 'directory', parent: h },
+    { userId, path: `${h}/Shared with me`, name: 'Shared with me', type: 'directory', parent: h },
     { userId, path: `${h}/readme.txt`,    name: 'readme.txt', type: 'file',      parent: h,
       content: 'Welcome to MaxOS!\nYour personal files are stored here in MongoDB.' },
     { userId, path: `${h}/notes.md`,      name: 'notes.md',   type: 'file',      parent: h,
@@ -450,45 +451,19 @@ async function addSharedToUserDrive(userId, type, title, content, fromUser) {
   const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
   const ext = extMap[type] || '.txt';
   const sharedDir = `/home/${user.username}/Shared with me`;
-  const homeDir = `/home/${user.username}`;
 
-  console.log(`[SHARE] Adding ${type} "${title}" to ${user.username}`);
-
-  // Ensure "Shared with me" folder exists
-  try {
-    const dirExists = await File.findOne({ userId, path: sharedDir });
-    if (!dirExists) {
-      console.log(`[SHARE] Creating folder: ${sharedDir}`);
-      const dirFile = await File.create({
-        userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: homeDir
-      });
-      console.log(`[SHARE] Folder created: ${dirFile._id}`);
-    }
-  } catch (e) {
-    console.error(`[SHARE] Failed to create folder: ${e.message}`);
-    throw e;
-  }
-
-  // Create file in that folder
+  // Create file in "Shared with me" folder
   const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
   const filepath = `${sharedDir}/${filename}${ext}`;
 
-  try {
-    const fileExists = await File.findOne({ userId, path: filepath });
-    if (!fileExists) {
-      console.log(`[SHARE] Creating file: ${filepath}`);
-      const f = await File.create({
-        userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir
-      });
-      console.log(`[SHARE] File created: ${f._id}`);
-      return f;
-    } else {
-      console.log(`[SHARE] File exists, updating: ${filepath}`);
-      return await File.findOneAndUpdate({ userId, path: filepath }, { content }, { new: true });
-    }
-  } catch (e) {
-    console.error(`[SHARE] Failed to create/update file: ${e.message}`);
-    throw e;
+  const fileExists = await File.findOne({ userId, path: filepath });
+  if (!fileExists) {
+    await File.create({
+      userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir
+    });
+  } else {
+    // If file already exists, update content
+    await File.findOneAndUpdate({ userId, path: filepath }, { content }, { new: true });
   }
 }
 
