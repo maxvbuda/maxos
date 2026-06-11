@@ -4315,13 +4315,36 @@ async function driveLoad() {
   if (!items.length) { grid.innerHTML = '<div class="drive-empty">This folder is empty.<br>Click ＋ New to create something.</div>'; return; }
   grid.innerHTML = items.map((f, i) => {
     const icon = f.type === 'directory' ? '📁' : driveIcon(f.name);
-    const event = deviceMode === 'ipad' ? 'onclick' : 'ondblclick';
-    return `<div class="drive-card" data-i="${i}" ${event}="driveOpen('${f.path}','${f.type}','${f.name.replace(/'/g, "")}')">
-      <button class="dc-del" title="Delete" onclick="event.stopPropagation();driveDelete(${i})">🗑</button>
+    return `<div class="drive-card" data-i="${i}" data-path="${f.path}" data-type="${f.type}" data-name="${f.name}">
+      <button class="dc-del" title="Delete" data-i="${i}">🗑</button>
       <div class="dc-icon">${icon}</div><div class="dc-name">${f.name}</div>
       <div class="dc-meta">${f.type === 'directory' ? 'Folder' : driveKind(f.name)}</div></div>`;
   }).join('');
   driveItems = items;
+
+  // Add event listeners for iPad/Desktop differences
+  grid.querySelectorAll('.drive-card').forEach(card => {
+    const handler = (e) => {
+      if (e.target.classList.contains('dc-del')) return; // don't open on delete button
+      const path = card.dataset.path;
+      const type = card.dataset.type;
+      const name = card.dataset.name;
+      driveOpen(path, type, name);
+    };
+    if (deviceMode === 'ipad') {
+      card.addEventListener('click', handler);
+    } else {
+      card.addEventListener('dblclick', handler);
+    }
+  });
+
+  // Delete button handlers
+  grid.querySelectorAll('.dc-del').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      driveDelete(parseInt(btn.dataset.i));
+    });
+  });
 }
 let driveItems = [];
 async function driveDelete(i) {
