@@ -1578,6 +1578,7 @@ function buildEditor() {
       <button onclick="editorOpen()">📂 Open</button>
       <button onclick="saveEditorToMongo()">💾 Save</button>
       <button onclick="editorSaveAs()">Save As</button>
+      <button onclick="docsShare()">🔗 Share</button>
       <button onclick="historyOpen('editor')">🕘 History</button>
       <button onclick="editorDownload()">⬇</button>
       <button onclick="clearEditor()">🗑</button>
@@ -1619,7 +1620,7 @@ function docBlock(tag) { docCmd('formatBlock', tag); }
 function docLink() { const u = prompt('Link URL:', 'https://'); if (u) docCmd('createLink', u); }
 
 async function editorOpenFile(path, name) {
-  editorCurrentPath = path;
+  editorCurrentPath = path; sharedDocId = null;
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = name;
   const res = await fsCat(path);
@@ -1629,7 +1630,7 @@ async function editorOpenFile(path, name) {
 async function editorOpen() {
   const picked = await drivePick(['docs', 'txt', 'md', 'json', 'js', 'csv', 'html']);
   if (!picked) return;
-  editorCurrentPath = picked.path;
+  editorCurrentPath = picked.path; sharedDocId = null;
   editorSetContent(picked.content, editorIsRich(picked.name));
   const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = picked.name;
 }
@@ -1659,7 +1660,7 @@ function editorDownload() {
 }
 
 function clearEditor() {
-  editorCurrentPath = null;
+  editorCurrentPath = null; sharedDocId = null;
   editorSetContent('', true);
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = 'untitled';
@@ -4465,7 +4466,7 @@ async function formsOpenPath(path, name) {
 }
 
 // ══ SHARING — publish Forms & Sheets, collect responses ══════════════════════
-let sharedSheetId = null, formSharedId = null, formRespondMode = false;
+let sharedSheetId = null, formSharedId = null, formRespondMode = false, sharedDocId = null;
 async function shareDoc(type, title, content, currentId) {
   const r = await apiFetch('/api/shared', { method: 'POST', body: JSON.stringify({ id: currentId, type, title, content }) });
   if (r.error) { notify('⚠️', 'Publish failed', r.error); return null; }
@@ -4498,6 +4499,12 @@ async function formsShare() {
   const id = await shareDoc('form', title, JSON.stringify(formDef), formSharedId);
   if (id) { formSharedId = id; shareModal(id, 'Form'); }
 }
+async function docsShare() {
+  const fn = document.getElementById('editor-filename')?.textContent || '';
+  const title = (editorCurrentPath ? editorCurrentPath.split('/').pop() : fn).replace(/\.(docs|html?|txt|md)$/i, '') || 'Untitled Doc';
+  const id = await shareDoc('doc', title, editorGetContent(), sharedDocId);
+  if (id) { sharedDocId = id; shareModal(id, 'Doc'); }
+}
 async function formsResponses() {
   if (!formSharedId) { notify('📊', 'Share first', 'Publish the form with 🔗 Share to collect responses'); return; }
   const list = await apiFetch('/api/shared/' + formSharedId + '/responses');
@@ -4523,6 +4530,13 @@ async function openShared(id) {
       const nm = document.getElementById('forms-name'); if (nm) nm.value = formDef.title || doc.title;
       formsRender();
       notify('📋', 'Filling: ' + (doc.title || 'Form'), 'Shared by @' + doc.author);
+    }, 300);
+  } else if (doc.type === 'doc') {
+    openApp('editor');
+    setTimeout(() => {
+      editorSetContent(doc.content, true); sharedDocId = doc.id; editorCurrentPath = null;
+      const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = doc.title;
+      notify('📘', 'Viewing: ' + doc.title, 'Shared by @' + doc.author);
     }, 300);
   } else {
     openApp('sheets');

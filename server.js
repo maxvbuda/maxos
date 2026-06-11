@@ -90,7 +90,7 @@ VersionSchema.index({ userId: 1, path: 1, createdAt: -1 });
 
 const SharedSchema = new mongoose.Schema({
   id:         { type: String, required: true, unique: true }, // share slug
-  type:       { type: String, enum: ['form', 'sheet'], required: true },
+  type:       { type: String, enum: ['form', 'sheet', 'doc'], required: true },
   title:      { type: String, default: 'Untitled' },
   content:    { type: String, default: '' }, // form JSON or sheet CSV
   authorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -431,7 +431,7 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
 app.post('/api/shared', auth, async (req, res) => {
   try {
     const { id, type, title, content } = req.body;
-    if (!type || !['form', 'sheet'].includes(type)) return res.status(400).json({ error: 'Bad type' });
+    if (!type || !['form', 'sheet', 'doc'].includes(type)) return res.status(400).json({ error: 'Bad type' });
     let doc = null;
     if (id) { doc = await Shared.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
     if (doc) { Object.assign(doc, { title, content }); await doc.save(); }
