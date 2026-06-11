@@ -28,6 +28,21 @@
   .login-btn:active { transform:scale(.98); }
   .login-error { color:#ff5f57; font-size:13px; text-align:center; min-height:18px; }
   .login-footer { color:rgba(255,255,255,.3); font-size:12px; text-align:center; }
+  .login-device-select { display:flex; gap:12px; margin:8px 0; }
+  .device-btn { flex:1; padding:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:rgba(255,255,255,.6); font-size:13px; font-weight:500; cursor:pointer; transition:all .15s; }
+  .device-btn:hover { background:rgba(255,255,255,.12); }
+  .device-btn.active { background:linear-gradient(135deg,#64b4ff,#bf5af2); color:#fff; border-color:rgba(100,180,255,.6); }
+  .login-device-label { color:rgba(255,255,255,.45); font-size:12px; margin-bottom:6px; }
+
+  /* iPad Dock (bottom macOS-style) */
+  #dock { position:fixed; bottom:0; left:0; right:0; height:80px; background:rgba(8,8,20,.8); backdrop-filter:blur(32px) saturate(180%); border-top:1px solid rgba(255,255,255,.07); display:none; align-items:flex-end; justify-content:center; gap:8px; padding:8px 12px 12px 12px; z-index:9999; }
+  .dock-btn { width:60px; height:60px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); border-radius:12px; color:#fff; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .12s; }
+  .dock-btn:hover { background:rgba(255,255,255,.16); transform:scale(1.1); }
+  .dock-btn.active { background:rgba(100,180,255,.22); border-color:rgba(100,180,255,.38); }
+
+  /* iPad full-screen windows */
+  .ipad-fullscreen .win-min, .ipad-fullscreen .win-max { display:none; }
+  .ipad-fullscreen .resize-handle { display:none; }
 
   /* Boot screen */
   #boot { position:fixed; inset:0; z-index:999999; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px; transition:opacity .7s ease; }
@@ -736,6 +751,11 @@
     <input class="login-input" id="auth-display" type="text" placeholder="Display name" autocomplete="off" style="display:none">
     <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
     <div class="login-error" id="auth-error"></div>
+    <div class="login-device-label">Device</div>
+    <div class="login-device-select">
+      <button class="device-btn active" type="button" onclick="selectDevice('desktop',this)">🖥️ Desktop</button>
+      <button class="device-btn" type="button" onclick="selectDevice('ipad',this)">📱 iPad</button>
+    </div>
     <button class="login-btn" id="auth-btn" type="submit">Sign In</button>
     </form>
     <div class="login-footer">MaxOS — Your personal web desktop</div>
@@ -782,6 +802,13 @@
   <div id="clock"><div class="ct"></div><div class="cd"></div></div>
 </div>
 
+<!-- Dock (iPad) -->
+<div id="dock">
+  <button class="dock-btn" id="dock-home" onclick="toggleStartMenu()" title="Apps">🖥️</button>
+  <div id="dock-apps" style="display:flex;gap:8px;overflow-x:auto;max-width:calc(100vw - 140px)"></div>
+  <button class="dock-btn" id="dock-spotlight" onclick="toggleSpotlight()" title="Search">🔍</button>
+</div>
+
 <!-- Start Menu -->
 <div id="start-menu">
   <h3>Apps</h3>
@@ -798,6 +825,7 @@ const API = 'https://maxos-1oe3.onrender.com';
 // ── Auth ──────────────────────────────────────────────────────────────────────
 let authToken = localStorage.getItem('maxos_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('maxos_user') || 'null');
+let deviceMode = localStorage.getItem('maxos_device') || 'desktop'; // 'desktop' or 'ipad'
 
 function authHeaders() {
   return authToken ? { 'Authorization': 'Bearer ' + authToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -811,6 +839,13 @@ function switchAuthTab(mode, btn) {
   document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
   document.getElementById('auth-display').style.display = mode === 'register' ? 'block' : 'none';
   document.getElementById('auth-error').textContent = '';
+}
+
+function selectDevice(mode, btn) {
+  deviceMode = mode;
+  document.querySelectorAll('.device-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  localStorage.setItem('maxos_device', mode);
 }
 
 async function authSubmit() {
@@ -834,6 +869,7 @@ async function authSubmit() {
     if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
     localStorage.setItem('maxos_token', authToken);
     localStorage.setItem('maxos_user', JSON.stringify(currentUser));
+    localStorage.setItem('maxos_device', deviceMode);
     document.getElementById('login-screen').style.display = 'none';
     bootOS();
   } catch (e) {
@@ -900,6 +936,7 @@ function bootOS() {
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
+  applyDeviceMode();
   renderDesktop();
   renderStartApps();
   checkServer().then(startUnreadPolling);
@@ -910,7 +947,7 @@ function bootOS() {
     if (!boot || boot.style.display === 'none') return;
     boot.classList.add('fade');
     setTimeout(() => boot.remove(), 700);
-    notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, 'Ctrl+Space for Spotlight');
+    notify('👋', `Welcome, ${currentUser?.displayName || 'User'}!`, (deviceMode === 'ipad' ? 'Swipe up for apps' : 'Ctrl+Space for Spotlight'));
   }, 2000);
   // Deep link: /s/<id> opens a shared form/sheet; /<app> opens an app
   const rawPath = location.pathname.replace(/^\/+|\/+$/g, '');
@@ -920,6 +957,25 @@ function bootOS() {
   } else if (seg && seg !== 'os.html') {
     if (apps[seg]) setTimeout(() => openApp(seg), 300);
     else ensureCustomApp(seg).then(ok => { if (ok) openApp(seg); });
+  }
+}
+
+function applyDeviceMode() {
+  const taskbar = document.getElementById('taskbar');
+  const dock = document.getElementById('dock');
+  const startMenu = document.getElementById('start-menu');
+  const desktop = document.getElementById('desktop');
+  if (deviceMode === 'ipad') {
+    taskbar.style.display = 'none';
+    dock.style.display = 'flex';
+    if (startMenu) startMenu.style.bottom = '96px'; // dock is 80px + padding
+    if (desktop) desktop.style.paddingBottom = '80px';
+    document.body.style.touchAction = 'manipulation';
+  } else {
+    taskbar.style.display = 'flex';
+    dock.style.display = 'none';
+    if (startMenu) startMenu.style.bottom = '58px';
+    if (desktop) desktop.style.paddingBottom = '0';
   }
 }
 
@@ -1331,10 +1387,19 @@ function renderDesktop() {
 function renderStartApps() {
   const c = document.getElementById('start-apps');
   if (!c) return;
-  c.innerHTML = desktopApps().map(id => {
+  const html = desktopApps().map(id => {
     const a = apps[id];
     return `<div class="start-item" onclick="openApp('${id}');toggleStartMenu()"><span class="icon">${a.icon}</span> ${a.title}</div>`;
   }).join('');
+  c.innerHTML = html;
+  // Also render dock for iPad
+  const d = document.getElementById('dock-apps');
+  if (d && deviceMode === 'ipad') {
+    d.innerHTML = desktopApps().map(id => {
+      const a = apps[id];
+      return `<button class="dock-btn" data-app="${id}" onclick="openApp('${id}')" title="${a.title}">${a.icon}</button>`;
+    }).join('');
+  }
 }
 
 function installApp(id) {
@@ -1369,9 +1434,14 @@ function openApp(id) {
   win.className = 'window focused';
   win.id = 'win-' + id;
 
-  const cx = Math.max(60, (window.innerWidth - app.w) / 2 + Math.random() * 80 - 40);
-  const cy = Math.max(30, (window.innerHeight - 48 - app.h) / 2 + Math.random() * 60 - 30);
-  win.style.cssText = `left:${cx}px;top:${cy}px;width:${app.w}px;height:${app.h}px`;
+  if (deviceMode === 'ipad') {
+    win.style.cssText = `left:0;top:0;width:100%;height:calc(100% - 80px);border-radius:0`;
+    win.classList.add('ipad-fullscreen');
+  } else {
+    const cx = Math.max(60, (window.innerWidth - app.w) / 2 + Math.random() * 80 - 40);
+    const cy = Math.max(30, (window.innerHeight - 48 - app.h) / 2 + Math.random() * 60 - 30);
+    win.style.cssText = `left:${cx}px;top:${cy}px;width:${app.w}px;height:${app.h}px`;
+  }
 
   win.innerHTML = `
     <div class="title-bar" id="tb-${id}">
@@ -1407,8 +1477,11 @@ function focusWindow(id) {
     w.minimized = false;
   }
   document.querySelectorAll('.taskbar-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.dock-btn').forEach(b => b.classList.remove('active'));
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.classList.add('active');
+  const db = document.querySelector(`.dock-btn[data-app="${id}"]`);
+  if (db) db.classList.add('active');
   setAppUrl(id);
 }
 
@@ -1470,6 +1543,7 @@ function addTaskbarBtn(id) {
 
 // ── Drag ────────────────────────────────────────────────────────────────────
 function makeDraggable(id) {
+  if (deviceMode === 'ipad') return; // no dragging on iPad
   const tb = document.getElementById('tb-' + id);
   const win = document.getElementById('win-' + id);
   let ox, oy;
@@ -1490,6 +1564,7 @@ function makeDraggable(id) {
 
 // ── Resize ──────────────────────────────────────────────────────────────────
 function makeResizable(id) {
+  if (deviceMode === 'ipad') return; // no resizing on iPad
   const rh = document.getElementById('rh-' + id);
   const win = document.getElementById('win-' + id);
   rh.addEventListener('mousedown', e => {
@@ -2050,15 +2125,20 @@ function initPaint() {
   ptCtx.fillStyle = '#1a1a2e'; ptCtx.fillRect(0,0,canvas.width,canvas.height);
   ptCtx.lineCap = 'round'; ptCtx.lineJoin = 'round';
 
-  canvas.onmousedown = e => { ptDrawing=true; ptCtx.beginPath(); ptCtx.moveTo(...ptXY(e,canvas)); if(ptCurTool==='fill') ptFill(ptXY(e,canvas)); };
-  canvas.onmousemove = e => {
+  const ptStart = e => { e.preventDefault(); ptDrawing=true; ptCtx.beginPath(); const touch = e.touches?.[0] || e; ptCtx.moveTo(...ptXY(touch,canvas)); if(ptCurTool==='fill') ptFill(ptXY(touch,canvas)); };
+  const ptMove = e => {
     if (!ptDrawing || ptCurTool==='fill') return;
+    e.preventDefault();
+    const touch = e.touches?.[0] || e;
     const sz = +document.getElementById('pt-size').value;
     ptCtx.lineWidth = ptCurTool==='eraser' ? sz*3 : sz;
     ptCtx.strokeStyle = ptCurTool==='eraser' ? '#1a1a2e' : ptCurColor;
-    ptCtx.lineTo(...ptXY(e,canvas)); ptCtx.stroke(); ptCtx.beginPath(); ptCtx.moveTo(...ptXY(e,canvas));
+    ptCtx.lineTo(...ptXY(touch,canvas)); ptCtx.stroke(); ptCtx.beginPath(); ptCtx.moveTo(...ptXY(touch,canvas));
   };
-  canvas.onmouseup = canvas.onmouseleave = () => { ptDrawing=false; };
+  const ptEnd = () => { ptDrawing=false; };
+  canvas.onmousedown = canvas.ontouchstart = ptStart;
+  canvas.onmousemove = canvas.ontouchmove = ptMove;
+  canvas.onmouseup = canvas.onmouseleave = canvas.ontouchend = canvas.ontouchcancel = ptEnd;
 }
 function ptXY(e,c) { const r=c.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
 function ptTool(t) {
