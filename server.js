@@ -445,26 +445,50 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
 // Add a shared doc to recipient's MaxDrive
 async function addSharedToUserDrive(userId, type, title, content, fromUser) {
   const user = await User.findById(userId);
-  if (!user) throw new Error('User not found');
+  if (!user) throw new Error(`User not found for ID ${userId}`);
+
   const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
   const ext = extMap[type] || '.txt';
   const sharedDir = `/home/${user.username}/Shared with me`;
   const homeDir = `/home/${user.username}`;
+
+  console.log(`[SHARE] Adding ${type} "${title}" to ${user.username}`);
+
   // Ensure "Shared with me" folder exists
-  const dirExists = await File.findOne({ userId, path: sharedDir });
-  if (!dirExists) {
-    await File.create({ userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: homeDir });
+  try {
+    const dirExists = await File.findOne({ userId, path: sharedDir });
+    if (!dirExists) {
+      console.log(`[SHARE] Creating folder: ${sharedDir}`);
+      const dirFile = await File.create({
+        userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: homeDir
+      });
+      console.log(`[SHARE] Folder created: ${dirFile._id}`);
+    }
+  } catch (e) {
+    console.error(`[SHARE] Failed to create folder: ${e.message}`);
+    throw e;
   }
+
   // Create file in that folder
   const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
   const filepath = `${sharedDir}/${filename}${ext}`;
-  const fileExists = await File.findOne({ userId, path: filepath });
-  if (!fileExists) {
-    const f = await File.create({ userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir });
-    return f;
-  } else {
-    // If file already exists, update content
-    return await File.findOneAndUpdate({ userId, path: filepath }, { content }, { new: true });
+
+  try {
+    const fileExists = await File.findOne({ userId, path: filepath });
+    if (!fileExists) {
+      console.log(`[SHARE] Creating file: ${filepath}`);
+      const f = await File.create({
+        userId, path: filepath, name: `${filename}${ext}`, type: 'file', content, parent: sharedDir
+      });
+      console.log(`[SHARE] File created: ${f._id}`);
+      return f;
+    } else {
+      console.log(`[SHARE] File exists, updating: ${filepath}`);
+      return await File.findOneAndUpdate({ userId, path: filepath }, { content }, { new: true });
+    }
+  } catch (e) {
+    console.error(`[SHARE] Failed to create/update file: ${e.message}`);
+    throw e;
   }
 }
 
@@ -496,14 +520,21 @@ app.post('/api/shared', auth, async (req, res) => {
     // If now private, add files to allowed users' drives (new additions only)
     if (doc.visibility === 'private' && doc.allow && doc.allow.length > 0) {
       const newUsers = doc.allow.filter(u => !oldAllow.includes(u));
+      console.log(`[SHARE] Processing private share, newUsers:`, newUsers);
       for (const username of newUsers) {
-        const user = await User.findOne({ username });
-        if (user) {
-          try {
-            await addSharedToUserDrive(user._id, type, title, content, req.user.username);
-          } catch (e) {
-            // Silently fail — don't fail the share if file copy fails
+        try {
+          console.log(`[SHARE] Looking up user: ${username}`);
+          const user = await User.findOne({ username });
+          if (!user) {
+            console.log(`[SHARE] User not found: ${username}`);
+            continue;
           }
+          console.log(`[SHARE] Found user ${username}, calling addSharedToUserDrive`);
+          await addSharedToUserDrive(user._id, type, title, content, req.user.username);
+          console.log(`[SHARE] Successfully added file for ${username}`);
+        } catch (e) {
+          console.error(`[SHARE] Error adding file for ${username}: ${e.message}`);
+          // Silently fail — don't fail the share if file copy fails
         }
       }
     }
