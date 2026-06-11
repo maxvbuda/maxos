@@ -153,6 +153,21 @@
   .editor-toolbar button { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.85); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; transition:background .1s; }
   .editor-toolbar button:hover { background:rgba(255,255,255,.18); }
   #editor-area { width:100%; height:calc(100% - 46px); background:transparent; border:none; outline:none; color:#d4d4d8; font-size:14px; line-height:1.7; padding:16px 20px; resize:none; font-family:'Menlo','Cascadia Code','Courier New',monospace; tab-size:2; }
+  /* Max Docs rich editor */
+  .doc-format { display:flex; align-items:center; gap:3px; flex-wrap:wrap; padding:6px 10px; background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.07); }
+  .doc-format button { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.85); border-radius:6px; min-width:28px; height:28px; padding:0 7px; font-size:13px; cursor:pointer; }
+  .doc-format button:hover { background:rgba(100,180,255,.3); }
+  .doc-format select { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.1); color:#fff; border-radius:6px; height:28px; font-size:12px; cursor:pointer; padding:0 4px; }
+  .doc-format select option { background:#1a1a2e; }
+  .doc-sep { width:1px; height:20px; background:rgba(255,255,255,.12); margin:0 4px; }
+  .doc-color { width:18px; height:18px; border-radius:50%; cursor:pointer; border:1px solid rgba(255,255,255,.25); }
+  .doc-area { flex:1; overflow-y:auto; outline:none; color:#e4e4e8; font-family:system-ui,-apple-system,sans-serif; font-size:15px; line-height:1.7; padding:20px 26px; }
+  .doc-area:empty:before { content:attr(data-ph); color:rgba(255,255,255,.3); }
+  .doc-area h1 { font-size:26px; margin:12px 0 6px; } .doc-area h2 { font-size:21px; margin:10px 0 6px; } .doc-area h3 { font-size:17px; margin:8px 0 4px; }
+  .doc-area blockquote { border-left:3px solid #64b4ff; margin:8px 0; padding:2px 14px; color:rgba(255,255,255,.7); }
+  .doc-area pre { background:rgba(0,0,0,.3); padding:12px; border-radius:8px; font-family:'Menlo',monospace; font-size:13px; overflow-x:auto; }
+  .doc-area ul, .doc-area ol { margin:8px 0 8px 26px; } .doc-area li { margin:3px 0; }
+  .doc-area a { color:#64b4ff; }
 
   .calc { padding:14px; display:flex; flex-direction:column; gap:10px; }
   .calc-display { background:rgba(0,0,0,.45); border-radius:12px; padding:16px 18px; text-align:right; font-size:36px; font-weight:200; color:#fff; min-height:72px; word-break:break-all; overflow:hidden; border:1px solid rgba(255,255,255,.06); }
@@ -1040,11 +1055,11 @@ async function driveWrite(path, content, auto) {
 const AUTOSAVE_MS = 15 * 60 * 1000; // 15 minutes
 const editorReg = {
   editor: {
-    getText: () => document.getElementById('editor-area')?.value,
-    setText: v => { const t = document.getElementById('editor-area'); if (t) t.value = v; },
+    getText: () => document.getElementById('editor-area') ? editorGetContent() : null,
+    setText: v => editorSetContent(v, true),
     getPath: () => editorCurrentPath,
     setPath: p => { editorCurrentPath = p; const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = p.split('/').pop(); },
-    defaultName: () => 'Untitled-' + tstamp() + '.txt',
+    defaultName: () => 'Untitled-' + tstamp() + '.docs',
   },
   markdown: {
     getText: () => document.getElementById('md-input')?.value,
@@ -1564,36 +1579,65 @@ function buildEditor() {
       <button onclick="saveEditorToMongo()">💾 Save</button>
       <button onclick="editorSaveAs()">Save As</button>
       <button onclick="historyOpen('editor')">🕘 History</button>
-      <button onclick="editorDownload()">⬇ Download</button>
-      <button onclick="clearEditor()">🗑 Clear</button>
+      <button onclick="editorDownload()">⬇</button>
+      <button onclick="clearEditor()">🗑</button>
       <span id="editor-filename" style="color:rgba(255,255,255,.4);font-size:12px;margin-left:auto">untitled</span>
     </div>
-    <textarea id="editor-area" placeholder="Start typing… then Save to MaxDrive" oninput="autosaveMark('editor')"></textarea>
+    <div class="doc-format">
+      <select onchange="docBlock(this.value)" title="Style">
+        <option value="P">Normal</option><option value="H1">Title</option><option value="H2">Heading</option><option value="H3">Subheading</option><option value="PRE">Code</option><option value="BLOCKQUOTE">Quote</option>
+      </select>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('bold')" style="font-weight:700">B</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('italic')" style="font-style:italic">I</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('underline')" style="text-decoration:underline">U</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('strikeThrough')" style="text-decoration:line-through">S</button>
+      <span class="doc-sep"></span>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('insertUnorderedList')" title="Bullet list">• ⋮</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('insertOrderedList')" title="Numbered list">1.</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('justifyLeft')" title="Left">⬅</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('justifyCenter')" title="Center">⬌</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('justifyRight')" title="Right">➡</button>
+      <span class="doc-sep"></span>
+      ${['#ffffff','#ff5f57','#febc2e','#28c840','#64b4ff','#bf5af2'].map(c => `<span class="doc-color" style="background:${c}" onmousedown="event.preventDefault()" onclick="docCmd('foreColor','${c}')"></span>`).join('')}
+      <span class="doc-sep"></span>
+      <button onmousedown="event.preventDefault()" onclick="docLink()" title="Link">🔗</button>
+      <button onmousedown="event.preventDefault()" onclick="docCmd('removeFormat')" title="Clear formatting">✕ᶠ</button>
+    </div>
+    <div id="editor-area" class="doc-area" contenteditable="true" oninput="autosaveMark('editor')" data-ph="Start typing… then Save to MaxDrive"></div>
   </div>`;
 }
+// Read/write rich content; only .docs/.html files render as HTML — everything
+// else (code, txt, md…) is escaped so it shows literally.
+function editorGetContent() { return document.getElementById('editor-area')?.innerHTML || ''; }
+function editorSetContent(content, asHtml) {
+  const ed = document.getElementById('editor-area'); if (!ed) return;
+  ed.innerHTML = asHtml ? (content || '') : escapeHtml(content || '').replace(/\n/g, '<br>');
+}
+const editorIsRich = name => /\.(docs|html?)$/i.test(name || '');
+function docCmd(cmd, val) { document.getElementById('editor-area')?.focus(); document.execCommand(cmd, false, val); autosaveMark('editor'); }
+function docBlock(tag) { docCmd('formatBlock', tag); }
+function docLink() { const u = prompt('Link URL:', 'https://'); if (u) docCmd('createLink', u); }
 
 async function editorOpenFile(path, name) {
   editorCurrentPath = path;
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = name;
   const res = await fsCat(path);
-  const ta = document.getElementById('editor-area');
-  if (ta) ta.value = res.error ? '(Error: ' + res.error + ')' : res.content;
+  editorSetContent(res.error ? '(Error: ' + res.error + ')' : res.content, editorIsRich(name));
 }
 
 async function editorOpen() {
   const picked = await drivePick(['docs', 'txt', 'md', 'json', 'js', 'csv', 'html']);
   if (!picked) return;
   editorCurrentPath = picked.path;
-  const ta = document.getElementById('editor-area'); if (ta) ta.value = picked.content;
+  editorSetContent(picked.content, editorIsRich(picked.name));
   const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = picked.name;
 }
 
 async function saveEditorToMongo() {
-  const ta = document.getElementById('editor-area');
-  if (!ta) return;
+  if (!document.getElementById('editor-area')) return;
   if (!editorCurrentPath) return editorSaveAs();
-  const res = await driveWrite(editorCurrentPath, ta.value);
+  const res = await driveWrite(editorCurrentPath, editorGetContent());
   autosaveClear('editor');
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = res.ok ? '✅ Saved to MaxDrive' : '❌ ' + res.error;
@@ -1601,24 +1645,22 @@ async function saveEditorToMongo() {
 }
 
 async function editorSaveAs() {
-  const ta = document.getElementById('editor-area'); if (!ta) return;
-  const path = await driveSaveAs('document.docs', ta.value);
+  if (!document.getElementById('editor-area')) return;
+  const path = await driveSaveAs('document.docs', editorGetContent());
   if (path) { editorCurrentPath = path; autosaveClear('editor'); const fn = document.getElementById('editor-filename'); if (fn) fn.textContent = path.split('/').pop(); }
 }
 
 function editorDownload() {
-  const text = document.getElementById('editor-area')?.value || '';
-  const blob = new Blob([text], { type: 'text/plain' });
+  const html = `<!DOCTYPE html><meta charset="utf-8"><body style="font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px">${editorGetContent()}`;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = editorCurrentPath ? editorCurrentPath.split('/').pop() : 'document.txt';
+  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  a.download = (editorCurrentPath ? editorCurrentPath.split('/').pop().replace(/\.\w+$/, '') : 'document') + '.html';
   a.click();
 }
 
 function clearEditor() {
   editorCurrentPath = null;
-  const ta = document.getElementById('editor-area');
-  if (ta) ta.value = '';
+  editorSetContent('', true);
   const fn = document.getElementById('editor-filename');
   if (fn) fn.textContent = 'untitled';
 }
