@@ -1,0 +1,25 @@
+# MAXCOIN — a fake crypto wallet + miner. Totally pretend; mines imaginary coins.
+# Paste into Make Your Own App (MaxScript) and Run.
+
+set coins to 0
+set rate to 1
+
+title: (center, huge) 🪙 MaxCoin Wallet
+text bal: (center, big, yellow) Balance: 0 MXC
+text ratelbl: (center, small, gray) Mining power: 1 /click
+
+button mine: (center, round, orange) ⛏️ Mine MaxCoin
+    add rate to coins
+    set text bal to "Balance: " + coins + " MXC"
+
+button upgrade: (center, round, purple) ⚡ Upgrade rig (cost 10 MXC)
+    if coins is not 0:
+        subtract 10 from coins
+        add 1 to rate
+        set text bal to "Balance: " + coins + " MXC"
+        set text ratelbl to "Mining power: " + rate + " /click"
+    end
+
+button cashout: (center, round, green) 💰 Cash out
+    set text bal to "Cashed out " + coins + " MXC for $0.00 (it is fake) 😂"
+    set coins to 0
