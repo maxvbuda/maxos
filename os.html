@@ -472,7 +472,14 @@
   .an-sw { width:20px; height:20px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,.25); display:inline-block; }
   .an-fps, .vid-dur { color:rgba(255,255,255,.6); font-size:12px; display:flex; align-items:center; gap:4px; }
   .an-fps input, .vid-dur input { width:46px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:6px; padding:3px 5px; }
-  #an-canvas { width:100%; flex:1; background:#10101f; border-radius:10px; cursor:crosshair; touch-action:none; min-height:160px; }
+  .an-work { display:flex; flex:1; gap:8px; min-height:160px; }
+  .an-stage { flex:1; position:relative; min-width:0; }
+  #an-canvas { width:100%; height:100%; display:block; background:#10101f; border-radius:10px; cursor:crosshair; touch-action:none; }
+  .an-layers { width:118px; flex-shrink:0; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:6px; display:flex; flex-direction:column; gap:4px; overflow:hidden; }
+  .an-layers h4 { color:rgba(255,255,255,.45); font-size:10px; text-transform:uppercase; letter-spacing:.8px; margin:2px 4px 4px; }
+  .an-layer { padding:5px 7px; border-radius:6px; font-size:11px; color:rgba(255,255,255,.8); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .an-layer:hover { background:rgba(255,255,255,.08); }
+  .an-layer.sel { background:rgba(100,180,255,.25); color:#fff; }
   .an-strip { display:flex; gap:6px; overflow-x:auto; padding:4px 0; min-height:62px; }
   .an-frame { position:relative; flex:0 0 auto; cursor:pointer; border:2px solid transparent; border-radius:6px; }
   .an-frame.sel { border-color:#64b4ff; }
@@ -1413,7 +1420,7 @@ const apps = {
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
   maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
-  animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:720, h:560, cat:'Creativity', desc:'Frame-by-frame animation studio', html: buildAnimator },
+  animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:820, h:600, cat:'Creativity', desc:'Frame animation with movable shapes, text & .pic images', html: buildAnimator },
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 
@@ -1699,7 +1706,7 @@ async function fmLoad(path) {
 
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
-  const map = { txt:'📄', md:'📄', js:'📜', py:'🐍', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵', mp4:'🎬', csv:'📊', pdf:'📕' };
+  const map = { txt:'📄', md:'📄', js:'📜', py:'🐍', json:'⚙️', png:'🖼️', jpg:'🖼️', pic:'🖼️', anim:'🎞️', mp3:'🎵', mp4:'🎬', csv:'📊', pdf:'📕' };
   return map[ext] || '📄';
 }
 
@@ -3501,99 +3508,359 @@ function initMaxcoin() {
   };
 }
 
-// ── MAX ANIMATOR — frame-by-frame drawing animation (flipbook) ────────────────
-let anFrames = [], anCur = 0, anColor = '#ffffff', anSize = 4, anTool = 'pen', anPlay = null, anFps = 8, anDrawing = false, anCtx = null, anPath = null;
+// ── MAX ANIMATOR — flipbook + movable elements + .pic images ──────────────────
+let anFrames = [], anCur = 0, anColor = '#ffffff', anSize = 4, anTool = 'pen', anPlay = null, anFps = 8;
+let anDrawing = false, anCtx = null, anBgCtx = null, anPath = null, anSelId = null, anDrag = null, anShapeStart = null;
 const AN_W = 480, AN_H = 320;
+const AN_EL_ICON = { rect: '▢', circle: '○', text: 'T', pic: '🖼️' };
+
+// MaxOS .pic format — JPEG/PNG imported into MaxDrive as JSON + embedded data
+function picMake(name, dataUrl, mime, w, h) {
+  return JSON.stringify({ format: 'maxos.pic', v: 1, name, mime: mime || 'image/jpeg', width: w || 0, height: h || 0, data: dataUrl });
+}
+function picParse(raw) {
+  const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  if (!d || d.format !== 'maxos.pic' || !d.data) throw new Error('Not a .pic file');
+  return d;
+}
+function picDataUrl(d) { return d.data; }
+async function picFromFile(file) {
+  const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  const dims = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res({ w: im.width, h: im.height }); im.onerror = rej; im.src = dataUrl; });
+  const base = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 28) || 'image';
+  return { name: base, content: picMake(base, dataUrl, file.type || 'image/jpeg', dims.w, dims.h), dataUrl, w: dims.w, h: dims.h };
+}
+async function picSaveToDrive(baseName, picContent) {
+  let name = baseName.endsWith('.pic') ? baseName : baseName + '.pic';
+  const path = driveHome() + '/pictures/' + name;
+  const parent = driveHome() + '/pictures';
+  if ((await fsStat(parent)).error) await fsMkdir(parent, 'pictures', driveHome());
+  const r = await driveWrite(path, picContent);
+  if (r.error) throw new Error(r.error);
+  return path;
+}
+
+function anId() { return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function anEmptyBg() { const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H; const x = cv.getContext('2d'); x.fillStyle = '#10101f'; x.fillRect(0, 0, AN_W, AN_H); return cv.toDataURL(); }
+function anEmptyFrame() { return { bg: anEmptyBg(), elements: [] }; }
+function anCloneFrame(f) { return { bg: f.bg, elements: f.elements.map(e => ({ ...e })) }; }
+function anNormalizeFrames(frames) {
+  return (frames || []).map(f => {
+    if (typeof f === 'string') return { bg: f, elements: [] };
+    return { bg: f.bg || anEmptyBg(), elements: Array.isArray(f.elements) ? f.elements : [] };
+  });
+}
+function anCurFrame() { return anFrames[anCur] || anEmptyFrame(); }
+function anElLabel(el) {
+  if (el.type === 'text') return (AN_EL_ICON.text + ' ' + (el.text || 'Text')).slice(0, 18);
+  if (el.type === 'pic') return (AN_EL_ICON.pic + ' ' + (el.name || 'Picture')).slice(0, 18);
+  return (AN_EL_ICON[el.type] || '•') + ' ' + el.type;
+}
+
 function buildAnimator() {
   const colors = ['#ffffff','#ff5f57','#febc2e','#28c840','#64b4ff','#bf5af2','#ff9f0a','#000000'];
   return `<div class="an-app">
     <div class="an-tools">
-      <button id="an-pen" class="an-t active" onclick="anSetTool('pen')">✏️</button>
-      <button id="an-eraser" class="an-t" onclick="anSetTool('eraser')">🧹</button>
+      <button id="an-pen" class="an-t active" onclick="anSetTool('pen')" title="Draw">✏️</button>
+      <button id="an-eraser" class="an-t" onclick="anSetTool('eraser')" title="Eraser">🧹</button>
+      <button id="an-select" class="an-t" onclick="anSetTool('select')" title="Move elements">↖️</button>
+      <button id="an-rect" class="an-t" onclick="anSetTool('rect')" title="Rectangle">▢</button>
+      <button id="an-circle" class="an-t" onclick="anSetTool('circle')" title="Circle">○</button>
+      <button id="an-text" class="an-t" onclick="anSetTool('text')" title="Text">T</button>
       <input type="range" id="an-size" min="1" max="30" value="4" oninput="anSize=+this.value" title="Brush size">
       ${colors.map(c => `<span class="an-sw" style="background:${c}" onclick="anSetColor('${c}')"></span>`).join('')}
+      <button class="an-t" onclick="anImportJpeg()" title="Import JPEG → .pic">🖼️</button>
+      <button class="an-t" onclick="anAddPicFromDrive()" title="Add .pic from MaxDrive">📂</button>
       <span style="flex:1"></span>
       <button class="an-t" onclick="anPlayToggle()" id="an-play">▶️ Play</button>
       <label class="an-fps">FPS <input type="number" id="an-fpsn" min="1" max="24" value="8" onchange="anFps=Math.max(1,Math.min(24,+this.value||8))"></label>
     </div>
-    <canvas id="an-canvas" width="${AN_W}" height="${AN_H}"></canvas>
+    <div class="an-work">
+      <div class="an-stage"><canvas id="an-canvas" width="${AN_W}" height="${AN_H}"></canvas></div>
+      <div class="an-layers"><h4>Elements</h4><div id="an-layer-list"></div></div>
+    </div>
     <div class="an-strip" id="an-strip"></div>
     <div class="an-bar">
       <button class="an-b" onclick="anAddFrame()">➕ Frame</button>
       <button class="an-b" onclick="anDupFrame()">⧉ Duplicate</button>
       <button class="an-b" onclick="anDelFrame()">🗑 Delete</button>
       <button class="an-b" onclick="anClearFrame()">✖ Clear</button>
+      <button class="an-b" onclick="anDelElement()">🗑 Element</button>
       <span style="flex:1"></span>
       <span id="an-info" class="an-info"></span>
       <button class="an-b" onclick="anOpen()">📂 Open</button>
       <button class="an-b" onclick="anSave()">💾 Save</button>
       <button class="an-b" onclick="anGif()">⬇️ Export</button>
     </div>
+    <input type="file" id="an-pic-file" accept="image/jpeg,image/jpg,image/png" style="display:none">
   </div>`;
 }
-// Open a .anim file directly (from a MaxDrive double-click)
+
+function anLoadBgToCanvas(bg) {
+  if (!anBgCtx) return;
+  const im = new Image();
+  im.onload = () => { anBgCtx.fillStyle = '#10101f'; anBgCtx.fillRect(0, 0, AN_W, AN_H); anBgCtx.drawImage(im, 0, 0); };
+  im.onerror = () => { anBgCtx.fillStyle = '#10101f'; anBgCtx.fillRect(0, 0, AN_W, AN_H); };
+  im.src = bg || anEmptyBg();
+}
+function anSyncBgFromCanvas() { if (anBgCtx) anCurFrame().bg = anBgCtx.canvas.toDataURL(); }
+
+function anDrawElement(ctx, el, selected) {
+  ctx.save();
+  if (el.type === 'rect') {
+    ctx.fillStyle = el.color || '#64b4ff';
+    ctx.fillRect(el.x, el.y, el.w, el.h);
+    if (selected) { ctx.strokeStyle = '#febc2e'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.strokeRect(el.x, el.y, el.w, el.h); }
+  } else if (el.type === 'circle') {
+    ctx.fillStyle = el.color || '#bf5af2';
+    ctx.beginPath(); ctx.arc(el.cx, el.cy, el.r, 0, Math.PI * 2); ctx.fill();
+    if (selected) { ctx.strokeStyle = '#febc2e'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(el.cx, el.cy, el.r, 0, Math.PI * 2); ctx.stroke(); }
+  } else if (el.type === 'text') {
+    ctx.fillStyle = el.color || '#fff';
+    ctx.font = `600 ${el.size || 18}px system-ui,sans-serif`;
+    ctx.fillText(el.text || '', el.x, el.y);
+    if (selected) { const m = ctx.measureText(el.text || ''); ctx.strokeStyle = '#febc2e'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(el.x - 2, el.y - (el.size || 18), m.width + 4, (el.size || 18) + 4); }
+  } else if (el.type === 'pic' && el.picData) {
+    const im = anPicImg(el.picData);
+    if (im.complete && im.naturalWidth) ctx.drawImage(im, el.x, el.y, el.w, el.h);
+    if (selected) { ctx.strokeStyle = '#febc2e'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.strokeRect(el.x, el.y, el.w, el.h); }
+  }
+  ctx.restore();
+}
+const anPicImgs = {};
+function anPicImg(src) {
+  if (!anPicImgs[src]) {
+    const im = new Image();
+    im.onload = () => { if (anCtx) anDraw(); };
+    im.src = src;
+    anPicImgs[src] = im;
+  }
+  return anPicImgs[src];
+}
+async function anRenderFrameTo(ctx, frame, alpha, selId) {
+  if (!ctx) return;
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  ctx.fillStyle = '#10101f'; ctx.fillRect(0, 0, AN_W, AN_H);
+  await new Promise(res => { const im = new Image(); im.onload = () => { ctx.drawImage(im, 0, 0); res(); }; im.onerror = res; im.src = frame.bg || anEmptyBg(); });
+  for (const el of frame.elements) {
+    if (el.type === 'pic' && el.picPath && !el.picData) await anEnsurePicData(el);
+    anDrawElement(ctx, el, selId != null && el.id === selId);
+  }
+  ctx.globalAlpha = 1;
+}
+function anDraw() {
+  if (!anCtx) return;
+  const frame = anCurFrame();
+  (async () => {
+    if (anCur > 0) await anRenderFrameTo(anCtx, anFrames[anCur - 1], 0.22, null);
+    await anRenderFrameTo(anCtx, frame, 1, anSelId);
+    if (anShapeStart && anDrag?.preview) {
+      const p = anDrag.preview;
+      anCtx.save(); anCtx.strokeStyle = 'rgba(254,188,46,.9)'; anCtx.lineWidth = 2; anCtx.setLineDash([6, 4]);
+      if (anTool === 'rect') anCtx.strokeRect(p.x, p.y, p.w, p.h);
+      else if (anTool === 'circle') { anCtx.beginPath(); anCtx.arc(p.cx, p.cy, p.r, 0, Math.PI * 2); anCtx.stroke(); }
+      anCtx.restore();
+    }
+  })();
+}
+function anFrameThumb(frame) {
+  const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H;
+  const x = cv.getContext('2d');
+  const i = anFrames.indexOf(frame);
+  anRenderFrameTo(x, frame, 1, null).then(() => { if (i >= 0) anRenderStripThumb(i, cv.toDataURL('image/png')); });
+}
+function anCommit() { anSyncBgFromCanvas(); anFrameThumb(anCurFrame()); anRenderLayers(); }
+function anRenderStrip() {
+  const s = document.getElementById('an-strip'); if (!s) return;
+  s.innerHTML = anFrames.map((f, i) => `<div class="an-frame${i === anCur ? ' sel' : ''}" onclick="anGo(${i})"><img id="an-thumb-${i}" src="${f.bg || anEmptyBg()}"><span>${i + 1}</span></div>`).join('');
+  anFrames.forEach((f, i) => anFrameThumb(f));
+  const sel = s.querySelector('.an-frame.sel'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+}
+function anRenderStripThumb(i, url) { const img = document.getElementById('an-thumb-' + i) || document.querySelectorAll('.an-frame img')[i]; if (img && url) img.src = url; }
+function anRenderLayers() {
+  const list = document.getElementById('an-layer-list'); if (!list) return;
+  const els = anCurFrame().elements;
+  if (!els.length) { list.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:11px;padding:6px">No elements yet</div>'; return; }
+  list.innerHTML = [...els].reverse().map(el => `<div class="an-layer${el.id === anSelId ? ' sel' : ''}" onclick="anSelect('${el.id}')">${escapeHtml(anElLabel(el))}</div>`).join('');
+}
+function anSelect(id) { anSelId = id; anDraw(); anRenderLayers(); }
+function anHitTest(x, y) {
+  const els = anCurFrame().elements;
+  for (let i = els.length - 1; i >= 0; i--) {
+    const el = els[i];
+    if (el.type === 'rect' && x >= el.x && x <= el.x + el.w && y >= el.y && y <= el.y + el.h) return el;
+    if (el.type === 'circle' && Math.hypot(x - el.cx, y - el.cy) <= el.r) return el;
+    if (el.type === 'pic' && x >= el.x && x <= el.x + el.w && y >= el.y && y <= el.y + el.h) return el;
+    if (el.type === 'text' && x >= el.x - 4 && x <= el.x + 120 && y >= el.y - (el.size || 18) && y <= el.y + 4) return el;
+  }
+  return null;
+}
+function anDelElement() {
+  if (!anSelId) { notify('🎞️', 'No selection', 'Select an element to delete'); return; }
+  const fr = anCurFrame();
+  fr.elements = fr.elements.filter(e => e.id !== anSelId);
+  anSelId = null; anDraw(); anCommit(); anRenderStrip();
+}
+async function anEnsurePicData(el) {
+  if (el.picData || !el.picPath) return;
+  const res = await fsCat(el.picPath);
+  if (res.error) return;
+  try { el.picData = picDataUrl(picParse(res.content)); } catch { /* ignore */ }
+}
+async function anAddPicElement(picData, picPath, name, w, h) {
+  const maxW = AN_W * 0.45, maxH = AN_H * 0.45;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  const el = { id: anId(), type: 'pic', x: Math.round((AN_W - w * scale) / 2), y: Math.round((AN_H - h * scale) / 2), w: Math.round(w * scale), h: Math.round(h * scale), picPath, picData, name };
+  anCurFrame().elements.push(el);
+  anSelId = el.id; anDraw(); anCommit(); anRenderStrip();
+}
+function anImportJpeg() { document.getElementById('an-pic-file')?.click(); }
+async function anAddPicFromDrive() {
+  const picked = await drivePick(['pic']);
+  if (!picked) return;
+  try {
+    const pic = picParse(picked.content);
+    await anAddPicElement(picDataUrl(pic), picked.path, pic.name || picked.name, pic.width || 120, pic.height || 90);
+    notify('🖼️', 'Picture added', picked.name);
+  } catch (e) { notify('⚠️', 'Invalid .pic', e.message); }
+}
+async function anHandlePicFile(file) {
+  try {
+    const pic = await picFromFile(file);
+    const path = await picSaveToDrive(pic.name, pic.content);
+    await anAddPicElement(pic.dataUrl, path, pic.name, pic.w, pic.h);
+    notify('🖼️', 'Imported as .pic', path.split('/').pop());
+  } catch (e) { notify('⚠️', 'Import failed', e.message); }
+}
+
+function anSetTool(t) {
+  anTool = t; anShapeStart = null; anDrag = null;
+  document.querySelectorAll('.an-t').forEach(b => b.classList.remove('active'));
+  document.getElementById('an-' + t)?.classList.add('active');
+  const c = document.getElementById('an-canvas');
+  if (c) c.style.cursor = (t === 'select' || t === 'text') ? 'default' : (t === 'pen' || t === 'eraser' ? 'crosshair' : 'cell');
+}
+function anSetColor(c) { anColor = c; if (anTool !== 'rect' && anTool !== 'circle') anSetTool('pen'); }
+
+function anApplyAnimData(d, path) {
+  anFrames = anNormalizeFrames(d.frames);
+  if (!anFrames.length) anFrames = [anEmptyFrame()];
+  anFps = d.fps || 8; anCur = 0; anPath = path || null; anSelId = null;
+  const f = document.getElementById('an-fpsn'); if (f) f.value = anFps;
+  if (anBgCtx) anLoadBgToCanvas(anCurFrame().bg);
+  if (anCtx) { anDraw(); anRenderStrip(); anRenderLayers(); anInfo(); }
+}
 async function animOpenPath(path, name) {
   const res = await fsCat(path);
   if (res.error) { notify('⚠️', 'Open failed', res.error); return; }
-  try { const d = JSON.parse(res.content); anFrames = d.frames || [anEmptyFrame()]; anFps = d.fps || 8; anCur = 0; anPath = path;
-    const f = document.getElementById('an-fpsn'); if (f) f.value = anFps;
-    if (anCtx) { anDraw(); anRenderStrip(); anInfo(); } notify('🎞️', 'Opened', name);
-  } catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
+  try { anApplyAnimData(JSON.parse(res.content), path); notify('🎞️', 'Opened', name); }
+  catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
 }
+async function picOpenPath(path, name) {
+  openApp('animator');
+  const res = await fsCat(path);
+  if (res.error) { notify('⚠️', 'Open failed', res.error); return; }
+  try {
+    const pic = picParse(res.content);
+    anFrames = [anEmptyFrame()]; anCur = 0; anPath = null; anSelId = null; anFps = 8;
+    setTimeout(async () => {
+      await anAddPicElement(picDataUrl(pic), path, pic.name || name, pic.width || 200, pic.height || 150);
+      notify('🖼️', 'Opened .pic', name);
+    }, 350);
+  } catch (e) { notify('⚠️', 'Open failed', 'Not a valid .pic file'); }
+}
+
 function initAnimator() {
   const c = document.getElementById('an-canvas'); if (!c) return;
   anCtx = c.getContext('2d');
+  const bgCv = document.createElement('canvas'); bgCv.width = AN_W; bgCv.height = AN_H;
+  anBgCtx = bgCv.getContext('2d');
   if (!anFrames.length) { anFrames = [anEmptyFrame()]; anCur = 0; anPath = null; }
-  anDraw(); anRenderStrip(); anInfo();
+  anLoadBgToCanvas(anCurFrame().bg);
+  anDraw(); anRenderStrip(); anRenderLayers(); anInfo();
+  const f = document.getElementById('an-pic-file');
+  if (f) f.onchange = e => { const file = e.target.files?.[0]; if (file) anHandlePicFile(file); e.target.value = ''; };
   const xy = e => { const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * (AN_W / r.width), (t.clientY - r.top) * (AN_H / r.height)]; };
-  const start = e => { e.preventDefault(); anDrawing = true; anCtx.beginPath(); anCtx.moveTo(...xy(e)); };
-  const move = e => {
-    if (!anDrawing) return; e.preventDefault();
-    anCtx.lineCap = 'round'; anCtx.lineJoin = 'round';
-    anCtx.lineWidth = anTool === 'eraser' ? anSize * 2.5 : anSize;
-    anCtx.strokeStyle = anTool === 'eraser' ? '#10101f' : anColor;
-    anCtx.lineTo(...xy(e)); anCtx.stroke(); anCtx.beginPath(); anCtx.moveTo(...xy(e));
+  const start = e => {
+    e.preventDefault();
+    const [x, y] = xy(e);
+    if (anTool === 'pen' || anTool === 'eraser') {
+      anDrawing = true; anBgCtx.lineCap = 'round'; anBgCtx.lineJoin = 'round';
+      anBgCtx.beginPath(); anBgCtx.moveTo(x, y); return;
+    }
+    if (anTool === 'select') {
+      const hit = anHitTest(x, y);
+      anSelId = hit ? hit.id : null;
+      if (hit) anDrag = { el: hit, ox: hit.type === 'circle' ? x - hit.cx : x - hit.x, oy: hit.type === 'circle' ? y - hit.cy : y - hit.y };
+      anDraw(); anRenderLayers(); return;
+    }
+    if (anTool === 'rect' || anTool === 'circle') { anShapeStart = { x, y }; anDrag = { preview: true }; return; }
+    if (anTool === 'text') {
+      const text = prompt('Text:', 'Hello');
+      if (text) { anCurFrame().elements.push({ id: anId(), type: 'text', x, y, text, color: anColor, size: 20 }); anCommit(); anDraw(); anRenderStrip(); }
+    }
   };
-  const end = () => { if (!anDrawing) return; anDrawing = false; anCommit(); };
+  const move = e => {
+    const [x, y] = xy(e);
+    if (anDrawing && (anTool === 'pen' || anTool === 'eraser')) {
+      e.preventDefault();
+      anBgCtx.lineWidth = anTool === 'eraser' ? anSize * 2.5 : anSize;
+      anBgCtx.strokeStyle = anTool === 'eraser' ? '#10101f' : anColor;
+      anBgCtx.lineTo(x, y); anBgCtx.stroke(); anBgCtx.beginPath(); anBgCtx.moveTo(x, y);
+      anSyncBgFromCanvas(); anDraw(); return;
+    }
+    if (anDrag?.el) {
+      e.preventDefault();
+      const el = anDrag.el;
+      if (el.type === 'circle') { el.cx = x - anDrag.ox; el.cy = y - anDrag.oy; }
+      else { el.x = x - anDrag.ox; el.y = y - anDrag.oy; }
+      anDraw(); return;
+    }
+    if (anShapeStart && anDrag?.preview) {
+      e.preventDefault();
+      const x0 = anShapeStart.x, y0 = anShapeStart.y;
+      if (anTool === 'rect') anDrag.preview = { x: Math.min(x0, x), y: Math.min(y0, y), w: Math.abs(x - x0), h: Math.abs(y - y0) };
+      else anDrag.preview = { cx: (x0 + x) / 2, cy: (y0 + y) / 2, r: Math.max(4, Math.hypot(x - x0, y - y0) / 2) };
+      anDraw();
+    }
+  };
+  const end = () => {
+    if (anDrawing) { anDrawing = false; anSyncBgFromCanvas(); anCommit(); anDraw(); anRenderStrip(); return; }
+    if (anDrag?.el) { anDrag = null; anCommit(); anRenderStrip(); return; }
+    if (anShapeStart && anDrag?.preview) {
+      const p = anDrag.preview;
+      if (anTool === 'rect' && p.w > 4 && p.h > 4) anCurFrame().elements.push({ id: anId(), type: 'rect', x: p.x, y: p.y, w: p.w, h: p.h, color: anColor });
+      if (anTool === 'circle' && p.r > 4) anCurFrame().elements.push({ id: anId(), type: 'circle', cx: p.cx, cy: p.cy, r: p.r, color: anColor });
+      anShapeStart = null; anDrag = null; anCommit(); anDraw(); anRenderStrip();
+    }
+  };
   c.onmousedown = c.ontouchstart = start;
   c.onmousemove = c.ontouchmove = move;
   c.onmouseup = c.onmouseleave = c.ontouchend = end;
 }
-function anEmptyFrame() { const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H; const x = cv.getContext('2d'); x.fillStyle = '#10101f'; x.fillRect(0, 0, AN_W, AN_H); return cv.toDataURL(); }
-function anSetTool(t) { anTool = t; document.querySelectorAll('.an-t').forEach(b => b.classList.remove('active')); document.getElementById('an-' + t)?.classList.add('active'); }
-function anSetColor(c) { anColor = c; anTool = 'pen'; anSetTool('pen'); }
-function anDraw() { // render current frame (with onion skin of previous) onto canvas
-  anCtx.fillStyle = '#10101f'; anCtx.fillRect(0, 0, AN_W, AN_H);
-  const drawImg = (src, alpha) => new Promise(res => { const im = new Image(); im.onload = () => { anCtx.globalAlpha = alpha; anCtx.drawImage(im, 0, 0); anCtx.globalAlpha = 1; res(); }; im.onerror = res; im.src = src; });
-  // onion skin previous frame faintly, then current
-  (async () => { if (anCur > 0) await drawImg(anFrames[anCur - 1], 0.25); await drawImg(anFrames[anCur], 1); })();
+function anGo(i) { anSyncBgFromCanvas(); anCur = Math.max(0, Math.min(i, anFrames.length - 1)); anSelId = null; anLoadBgToCanvas(anCurFrame().bg); anDraw(); anRenderStrip(); anRenderLayers(); anInfo(); }
+function anAddFrame() { anSyncBgFromCanvas(); anFrames.splice(anCur + 1, 0, anEmptyFrame()); anCur++; anLoadBgToCanvas(anCurFrame().bg); anDraw(); anRenderStrip(); anInfo(); }
+function anDupFrame() { anSyncBgFromCanvas(); anFrames.splice(anCur + 1, 0, anCloneFrame(anCurFrame())); anCur++; anLoadBgToCanvas(anCurFrame().bg); anDraw(); anRenderStrip(); anInfo(); }
+function anDelFrame() { if (anFrames.length <= 1) { anClearFrame(); return; } anFrames.splice(anCur, 1); anCur = Math.max(0, anCur - 1); anLoadBgToCanvas(anCurFrame().bg); anDraw(); anRenderStrip(); anInfo(); }
+function anClearFrame() { anFrames[anCur] = anEmptyFrame(); anSelId = null; anLoadBgToCanvas(anCurFrame().bg); anDraw(); anRenderStrip(); anRenderLayers(); }
+function anInfo() {
+  const el = document.getElementById('an-info'); if (!el) return;
+  const n = anCurFrame().elements.length;
+  el.textContent = `Frame ${anCur + 1} / ${anFrames.length}${n ? ' · ' + n + ' el' : ''}`;
 }
-function anCommit() { anFrames[anCur] = document.getElementById('an-canvas').toDataURL(); anRenderStripThumb(anCur); }
-function anRenderStrip() {
-  const s = document.getElementById('an-strip'); if (!s) return;
-  s.innerHTML = anFrames.map((f, i) => `<div class="an-frame${i === anCur ? ' sel' : ''}" onclick="anGo(${i})"><img src="${f}"><span>${i + 1}</span></div>`).join('');
-  const sel = s.querySelector('.an-frame.sel'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-}
-function anRenderStripThumb(i) { const img = document.querySelectorAll('.an-frame img')[i]; if (img) img.src = anFrames[i]; }
-function anGo(i) { anCommit(); anCur = Math.max(0, Math.min(i, anFrames.length - 1)); anDraw(); anRenderStrip(); anInfo(); }
-function anAddFrame() { anCommit(); anFrames.splice(anCur + 1, 0, anEmptyFrame()); anCur++; anDraw(); anRenderStrip(); anInfo(); }
-function anDupFrame() { anCommit(); anFrames.splice(anCur + 1, 0, anFrames[anCur]); anCur++; anDraw(); anRenderStrip(); anInfo(); }
-function anDelFrame() { if (anFrames.length <= 1) { anClearFrame(); return; } anFrames.splice(anCur, 1); anCur = Math.max(0, anCur - 1); anDraw(); anRenderStrip(); anInfo(); }
-function anClearFrame() { anFrames[anCur] = anEmptyFrame(); anDraw(); anRenderStrip(); }
-function anInfo() { const el = document.getElementById('an-info'); if (el) el.textContent = `Frame ${anCur + 1} / ${anFrames.length}`; }
 function anPlayToggle() {
   const btn = document.getElementById('an-play');
   if (anPlay) { clearInterval(anPlay); anPlay = null; btn.textContent = '▶️ Play'; anGo(anCur); return; }
-  anCommit(); btn.textContent = '⏸ Stop'; let i = 0;
+  anSyncBgFromCanvas(); btn.textContent = '⏸ Stop'; let i = 0;
   anPlay = setInterval(() => {
-    const im = new Image(); im.onload = () => { anCtx.globalAlpha = 1; anCtx.fillStyle = '#10101f'; anCtx.fillRect(0, 0, AN_W, AN_H); anCtx.drawImage(im, 0, 0); }; im.src = anFrames[i % anFrames.length];
+    anRenderFrameTo(anCtx, anFrames[i % anFrames.length], 1, null);
     i++;
   }, 1000 / anFps);
 }
 async function anSave() {
   if (anPlay) anPlayToggle();
-  anCommit();
-  const data = JSON.stringify({ fps: anFps, frames: anFrames });
+  anSyncBgFromCanvas();
+  const data = JSON.stringify({ v: 2, fps: anFps, frames: anFrames });
   if (anPath) { await driveWrite(anPath, data); notify('🎞️', 'Saved', anPath.split('/').pop()); return; }
   const path = await driveSaveAs('animation.anim', data);
   if (path) { anPath = path; notify('🎞️', 'Saved', path.split('/').pop()); }
@@ -3601,14 +3868,16 @@ async function anSave() {
 async function anOpen() {
   const picked = await drivePick(['anim']);
   if (!picked) return;
-  try { const d = JSON.parse(picked.content); anFrames = d.frames || [anEmptyFrame()]; anFps = d.fps || 8; anCur = 0; anPath = picked.path;
-    const f = document.getElementById('an-fpsn'); if (f) f.value = anFps;
-    anDraw(); anRenderStrip(); anInfo(); notify('🎞️', 'Opened', picked.name);
-  } catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
+  try { anApplyAnimData(JSON.parse(picked.content), picked.path); notify('🎞️', 'Opened', picked.name); }
+  catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
 }
-function anGif() { // export current frame as PNG (full GIF encoding is heavy; PNG of frame is the practical export)
-  anCommit(); const a = document.createElement('a'); a.download = 'frame_' + (anCur + 1) + '.png'; a.href = anFrames[anCur]; a.click();
-  notify('⬇️', 'Exported frame', 'Saved frame ' + (anCur + 1) + ' as PNG');
+function anGif() {
+  anSyncBgFromCanvas();
+  const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H;
+  anRenderFrameTo(cv.getContext('2d'), anCurFrame(), 1, null).then(() => {
+    const a = document.createElement('a'); a.download = 'frame_' + (anCur + 1) + '.png'; a.href = cv.toDataURL('image/png'); a.click();
+    notify('⬇️', 'Exported frame', 'Saved frame ' + (anCur + 1) + ' as PNG');
+  });
 }
 
 // ── MAX VIDEO — timeline slideshow/movie editor ───────────────────────────────
@@ -4811,11 +5080,11 @@ async function driveDelete(i) {
 function driveGo(path) { driveCwd = path; driveLoad(); }
 function driveIcon(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', board:'📌', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵', anim:'🎞️', video:'🎬' })[e] || '📄';
+  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', board:'📌', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', pic:'🖼️', mp3:'🎵', anim:'🎞️', video:'🎬' })[e] || '📄';
 }
 function driveKind(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON', anim:'Max Animator', video:'Max Video' })[e] || (e.toUpperCase() + ' file');
+  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON', anim:'Max Animator', video:'Max Video', pic:'Max Picture' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
 // Open a drive card by index — wired to native dblclick, which fires reliably
@@ -4833,6 +5102,7 @@ function driveOpen(path, type, name) {
   else if (ext === 'forms' || ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
   else if (ext === 'board') { openApp('board'); setTimeout(() => boardOpenPath(path, name), 300); }
   else if (ext === 'anim') { openApp('animator'); setTimeout(() => animOpenPath(path, name), 350); }
+  else if (ext === 'pic') { setTimeout(() => picOpenPath(path, name), 200); }
   else if (ext === 'video') { openApp('video'); setTimeout(() => videoOpenPath(path, name), 350); }
   else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
 }
