@@ -4423,6 +4423,11 @@ function mapsLocate() {
 const MS_RUNTIME = `const MS={out:null,_o(){if(!this.out){this.out=document.getElementById('ms-output');if(!this.out){this.out=document.createElement('div');this.out.id='ms-output';document.body.appendChild(this.out);}}return this.out;},show(v){const d=document.createElement('div');d.textContent=String(v);this._o().appendChild(d);},setText(id,v){const e=document.getElementById(id);if(e)e.textContent=String(v);},setHtml(id,v){const e=document.getElementById(id);if(e)e.innerHTML=String(v);},onClick(id,fn){const e=document.getElementById(id);if(e)e.addEventListener('click',fn);},ask(q){return prompt(q);},random(n){return Math.floor(Math.random()*n);}};`;
 function maxTranspile(src) {
   const out = [], stack = [];
+  // Strip the common leading indent (button handlers are always indented in source).
+  let lines = (src || '').split('\n');
+  const indents = lines.filter(l => l.trim()).map(l => { let n = 0; for (let k = 0; k < l.length; k++) { if (l[k] === ' ') n++; else if (l[k] === '\t') n += 4; else break; } return n; });
+  const minIndent = indents.length ? Math.min(...indents) : 0;
+  if (minIndent > 0) lines = lines.map(l => (l.trim() ? l.slice(minIndent) : l));
   // Plain-English comparisons → JS operators. Multi-word phrases MUST be replaced
   // before the bare "is"/"is not" so "is less than" doesn't get half-translated.
   const cond = c => c
@@ -4437,12 +4442,21 @@ function maxTranspile(src) {
     .replace(/\band\b/gi, '&&')
     .replace(/\bor\b/gi, '||');
   const ref = s => { s = s.trim(); return (s[0] === '"' || s[0] === "'") ? s : JSON.stringify(s); }; // bare name OR quoted string
+  const lit = s => { // show/alert arg: quote plain phrases, keep expressions & single vars
+    s = s.trim();
+    if (!s) return '""';
+    if (s[0] === '"' || s[0] === "'") return s;
+    if (/^-?\d+(\.\d+)?$/.test(s)) return s;
+    if (/^[a-zA-Z_]\w*$/.test(s)) return s;
+    if (/[+\-*/%<>=!&|]/.test(s)) return s;
+    return JSON.stringify(s);
+  };
   // Python-style blocks: indent opens, dedent closes (no `end` needed) — while the
   // old explicit `end` keyword still works. Each stack frame remembers the indent
   // of its opener and whether it has seen an indented body line yet.
   const indentOf = s => { let n = 0; for (let k = 0; k < s.length; k++) { if (s[k] === ' ') n++; else if (s[k] === '\t') n += 4; else break; } return n; };
   const closeFrame = () => { const f = stack.pop(); if (f) out.push(f.type === 'fn' ? `});` : `}`); };
-  for (let raw of (src || '').split('\n')) {
+  for (let raw of lines) {
     const line = raw.trim();
     if (!line || line.startsWith('#') || line.startsWith('//')) { out.push(''); continue; }
     const ind = indentOf(raw);
@@ -4457,7 +4471,8 @@ function maxTranspile(src) {
     // Record that the current block actually has an indented body (so a same-indent
     // body with explicit `end` isn't mistaken for a dedent).
     if (!isEnd && !isElse && stack.length && ind > stack[stack.length - 1].openIndent) stack[stack.length - 1].sawBody = true;
-    const openBlock = () => stack.push({ type: 'block', openIndent: ind, sawBody: false });
+    const openBlock = (kind) => stack.push({ type: 'block', kind: kind || 'block', openIndent: ind, sawBody: false });
+    const topIf = () => { const f = stack[stack.length - 1]; return f && f.type === 'block' && (f.kind === 'if' || f.kind === 'elif'); };
     let m;
     if (m = line.match(/^set\s+text\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${ref(m[1])}, ${m[2]});`);
     else if (m = line.match(/^set\s+html\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${ref(m[1])}, ${m[2]});`);
@@ -4465,19 +4480,19 @@ function maxTranspile(src) {
     else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) + (parseFloat(${m[1]}) || 0);`);
     else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) - (parseFloat(${m[1]}) || 0);`);
     else if (/^(mal|maxware|evil)$/i.test(line)) out.push(`(window.runMal||(window.parent&&window.parent.runMal)||function(){})();`); // run the MAXWARE siege over the real desktop
-    else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
-    else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
-    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); openBlock(); } // define function w/ inputs
-    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); openBlock(); } // define function
+    else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${lit(m[1])});`);
+    else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${lit(m[1])});`);
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); openBlock('fn'); } // define function w/ inputs
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); openBlock('fn'); } // define function
     else if (m = line.match(/^call\s+([a-zA-Z_]\w*)\s+with\s+(.+)$/i)) out.push(`${m[1]}(${m[2]});`); // run function w/ inputs
     else if (m = line.match(/^call\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[1]}();`); // run function
     else if (m = line.match(/^return\s+(.+)$/i)) out.push(`return ${m[1]};`);
     else if (/^return$/i.test(line)) out.push(`return;`);
     else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${ref(m[1])}, function(){`); stack.push({ type: 'fn', openIndent: ind, sawBody: false }); }
-    else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); openBlock(); }
-    else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); openBlock(); }
-    else if (m = line.match(/^(?:elif|else\s+if)\s+(.+?)\s*:$/i)) { if (stack.length) { out.push(`} else if(${cond(m[1])}){`); stack[stack.length - 1].sawBody = false; } } // chains onto the open if
-    else if (/^else\s*:?$/i.test(line)) { if (stack.length) { out.push(`} else {`); stack[stack.length - 1].sawBody = false; } }
+    else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:?\s*$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); openBlock('loop'); }
+    else if (m = line.match(/^if\s+(.+?)\s*:?\s*$/i)) { out.push(`if(${cond(m[1])}){`); openBlock('if'); }
+    else if (m = line.match(/^(?:elif|else\s+if)\s+(.+?)\s*:?\s*$/i)) { if (topIf()) { out.push(`} else if(${cond(m[1])}){`); stack[stack.length - 1].kind = 'elif'; stack[stack.length - 1].sawBody = false; } } // chains onto the open if
+    else if (/^else\s*:?$/i.test(line)) { if (topIf()) { out.push(`} else {`); stack[stack.length - 1].kind = 'elif'; stack[stack.length - 1].sawBody = false; } }
     else if (isEnd) closeFrame();
     else out.push(line.endsWith(';') || line.endsWith('{') || line.endsWith('}') ? line : line + ';'); // raw JS passthrough
   }
@@ -4523,10 +4538,12 @@ function msStyle(type, tokens) {
 function maxCompile(src) {
   const lines = (src || '').split('\n'), htmlOut = [], handlers = [], initLines = [];
   let auto = 0;
+  const MS_STMT = /^(?:if|elif|else|repeat|end|set|show|alert|add|subtract|call|return|to|on)\b/i;
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i], trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
     if (/^\s/.test(raw)) { initLines.push(raw); continue; } // stray indented → init code
+    if (MS_STMT.test(trimmed)) { initLines.push(raw); continue; } // logic line — never a UI element
     // type, optional plain-word name, then ": rest"
     const m = trimmed.match(/^([a-zA-Z]+)(?:\s+([a-zA-Z_][\w-]*))?\s*:\s*(.*)$/);
     if (!m) { initLines.push(raw); continue; }

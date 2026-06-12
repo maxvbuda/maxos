@@ -13,7 +13,7 @@ button mine: (center, round, orange) ⛏️ Mine MaxCoin
     set text bal to "Balance: " + coins + " MXC"
 
 button upgrade: (center, round, purple) ⚡ Upgrade rig (cost 10 MXC)
-    if coins is not 0:
+    if coins is at least 10:
         subtract 10 from coins
         add 1 to rate
         set text bal to "Balance: " + coins + " MXC"
