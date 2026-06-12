@@ -1293,6 +1293,11 @@ function hideSpotlight() { spotEl.style.display='none'; spotEl.classList.remove(
 function spotSearch(q) {
   spotSel=0;
   const res = document.getElementById('spot-results');
+  // Secret command: typing `mal` (or maxware/evil) launches the MAXWARE prank
+  if (['mal','maxware','evil'].includes((q||'').trim().toLowerCase())) {
+    res.innerHTML = `<div class="spot-row sel" onclick="hideSpotlight();runMal()">☠️ Run MAXWARE <small>Evil MaxOS siege — harmless 90s prank</small></div>`;
+    return;
+  }
   const matches = q ? spotApps.filter(a=>a.name.toLowerCase().includes(q.toLowerCase())||a.desc.toLowerCase().includes(q.toLowerCase())) : spotApps;
   res.innerHTML = matches.map((a,i)=>`<div class="spot-row${i===0?' sel':''}" onclick="spotLaunch('${a.id}')">${a.icon} ${a.name} <small>${a.desc}</small></div>`).join('');
 }
@@ -2006,6 +2011,13 @@ async function termRun(raw) {
       break;
     }
 
+    case 'mal':
+    case 'maxware':
+    case 'evil':
+      termPrint('☠  Initializing MAXWARE… good luck. (auto-ends in 90s)');
+      runMal();
+      break;
+
     default:
       termPrint(`${cmd}: command not found`);
   }
@@ -2013,6 +2025,117 @@ async function termRun(raw) {
   termBusy = false;
   const prompt = document.querySelector('.term-prompt');
   if (prompt) prompt.textContent = `max@maxos:${termCwd}$ `;
+}
+
+// ── MAXWARE: the `mal` command — a harmless 90s "evil MaxOS" siege ────────────
+// Runs in a full-screen overlay ON TOP of the real desktop and removes itself
+// when done, so the real MaxOS is restored untouched. A green PRANK badge stays
+// visible the whole time and it auto-reveals "JUST KIDDING" after 90 seconds.
+let malActive = false;
+function runMal() {
+  if (malActive) return; malActive = true;
+  const ov = document.createElement('div');
+  ov.id = 'mal-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2000000;overflow:hidden;background:radial-gradient(circle at 50% 30%,#2a0000,#070000);font-family:system-ui,-apple-system,sans-serif;color:#ff5b5b;cursor:crosshair';
+  document.body.appendChild(ov);
+  let W = innerWidth, H = innerHeight, left = 90, released = false, checked = false, ac = null, osc = null, glitchT = null, tickIv = null, sirenIv = null;
+  const onResize = () => { W = innerWidth; H = innerHeight; };
+  addEventListener('resize', onResize);
+
+  const badge = document.createElement('div');
+  badge.textContent = '🃏 PRANK • not real • auto-ends in 90s';
+  badge.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9;background:#001500;color:#6f6;font-size:11px;padding:4px 9px;border:1px solid #4f4;border-radius:6px;opacity:.85';
+  ov.appendChild(badge);
+
+  const enter = document.createElement('button');
+  enter.textContent = '⚠ ENTER MaxOS';
+  enter.style.cssText = 'position:absolute;inset:0;margin:auto;width:250px;height:74px;font-size:20px;font-weight:700;background:#a00000;color:#fff;border:2px solid #ff5b5b;border-radius:12px;cursor:pointer;z-index:6';
+  ov.appendChild(enter);
+  enter.onclick = () => { enter.remove(); startSiege(); };
+
+  function startSiege() { siren(); buildEvil(); tickIv = setInterval(tick, 1000); }
+  function siren() {
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      osc = ac.createOscillator(); const g = ac.createGain();
+      osc.type = 'square'; g.gain.value = 0.05; osc.connect(g); g.connect(ac.destination); osc.start();
+      let up = true; sirenIv = setInterval(() => { if (released) return; osc.frequency.value = up ? 900 : 430; up = !up; }, 280);
+    } catch (e) {}
+  }
+  function glitch() {
+    if (released) return;
+    ov.style.transform = `translate(${Math.random()*6-3}px,${Math.random()*6-3}px)`;
+    setTimeout(() => { if (!released) ov.style.transform = ''; }, 60);
+    glitchT = setTimeout(glitch, 700 + Math.random()*900);
+  }
+  function buildEvil() {
+    glitch();
+    const head = document.createElement('div');
+    head.style.cssText = 'position:absolute;top:20px;left:0;right:0;text-align:center;z-index:3;pointer-events:none';
+    head.innerHTML = "<div style='font-size:30px;font-weight:800;text-shadow:2px 0 #0ff,-2px 0 #f0f'>💀 MAXOS HAS BEEN ENCRYPTED 💀</div><div style='margin-top:6px;color:#ffc0c0'>Send <b>500 MaxCoin</b> to decrypt your potatoes. Time left: <span id='mal-cd' style='color:#fff'>90</span>s</div>";
+    ov.appendChild(head);
+    const box = document.createElement('label');
+    box.style.cssText = 'position:absolute;top:110px;left:50%;transform:translateX(-50%);z-index:3;background:#1a0000;border:1px solid #ff5b5b;border-radius:8px;padding:8px 14px;color:#ffd;cursor:pointer';
+    box.innerHTML = "<input type='checkbox' id='mal-ack' style='vertical-align:middle'> I confirm I have been thoroughly pwned";
+    ov.appendChild(box);
+    box.querySelector('#mal-ack').addEventListener('change', e => { checked = e.target.checked; });
+    const pay = document.createElement('button');
+    pay.id = 'mal-pay'; pay.textContent = '💸 Pay 500 MaxCoin';
+    pay.style.cssText = 'position:absolute;left:50%;top:160px;transform:translateX(-50%);z-index:3;padding:14px 26px;font-size:17px;background:#ffb300;color:#3a2a00;border:none;border-radius:10px;cursor:pointer;font-weight:700';
+    ov.appendChild(pay);
+    pay.addEventListener('mouseenter', dodge);
+    pay.addEventListener('click', payClick);
+    makeFiles();
+  }
+  function dodge() {
+    if (released) return; const pay = ov.querySelector('#mal-pay'); if (!pay) return;
+    pay.style.left = (8 + Math.random()*78) + '%'; pay.style.top = (28 + Math.random()*55) + '%'; pay.style.transform = 'none';
+  }
+  function payClick() {
+    if (released) return;
+    flash(checked ? 'Transaction failed: you have 0 MaxCoin. 😂' : '☑ Check the box first, genius.');
+    if (checked) dodge();
+  }
+  function flash(msg) {
+    const f = document.createElement('div'); f.textContent = msg;
+    f.style.cssText = 'position:absolute;left:50%;top:230px;transform:translateX(-50%);z-index:4;background:#000;color:#ff8;padding:8px 14px;border-radius:8px;font-size:14px';
+    ov.appendChild(f); setTimeout(() => f.remove(), 1600);
+  }
+  function makeFiles() {
+    const names = ['my_5_friends.txt', 'resume_(unfinished).doc', 'talent.zip — 0 bytes', 'rizz.exe — corrupt', 'gym_membership_unused.pdf', 'homework_excuses.txt', 'untitled_masterpiece.png — 404', 'savings.xls — empty'];
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;left:0;right:0;bottom:50px;top:270px;z-index:2;display:flex;flex-wrap:wrap;gap:14px;justify-content:center;align-content:flex-start;overflow:auto;padding:10px';
+    names.forEach(n => {
+      const c = document.createElement('div');
+      c.style.cssText = 'width:120px;height:96px;background:#1a0505;border:1px solid #5a1a1a;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ffb3b3;font-size:11px;text-align:center;padding:6px';
+      c.innerHTML = "<div style='font-size:30px'>📄</div>" + n;
+      wrap.appendChild(c);
+    });
+    ov.appendChild(wrap);
+  }
+  function tick() {
+    if (released) return;
+    left--; const cd = ov.querySelector('#mal-cd'); if (cd) cd.textContent = left;
+    if (left <= 0) { clearInterval(tickIv); release(); }
+  }
+  function cleanup() {
+    released = true;
+    clearInterval(tickIv); clearInterval(sirenIv); clearTimeout(glitchT);
+    removeEventListener('resize', onResize);
+    try { osc.stop(); ac.close(); } catch (e) {}
+  }
+  function release() {
+    cleanup();
+    ov.style.transform = ''; ov.innerHTML = '';
+    ov.style.background = 'linear-gradient(135deg,#101030,#1a1a3e)';
+    const r = document.createElement('div');
+    r.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#fff';
+    r.innerHTML = "<div style='font-size:66px'>😜</div><div style='font-size:28px;font-weight:700;margin-top:8px'>JUST KIDDING!</div><div style='color:#9cf;margin-top:12px;max-width:440px;line-height:1.5'>You survived Evil MaxOS. Nothing was encrypted, no MaxCoin was taken, and none of those files were real. Harmless prank. 🃏</div><button id='mal-close' style='margin-top:20px;padding:10px 22px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer'>Back to MaxOS</button>";
+    ov.appendChild(r);
+    r.querySelector('#mal-close').onclick = closeMal;
+    setTimeout(() => { if (document.getElementById('mal-overlay')) closeMal(); }, 8000);
+  }
+  function closeMal() { cleanup(); ov.remove(); malActive = false; }
 }
 
 // ── Browser ───────────────────────────────────────────────────────────────────
