@@ -4120,6 +4120,7 @@ function maxTranspile(src) {
     else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) out.push(`${m[1]} = ${m[2]};`); // vars declared globally by maxCompile
     else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) + (parseFloat(${m[1]}) || 0);`);
     else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) - (parseFloat(${m[1]}) || 0);`);
+    else if (/^(mal|maxware|evil)$/i.test(line)) out.push(`(window.runMal||(window.parent&&window.parent.runMal)||function(){})();`); // run the MAXWARE siege over the real desktop
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
     else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
     else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); stack.push('block'); } // define function w/ inputs
@@ -4331,7 +4332,7 @@ function studioLangChange() {
   studioTab('js'); studioPreview();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · repeat 3 times: … end. Functions: "to greet: … end" then "call greet" · with inputs: "to add with n: … end" then "call add with 5".', 13000);
+  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · repeat 3 times: … end. Functions: "to greet: … end" then "call greet" · with inputs: "to add with n: … end" then "call add with 5". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 13000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
