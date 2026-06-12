@@ -1,0 +1,38 @@
+# MAXWARE 3000 — a HARMLESS prank app for MaxOS.
+# Paste this into "Make Your Own App" (language: MaxScript) and Run it.
+# It fakes a malware infection: inverted controls, a 17-tap challenge,
+# an awful screech, a fake "download", a glitchy malware screen — then
+# reveals it was all a joke. Nothing real is installed or damaged.
+
+# ---- everything below is raw JS the MaxScript runtime passes through ----
+document.body.innerHTML = "";
+document.body.style.cssText = "margin:0;height:100vh;overflow:hidden;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);font-family:system-ui,-apple-system,sans-serif;cursor:none;color:#fff";
+var W = window.innerWidth, H = window.innerHeight, clicks = 0, done = false;
+window.addEventListener("resize", function(){ W = window.innerWidth; H = window.innerHeight; });
+var hint = document.createElement("div");
+hint.style.cssText = "position:fixed;top:18px;left:0;right:0;text-align:center;font-size:16px;font-weight:600;text-shadow:0 1px 4px #000";
+hint.textContent = "⚠ Controls are INVERTED. Tap the Update button 17 times.";
+document.body.appendChild(hint);
+var counter = document.createElement("div");
+counter.style.cssText = "position:fixed;top:48px;left:0;right:0;text-align:center;font-size:14px;color:#9cf";
+counter.textContent = "0 / 17";
+document.body.appendChild(counter);
+var target = document.createElement("button");
+target.textContent = "🔄 System Update";
+target.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);padding:18px 30px;font-size:18px;border:none;border-radius:14px;background:linear-gradient(135deg,#64b4ff,#bf5af2);color:#fff;cursor:none;box-shadow:0 8px 24px rgba(0,0,0,.5)";
+document.body.appendChild(target);
+var cur = document.createElement("div");
+cur.textContent = "🔺";
+cur.style.cssText = "position:fixed;z-index:99;pointer-events:none;font-size:22px;left:-99px;top:-99px";
+document.body.appendChild(cur);
+function moveCur(e){ var p = e.touches && e.touches[0] ? e.touches[0] : e; var ix = W - p.clientX, iy = H - p.clientY; cur.style.left = (ix - 11) + "px"; cur.style.top = (iy - 16) + "px"; }
+document.addEventListener("mousemove", moveCur);
+document.addEventListener("touchmove", function(e){ e.preventDefault(); moveCur(e); }, { passive: false });
+function hit(e){ if (done) return; var p = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e; var ix = W - p.clientX, iy = H - p.clientY; var r = target.getBoundingClientRect(); if (ix >= r.left && ix <= r.right && iy >= r.top && iy <= r.bottom) { clicks++; counter.textContent = clicks + " / 17"; target.style.background = "hsl(" + (clicks * 20) + ",80%,60%)"; if (clicks >= 17) finale(); } }
+document.addEventListener("click", hit);
+document.addEventListener("touchend", function(e){ e.preventDefault(); hit(e); }, { passive: false });
+function screech(){ try { var ac = new (window.AudioContext || window.webkitAudioContext)(); var o = ac.createOscillator(); var g = ac.createGain(); o.type = "sawtooth"; o.frequency.value = 2300; var lfo = ac.createOscillator(); lfo.frequency.value = 44; var lg = ac.createGain(); lg.gain.value = 1100; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = 0.16; o.connect(g); g.connect(ac.destination); o.start(); lfo.start(); setTimeout(function(){ o.stop(); lfo.stop(); ac.close(); }, 1700); } catch (err) {} }
+function fakeDownload(){ var txt = "MAXWARE 3000 (TOTALLY FAKE)\n\nGotcha! This is a harmless prank from MaxOS.\nNothing was installed. Nothing was encrypted. Your potatoes are safe.\nThis file is just a plain text note. Have a lovely day. :)\n"; var b = new Blob([txt], { type: "text/plain" }); var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "MAXWARE_(harmless_prank).txt"; document.body.appendChild(a); a.click(); a.remove(); }
+function shake(){ var n = 0; var iv = setInterval(function(){ document.body.style.transform = "translate(" + (Math.random() * 18 - 9) + "px," + (Math.random() * 18 - 9) + "px)"; n++; if (n > 30) { clearInterval(iv); document.body.style.transform = ""; } }, 45); }
+function reveal(scr){ scr.style.background = "linear-gradient(135deg,#101030,#1a1a3e)"; scr.innerHTML = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;font-family:system-ui'><div style='font-size:64px'>😜</div><div style='font-size:28px;font-weight:700;margin-top:8px'>JUST KIDDING!</div><div style='color:#9cf;margin-top:12px;max-width:440px;line-height:1.5'>You got pranked. There is no malware — nothing was installed or damaged. That downloaded file is just a harmless text note. Close this window whenever you like.</div></div>"; }
+function finale(){ done = true; document.removeEventListener("mousemove", moveCur); document.body.style.cursor = "auto"; cur.remove(); target.remove(); hint.remove(); counter.remove(); screech(); fakeDownload(); shake(); var scr = document.createElement("div"); scr.style.cssText = "position:fixed;inset:0;background:#000;color:#0f0;font-family:monospace;font-size:15px;padding:26px;z-index:200;overflow:hidden"; scr.innerHTML = "<div style='color:#ff3b3b;font-size:22px;font-weight:700'>⚠ MAXOS MALWARE DETECTED</div><div id='mwlog' style='margin-top:14px'></div>"; document.body.appendChild(scr); var lines = ["> Installing MAXWARE.app ...", "> Encrypting /home/you ...", "> Stealing your potato collection ...", "> Emailing your browser history to your mom ...", "> Setting every wallpaper to a photo of a fork ...", "> Replacing all system fonts with Comic Sans ...", "> Scratching a fork on a plate, forever ...", "> ERROR 0xF0RK: too much chaos"]; var log = scr.querySelector("#mwlog"); var i = 0; var iv = setInterval(function(){ if (i >= lines.length) { clearInterval(iv); setTimeout(function(){ reveal(scr); }, 800); return; } var d = document.createElement("div"); d.textContent = lines[i]; log.appendChild(d); i++; }, 430); }
