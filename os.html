@@ -2042,11 +2042,6 @@ function runMal() {
   const onResize = () => { W = innerWidth; H = innerHeight; };
   addEventListener('resize', onResize);
 
-  const badge = document.createElement('div');
-  badge.textContent = '🃏 PRANK • not real • auto-ends in 90s';
-  badge.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9;background:#001500;color:#6f6;font-size:11px;padding:4px 9px;border:1px solid #4f4;border-radius:6px;opacity:.85';
-  ov.appendChild(badge);
-
   const enter = document.createElement('button');
   enter.textContent = '⚠ ENTER MaxOS';
   enter.style.cssText = 'position:absolute;inset:0;margin:auto;width:250px;height:74px;font-size:20px;font-weight:700;background:#a00000;color:#fff;border:2px solid #ff5b5b;border-radius:12px;cursor:pointer;z-index:6';
