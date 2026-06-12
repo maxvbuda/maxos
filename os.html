@@ -448,6 +448,21 @@
   @keyframes diceRoll { 0%{transform:rotate(0) scale(1)} 50%{transform:rotate(180deg) scale(1.2)} 100%{transform:rotate(360deg) scale(1)} }
   .rolling { animation:diceRoll .4s ease; }
 
+  /* MaxCoin */
+  .mc-app { display:flex; flex-direction:column; align-items:center; gap:14px; height:100%; padding:24px 20px; text-align:center; }
+  .mc-title { color:#fff; font-size:20px; font-weight:700; }
+  .mc-bal { font-size:40px; font-weight:800; background:linear-gradient(135deg,#febc2e,#ff9f0a); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .mc-rate { color:rgba(255,255,255,.55); font-size:13px; margin-top:-6px; }
+  .mc-mine { margin-top:6px; background:linear-gradient(135deg,#ff9f0a,#febc2e); border:none; color:#3a2a00; font-weight:800; font-size:20px; padding:18px 30px; border-radius:18px; cursor:pointer; box-shadow:0 8px 22px rgba(255,159,10,.35); transition:transform .06s; }
+  .mc-mine:active { transform:scale(.96); }
+  @keyframes mcPop { 0%{transform:scale(1)} 40%{transform:scale(1.08)} 100%{transform:scale(1)} }
+  .mc-mine.pop { animation:mcPop .18s ease; }
+  .mc-row { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .mc-btn { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:12px; padding:11px 16px; font-size:13px; cursor:pointer; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .mc-btn:hover { background:rgba(255,255,255,.18); }
+  .mc-btn small { color:rgba(255,255,255,.45); font-size:10px; font-weight:400; }
+  .mc-note { color:rgba(255,255,255,.6); font-size:12px; margin-top:auto; min-height:16px; }
+
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
   .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
@@ -1363,6 +1378,7 @@ const apps = {
   weather:  { title: 'Weather',        short:'Weather',    icon:'⛅', w:380, h:440, cat:'Utilities',  desc:'Forecast for any city',       html: buildWeather },
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
+  maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 
   // ── Premium apps ──
@@ -3393,6 +3409,50 @@ function flipCoin() {
   setTimeout(() => { d.textContent = heads ? '🪙' : '🪙'; r.textContent = heads ? 'Heads!' : 'Tails!'; }, 200);
 }
 
+// ── MAXCOIN — a fake crypto wallet/miner (pretend coins, real fun) ────────────
+let mcCoins = 0, mcRate = 1;
+function mcKey() { return 'maxos_maxcoin_' + (currentUser?.username || 'guest'); }
+function buildMaxcoin() {
+  // restore this user's wallet
+  try { const s = JSON.parse(localStorage.getItem(mcKey()) || '{}'); mcCoins = +s.coins || 0; mcRate = +s.rate || 1; } catch (e) { mcCoins = 0; mcRate = 1; }
+  return `<div class="mc-app">
+    <div class="mc-title">🪙 MaxCoin Wallet</div>
+    <div class="mc-bal" id="mc-bal">${mcCoins} MXC</div>
+    <div class="mc-rate" id="mc-rate">Mining power: ${mcRate} / click</div>
+    <button class="mc-mine" id="mc-mine">⛏️ Mine MaxCoin</button>
+    <div class="mc-row">
+      <button class="mc-btn" id="mc-up">⚡ Upgrade rig<small>cost 10 MXC</small></button>
+      <button class="mc-btn" id="mc-cash">💰 Cash out</button>
+    </div>
+    <div class="mc-note" id="mc-note">Tip: it's all pretend — worth exactly $0.00 😄</div>
+  </div>`;
+}
+function mcSave() { try { localStorage.setItem(mcKey(), JSON.stringify({ coins: mcCoins, rate: mcRate })); } catch (e) {} }
+function mcRefresh() {
+  const b = document.getElementById('mc-bal'), r = document.getElementById('mc-rate');
+  if (b) b.textContent = mcCoins + ' MXC';
+  if (r) r.textContent = 'Mining power: ' + mcRate + ' / click';
+}
+function mcNote(msg) { const n = document.getElementById('mc-note'); if (n) n.textContent = msg; }
+function initMaxcoin() {
+  mcRefresh();
+  const mine = document.getElementById('mc-mine');
+  document.getElementById('mc-mine').onclick = () => {
+    mcCoins += mcRate; mcSave(); mcRefresh();
+    mine.classList.remove('pop'); void mine.offsetWidth; mine.classList.add('pop');
+  };
+  document.getElementById('mc-up').onclick = () => {
+    if (mcCoins < 10) { mcNote('Need 10 MXC to upgrade — keep mining! ⛏️'); return; }
+    mcCoins -= 10; mcRate += 1; mcSave(); mcRefresh();
+    mcNote('Rig upgraded! Now mining ' + mcRate + ' / click ⚡');
+  };
+  document.getElementById('mc-cash').onclick = () => {
+    if (mcCoins <= 0) { mcNote('Your wallet is empty. Mine some MaxCoin first!'); return; }
+    mcNote('Cashed out ' + mcCoins + ' MXC for $0.00 (it is fake) 😂');
+    mcCoins = 0; mcSave(); mcRefresh();
+  };
+}
+
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
 let colorRGB = { r: 100, g: 180, b: 255 };
 function buildColors() {
@@ -5065,7 +5125,7 @@ const appInitHooks = {
   calendar: initCalendar, music: initMusic, appstore: initStore, messages: initMessages,
   g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
-  dice: () => {}, colors: initColors,
+  dice: () => {}, colors: initColors, maxcoin: initMaxcoin,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
