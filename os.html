@@ -984,12 +984,15 @@ function applyDeviceMode() {
     dock.style.display = 'flex';
     if (startMenu) startMenu.style.bottom = '96px'; // dock is 80px + padding
     if (desktop) desktop.style.paddingBottom = '80px';
-    document.body.style.touchAction = 'manipulation';
+    // NOTE: do NOT set body touch-action:manipulation — on iOS it suppresses the
+    // synthesized dblclick from a double-tap, which breaks opening files/folders.
+    document.body.style.touchAction = '';
   } else {
     taskbar.style.display = 'flex';
     dock.style.display = 'none';
     if (startMenu) startMenu.style.bottom = '58px';
     if (desktop) desktop.style.paddingBottom = '0';
+    document.body.style.touchAction = '';
   }
 }
 
