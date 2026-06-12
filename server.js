@@ -15,7 +15,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
 const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
 
 // ── Serve frontend ────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'os.html')));
+// Always send the latest os.html — never let the browser (esp. iOS Safari) cache
+// a stale single-page app shell.
+function sendOS(res) {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.sendFile(path.join(__dirname, 'os.html'));
+}
+app.get('/', (req, res) => sendOS(res));
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 const UserSchema = new mongoose.Schema({
@@ -656,7 +664,7 @@ app.delete('/api/rm', auth, async (req, res) => {
 // ── Deep links: every non-API path serves the OS (so /calc, /chess, etc. work) ──
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
-  res.sendFile(path.join(__dirname, 'os.html'));
+  sendOS(res);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
