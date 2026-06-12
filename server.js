@@ -215,6 +215,7 @@ app.post('/api/auth/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
     await seedUser(user._id, user.username);
+    await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -222,6 +223,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   const u = await User.findById(req.user.id).select('username displayName admin installed');
+  await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
   res.json({ username: u.username, displayName: u.displayName, admin: u.admin, installed: u.installed });
 });
 
@@ -465,6 +467,18 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Make sure a user's "Shared with me" folder exists (idempotent — also used to
+// retroactively add the folder to accounts created before it existed).
+async function ensureSharedFolder(userId, username) {
+  const sharedDir = `/home/${username}/Shared with me`;
+  await File.updateOne(
+    { userId, path: sharedDir },
+    { $setOnInsert: { userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: `/home/${username}` } },
+    { upsert: true }
+  );
+  return sharedDir;
+}
+
 // Add a shared doc to recipient's MaxDrive
 async function addSharedToUserDrive(userId, type, title, content, fromUser) {
   const user = await User.findById(userId);
@@ -472,7 +486,7 @@ async function addSharedToUserDrive(userId, type, title, content, fromUser) {
 
   const extMap = { doc: '.docs', sheet: '.sheet', form: '.forms' };
   const ext = extMap[type] || '.txt';
-  const sharedDir = `/home/${user.username}/Shared with me`;
+  const sharedDir = await ensureSharedFolder(user._id, user.username);
 
   // Create file in "Shared with me" folder
   const filename = title.replace(/[^a-z0-9]+/gi, '_').slice(0, 30) || 'shared';
