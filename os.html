@@ -4423,7 +4423,19 @@ function mapsLocate() {
 const MS_RUNTIME = `const MS={out:null,_o(){if(!this.out){this.out=document.getElementById('ms-output');if(!this.out){this.out=document.createElement('div');this.out.id='ms-output';document.body.appendChild(this.out);}}return this.out;},show(v){const d=document.createElement('div');d.textContent=String(v);this._o().appendChild(d);},setText(id,v){const e=document.getElementById(id);if(e)e.textContent=String(v);},setHtml(id,v){const e=document.getElementById(id);if(e)e.innerHTML=String(v);},onClick(id,fn){const e=document.getElementById(id);if(e)e.addEventListener('click',fn);},ask(q){return prompt(q);},random(n){return Math.floor(Math.random()*n);}};`;
 function maxTranspile(src) {
   const out = [], stack = [];
-  const cond = c => c.replace(/\bis not\b/g, '!==').replace(/\bis\b/g, '===').replace(/\band\b/g, '&&').replace(/\bor\b/g, '||');
+  // Plain-English comparisons → JS operators. Multi-word phrases MUST be replaced
+  // before the bare "is"/"is not" so "is less than" doesn't get half-translated.
+  const cond = c => c
+    .replace(/\bis\s+less\s+than\s+or\s+equal\s+to\b/gi, '<=')
+    .replace(/\bis\s+greater\s+than\s+or\s+equal\s+to\b/gi, '>=')
+    .replace(/\bis\s+at\s+least\b/gi, '>=')
+    .replace(/\bis\s+at\s+most\b/gi, '<=')
+    .replace(/\bis\s+less\s+than\b/gi, '<')
+    .replace(/\bis\s+greater\s+than\b/gi, '>')
+    .replace(/\bis\s+not\b/gi, '!==')
+    .replace(/\bis\b/gi, '===')
+    .replace(/\band\b/gi, '&&')
+    .replace(/\bor\b/gi, '||');
   const ref = s => { s = s.trim(); return (s[0] === '"' || s[0] === "'") ? s : JSON.stringify(s); }; // bare name OR quoted string
   for (let raw of (src || '').split('\n')) {
     const line = raw.trim();
@@ -4446,6 +4458,7 @@ function maxTranspile(src) {
     else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${ref(m[1])}, function(){`); stack.push('fn'); }
     else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); stack.push('block'); }
     else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); stack.push('block'); }
+    else if (m = line.match(/^else\s+if\s+(.+?)\s*:$/i)) out.push(`} else if(${cond(m[1])}){`);
     else if (/^else\s*:?$/i.test(line)) out.push(`} else {`);
     else if (/^end$/i.test(line)) out.push(stack.pop() === 'fn' ? `});` : `}`);
     else out.push(line.endsWith(';') || line.endsWith('{') || line.endsWith('}') ? line : line + ';'); // raw JS passthrough
@@ -4454,8 +4467,18 @@ function maxTranspile(src) {
   return out.join('\n');
 }
 // MaxScript markup: colors & style keywords
-const MS_COLORS = { red:'#ff5f57', blue:'#64b4ff', green:'#28c840', yellow:'#febc2e', purple:'#bf5af2', orange:'#ff9f0a', pink:'#ff6bcb', black:'#222', white:'#fff', gray:'#8a8a8a', grey:'#8a8a8a', teal:'#30d6c0' };
-const MS_LIGHT = new Set(['white', 'yellow']);
+const MS_COLORS = {
+  red:'#ff5f57', blue:'#64b4ff', green:'#28c840', yellow:'#febc2e', purple:'#bf5af2',
+  orange:'#ff9f0a', pink:'#ff6bcb', black:'#222', white:'#fff', gray:'#8a8a8a', grey:'#8a8a8a', teal:'#30d6c0',
+  // extended palette
+  cyan:'#22d3ee', magenta:'#ff4fd8', lime:'#a3e635', indigo:'#6366f1', violet:'#a78bfa',
+  brown:'#a8703b', gold:'#ffd54a', silver:'#cbd5e1', navy:'#1e3a8a', maroon:'#8b1e3f',
+  olive:'#8a8a2e', coral:'#ff7f50', salmon:'#fa8072', turquoise:'#1abc9c', crimson:'#dc2647',
+  lavender:'#c4b5fd', mint:'#9ef7c4', peach:'#ffb59e', sky:'#7dd3fc', rose:'#fb7185',
+  lightblue:'#7dd3fc', lightgreen:'#86efac', hotpink:'#ff4f9a', aqua:'#22d3ee', slate:'#64748b',
+};
+// Light backgrounds that need dark button text
+const MS_LIGHT = new Set(['white','yellow','gold','silver','lime','mint','peach','lavender','sky','lightblue','lightgreen','aqua','salmon','coral']);
 const MS_BASE_CSS = `body{font-family:system-ui,-apple-system,sans-serif;padding:24px;background:#12122a;color:#fff;margin:0}.ms-el{display:block;margin:12px 0}h1.ms-el{font-size:26px}button.ms-el{padding:12px 24px;border:none;cursor:pointer;color:#fff;font-size:16px;background:#64b4ff;transition:filter .1s}button.ms-el:hover{filter:brightness(1.1)}button.ms-el:active{filter:brightness(.9)}input.ms-el{padding:10px 14px;border-radius:8px;border:1px solid #ccc;font-size:15px;min-width:200px}#ms-output{margin-top:14px;font-family:monospace;color:#9fe}#ms-output div{padding:2px 0}`;
 function msStyle(type, tokens) {
   let id = null; const label = [], css = [];
@@ -4646,7 +4669,7 @@ function studioLangChange() {
   studioTab('js'); studioPreview();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · repeat 3 times: … end. Functions: "to greet: … end" then "call greet" · with inputs: "to add with n: … end" then "call add with 5". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 13000);
+  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · if x is less than 10: … else if x is greater than 20: … else: … end · repeat 3 times: … end. Compare with: is · is not · is less than · is greater than · is at least · is at most · and · or. Colors: red blue green yellow purple orange pink teal cyan magenta lime indigo violet gold coral mint sky rose … Functions: "to greet: … end" then "call greet". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 15000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
