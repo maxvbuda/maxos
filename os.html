@@ -4437,9 +4437,27 @@ function maxTranspile(src) {
     .replace(/\band\b/gi, '&&')
     .replace(/\bor\b/gi, '||');
   const ref = s => { s = s.trim(); return (s[0] === '"' || s[0] === "'") ? s : JSON.stringify(s); }; // bare name OR quoted string
+  // Python-style blocks: indent opens, dedent closes (no `end` needed) — while the
+  // old explicit `end` keyword still works. Each stack frame remembers the indent
+  // of its opener and whether it has seen an indented body line yet.
+  const indentOf = s => { let n = 0; for (let k = 0; k < s.length; k++) { if (s[k] === ' ') n++; else if (s[k] === '\t') n += 4; else break; } return n; };
+  const closeFrame = () => { const f = stack.pop(); if (f) out.push(f.type === 'fn' ? `});` : `}`); };
   for (let raw of (src || '').split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('#') || line.startsWith('//')) { out.push(''); continue; }
+    const ind = indentOf(raw);
+    const isEnd = /^end$/i.test(line);
+    const isElse = /^(elif\b|else\b)/i.test(line);
+    // Auto-close indented blocks on dedent. `end` closes explicitly (skip here);
+    // else/elif only close deeper-nested blocks, keeping their own `if` frame open.
+    if (!isEnd) {
+      if (isElse) { while (stack.length && stack[stack.length - 1].openIndent > ind) closeFrame(); }
+      else { while (stack.length && stack[stack.length - 1].sawBody && ind <= stack[stack.length - 1].openIndent) closeFrame(); }
+    }
+    // Record that the current block actually has an indented body (so a same-indent
+    // body with explicit `end` isn't mistaken for a dedent).
+    if (!isEnd && !isElse && stack.length && ind > stack[stack.length - 1].openIndent) stack[stack.length - 1].sawBody = true;
+    const openBlock = () => stack.push({ type: 'block', openIndent: ind, sawBody: false });
     let m;
     if (m = line.match(/^set\s+text\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${ref(m[1])}, ${m[2]});`);
     else if (m = line.match(/^set\s+html\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${ref(m[1])}, ${m[2]});`);
@@ -4449,21 +4467,21 @@ function maxTranspile(src) {
     else if (/^(mal|maxware|evil)$/i.test(line)) out.push(`(window.runMal||(window.parent&&window.parent.runMal)||function(){})();`); // run the MAXWARE siege over the real desktop
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
     else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
-    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); stack.push('block'); } // define function w/ inputs
-    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); stack.push('block'); } // define function
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); openBlock(); } // define function w/ inputs
+    else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); openBlock(); } // define function
     else if (m = line.match(/^call\s+([a-zA-Z_]\w*)\s+with\s+(.+)$/i)) out.push(`${m[1]}(${m[2]});`); // run function w/ inputs
     else if (m = line.match(/^call\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[1]}();`); // run function
     else if (m = line.match(/^return\s+(.+)$/i)) out.push(`return ${m[1]};`);
     else if (/^return$/i.test(line)) out.push(`return;`);
-    else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${ref(m[1])}, function(){`); stack.push('fn'); }
-    else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); stack.push('block'); }
-    else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); stack.push('block'); }
-    else if (m = line.match(/^else\s+if\s+(.+?)\s*:$/i)) out.push(`} else if(${cond(m[1])}){`);
-    else if (/^else\s*:?$/i.test(line)) out.push(`} else {`);
-    else if (/^end$/i.test(line)) out.push(stack.pop() === 'fn' ? `});` : `}`);
+    else if (m = line.match(/^on\s+click\s+(.+?)\s*:$/i)) { out.push(`MS.onClick(${ref(m[1])}, function(){`); stack.push({ type: 'fn', openIndent: ind, sawBody: false }); }
+    else if (m = line.match(/^repeat\s+(.+?)\s+times\s*:$/i)) { out.push(`for(let _i=0;_i<(${m[1]});_i++){`); openBlock(); }
+    else if (m = line.match(/^if\s+(.+?)\s*:$/i)) { out.push(`if(${cond(m[1])}){`); openBlock(); }
+    else if (m = line.match(/^(?:elif|else\s+if)\s+(.+?)\s*:$/i)) { if (stack.length) { out.push(`} else if(${cond(m[1])}){`); stack[stack.length - 1].sawBody = false; } } // chains onto the open if
+    else if (/^else\s*:?$/i.test(line)) { if (stack.length) { out.push(`} else {`); stack[stack.length - 1].sawBody = false; } }
+    else if (isEnd) closeFrame();
     else out.push(line.endsWith(';') || line.endsWith('{') || line.endsWith('}') ? line : line + ';'); // raw JS passthrough
   }
-  while (stack.length) out.push(stack.pop() === 'fn' ? `});` : `}`); // auto-close
+  while (stack.length) closeFrame(); // auto-close anything left open at EOF
   return out.join('\n');
 }
 // MaxScript markup: colors & style keywords
@@ -4508,12 +4526,12 @@ function maxCompile(src) {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i], trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-    if (/^\s/.test(raw)) { initLines.push(trimmed); continue; } // stray indented → init code
+    if (/^\s/.test(raw)) { initLines.push(raw); continue; } // stray indented → init code
     // type, optional plain-word name, then ": rest"
     const m = trimmed.match(/^([a-zA-Z]+)(?:\s+([a-zA-Z_][\w-]*))?\s*:\s*(.*)$/);
-    if (!m) { initLines.push(trimmed); continue; }
+    if (!m) { initLines.push(raw); continue; }
     const type = m[1].toLowerCase();
-    if (!['button', 'title', 'text', 'label', 'input', 'image'].includes(type)) { initLines.push(trimmed); continue; }
+    if (!['button', 'title', 'text', 'label', 'input', 'image'].includes(type)) { initLines.push(raw); continue; }
     const explicitName = m[2]; let rest = m[3], props = [], trailing = rest;
     const pm = rest.match(/^\(([^)]*)\)\s*(.*)$/);
     if (pm) { props = pm[1].split(','); trailing = pm[2]; }
@@ -4669,7 +4687,7 @@ function studioLangChange() {
   studioTab('js'); studioPreview();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · if x is 5: … end · if x is less than 10: … else if x is greater than 20: … else: … end · repeat 3 times: … end. Compare with: is · is not · is less than · is greater than · is at least · is at most · and · or. Colors: red blue green yellow purple orange pink teal cyan magenta lime indigo violet gold coral mint sky rose … Functions: "to greet: … end" then "call greet". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 15000);
+  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · Python-style if (just indent, no "end" needed): "if x is less than 10:" then indented lines · "elif x is greater than 20:" · "else:". The old "end" style still works. repeat 3 times: …. Compare with: is · is not · is less than · is greater than · is at least · is at most · == · < · > · and · or. Colors: red blue green yellow purple orange pink teal cyan magenta lime indigo violet gold coral mint sky rose … Functions: "to greet: … end" then "call greet". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 15000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
