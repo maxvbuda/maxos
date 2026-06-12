@@ -463,6 +463,40 @@
   .mc-btn small { color:rgba(255,255,255,.45); font-size:10px; font-weight:400; }
   .mc-note { color:rgba(255,255,255,.6); font-size:12px; margin-top:auto; min-height:16px; }
 
+  /* Max Animator */
+  .an-app { display:flex; flex-direction:column; height:100%; gap:8px; padding:10px; }
+  .an-tools, .an-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .an-t, .an-b { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  .an-t.active { background:rgba(100,180,255,.3); border-color:rgba(100,180,255,.5); }
+  .an-t:hover, .an-b:hover { background:rgba(255,255,255,.18); }
+  .an-sw { width:20px; height:20px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,.25); display:inline-block; }
+  .an-fps, .vid-dur { color:rgba(255,255,255,.6); font-size:12px; display:flex; align-items:center; gap:4px; }
+  .an-fps input, .vid-dur input { width:46px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:6px; padding:3px 5px; }
+  #an-canvas { width:100%; flex:1; background:#10101f; border-radius:10px; cursor:crosshair; touch-action:none; min-height:160px; }
+  .an-strip { display:flex; gap:6px; overflow-x:auto; padding:4px 0; min-height:62px; }
+  .an-frame { position:relative; flex:0 0 auto; cursor:pointer; border:2px solid transparent; border-radius:6px; }
+  .an-frame.sel { border-color:#64b4ff; }
+  .an-frame img { width:74px; height:50px; object-fit:cover; border-radius:4px; display:block; background:#10101f; }
+  .an-frame span { position:absolute; bottom:1px; right:3px; font-size:9px; color:#fff; text-shadow:0 1px 2px #000; }
+  .an-info, .vid-info { color:rgba(255,255,255,.5); font-size:12px; }
+
+  /* Max Video */
+  .vid-app { display:flex; flex-direction:column; height:100%; gap:8px; padding:10px; }
+  .vid-stage { flex:1; background:#000; border-radius:10px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; min-height:180px; }
+  .vid-frame { max-width:100%; max-height:100%; object-fit:contain; }
+  .vid-caption { position:absolute; bottom:14px; left:0; right:0; text-align:center; color:#fff; font-size:22px; font-weight:700; text-shadow:0 2px 6px #000, 0 0 2px #000; padding:0 16px; }
+  .vid-empty { color:rgba(255,255,255,.4); font-size:15px; }
+  .vid-controls { display:flex; align-items:center; gap:8px; }
+  .vid-text { flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:8px; padding:7px 10px; font-size:13px; }
+  .vid-c, .vid-b { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:7px 11px; font-size:13px; cursor:pointer; }
+  .vid-c:hover, .vid-b:hover { background:rgba(255,255,255,.18); }
+  .vid-timeline { display:flex; gap:6px; overflow-x:auto; min-height:62px; padding:4px 0; }
+  .vid-clip { position:relative; flex:0 0 auto; cursor:pointer; border:2px solid transparent; border-radius:6px; }
+  .vid-clip.sel { border-color:#64b4ff; }
+  .vid-clip img { width:84px; height:50px; object-fit:cover; border-radius:4px; display:block; }
+  .vid-clip span { position:absolute; bottom:1px; right:3px; font-size:9px; color:#fff; text-shadow:0 1px 2px #000; }
+  .vid-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
   .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
@@ -1379,6 +1413,8 @@ const apps = {
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
   maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
+  animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:720, h:560, cat:'Creativity', desc:'Frame-by-frame animation studio', html: buildAnimator },
+  video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 
   // ── Premium apps ──
@@ -3410,47 +3446,265 @@ function flipCoin() {
 }
 
 // ── MAXCOIN — a fake crypto wallet/miner (pretend coins, real fun) ────────────
-let mcCoins = 0, mcRate = 1;
+let mcCoins = 0, mcRate = 1, mcSaveTimer = null;
+const MC_MINE = 0.01, MC_UPGRADE = 0.10; // earn 0.01 MXC per click; first upgrade costs 0.10
 function mcKey() { return 'maxos_maxcoin_' + (currentUser?.username || 'guest'); }
+function mcFmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
 function buildMaxcoin() {
-  // restore this user's wallet
+  // optimistic restore from localStorage; authoritative MongoDB load happens in init
   try { const s = JSON.parse(localStorage.getItem(mcKey()) || '{}'); mcCoins = +s.coins || 0; mcRate = +s.rate || 1; } catch (e) { mcCoins = 0; mcRate = 1; }
   return `<div class="mc-app">
     <div class="mc-title">🪙 MaxCoin Wallet</div>
-    <div class="mc-bal" id="mc-bal">${mcCoins} MXC</div>
-    <div class="mc-rate" id="mc-rate">Mining power: ${mcRate} / click</div>
+    <div class="mc-bal" id="mc-bal">${mcFmt(mcCoins)} MXC</div>
+    <div class="mc-rate" id="mc-rate">Mining power: ${mcFmt(MC_MINE * mcRate)} / click</div>
     <button class="mc-mine" id="mc-mine">⛏️ Mine MaxCoin</button>
     <div class="mc-row">
-      <button class="mc-btn" id="mc-up">⚡ Upgrade rig<small>cost 10 MXC</small></button>
+      <button class="mc-btn" id="mc-up">⚡ Upgrade rig<small>cost ${mcFmt(MC_UPGRADE)} MXC</small></button>
       <button class="mc-btn" id="mc-cash">💰 Cash out</button>
     </div>
     <div class="mc-note" id="mc-note">Tip: it's all pretend — worth exactly $0.00 😄</div>
   </div>`;
 }
-function mcSave() { try { localStorage.setItem(mcKey(), JSON.stringify({ coins: mcCoins, rate: mcRate })); } catch (e) {} }
+function mcSave() {
+  const data = { coins: mcCoins, rate: mcRate };
+  try { localStorage.setItem(mcKey(), JSON.stringify(data)); } catch (e) {}
+  clearTimeout(mcSaveTimer); // debounce the Mongo write so rapid mining doesn't spam the server
+  mcSaveTimer = setTimeout(() => apiFetch('/api/me/data/maxcoin', { method: 'PUT', body: JSON.stringify({ value: data }) }), 600);
+}
 function mcRefresh() {
   const b = document.getElementById('mc-bal'), r = document.getElementById('mc-rate');
-  if (b) b.textContent = mcCoins + ' MXC';
-  if (r) r.textContent = 'Mining power: ' + mcRate + ' / click';
+  if (b) b.textContent = mcFmt(mcCoins) + ' MXC';
+  if (r) r.textContent = 'Mining power: ' + mcFmt(MC_MINE * mcRate) + ' / click';
 }
 function mcNote(msg) { const n = document.getElementById('mc-note'); if (n) n.textContent = msg; }
 function initMaxcoin() {
   mcRefresh();
-  const mine = document.getElementById('mc-mine');
-  document.getElementById('mc-mine').onclick = () => {
-    mcCoins += mcRate; mcSave(); mcRefresh();
+  // Load the authoritative wallet from MongoDB (don't block button wiring on it)
+  apiFetch('/api/me/data/maxcoin').then(res => {
+    if (res && !res.error && res.value) { mcCoins = +res.value.coins || 0; mcRate = +res.value.rate || 1; try { localStorage.setItem(mcKey(), JSON.stringify({ coins: mcCoins, rate: mcRate })); } catch (e) {} mcRefresh(); }
+  });
+  const mine = document.getElementById('mc-mine'); if (!mine) return;
+  mine.onclick = () => {
+    mcCoins = Math.round((mcCoins + MC_MINE * mcRate) * 100) / 100; // round to cents to avoid float drift
+    mcSave(); mcRefresh();
     mine.classList.remove('pop'); void mine.offsetWidth; mine.classList.add('pop');
   };
   document.getElementById('mc-up').onclick = () => {
-    if (mcCoins < 10) { mcNote('Need 10 MXC to upgrade — keep mining! ⛏️'); return; }
-    mcCoins -= 10; mcRate += 1; mcSave(); mcRefresh();
-    mcNote('Rig upgraded! Now mining ' + mcRate + ' / click ⚡');
+    if (mcCoins < MC_UPGRADE) { mcNote('Need ' + mcFmt(MC_UPGRADE) + ' MXC to upgrade — keep mining! ⛏️'); return; }
+    mcCoins = Math.round((mcCoins - MC_UPGRADE) * 100) / 100; mcRate += 1; mcSave(); mcRefresh();
+    mcNote('Rig upgraded! Now mining ' + mcFmt(MC_MINE * mcRate) + ' / click ⚡');
   };
   document.getElementById('mc-cash').onclick = () => {
     if (mcCoins <= 0) { mcNote('Your wallet is empty. Mine some MaxCoin first!'); return; }
-    mcNote('Cashed out ' + mcCoins + ' MXC for $0.00 (it is fake) 😂');
+    mcNote('Cashed out ' + mcFmt(mcCoins) + ' MXC for $0.00 (it is fake) 😂');
     mcCoins = 0; mcSave(); mcRefresh();
   };
+}
+
+// ── MAX ANIMATOR — frame-by-frame drawing animation (flipbook) ────────────────
+let anFrames = [], anCur = 0, anColor = '#ffffff', anSize = 4, anTool = 'pen', anPlay = null, anFps = 8, anDrawing = false, anCtx = null, anPath = null;
+const AN_W = 480, AN_H = 320;
+function buildAnimator() {
+  const colors = ['#ffffff','#ff5f57','#febc2e','#28c840','#64b4ff','#bf5af2','#ff9f0a','#000000'];
+  return `<div class="an-app">
+    <div class="an-tools">
+      <button id="an-pen" class="an-t active" onclick="anSetTool('pen')">✏️</button>
+      <button id="an-eraser" class="an-t" onclick="anSetTool('eraser')">🧹</button>
+      <input type="range" id="an-size" min="1" max="30" value="4" oninput="anSize=+this.value" title="Brush size">
+      ${colors.map(c => `<span class="an-sw" style="background:${c}" onclick="anSetColor('${c}')"></span>`).join('')}
+      <span style="flex:1"></span>
+      <button class="an-t" onclick="anPlayToggle()" id="an-play">▶️ Play</button>
+      <label class="an-fps">FPS <input type="number" id="an-fpsn" min="1" max="24" value="8" onchange="anFps=Math.max(1,Math.min(24,+this.value||8))"></label>
+    </div>
+    <canvas id="an-canvas" width="${AN_W}" height="${AN_H}"></canvas>
+    <div class="an-strip" id="an-strip"></div>
+    <div class="an-bar">
+      <button class="an-b" onclick="anAddFrame()">➕ Frame</button>
+      <button class="an-b" onclick="anDupFrame()">⧉ Duplicate</button>
+      <button class="an-b" onclick="anDelFrame()">🗑 Delete</button>
+      <button class="an-b" onclick="anClearFrame()">✖ Clear</button>
+      <span style="flex:1"></span>
+      <span id="an-info" class="an-info"></span>
+      <button class="an-b" onclick="anOpen()">📂 Open</button>
+      <button class="an-b" onclick="anSave()">💾 Save</button>
+      <button class="an-b" onclick="anGif()">⬇️ Export</button>
+    </div>
+  </div>`;
+}
+// Open a .anim file directly (from a MaxDrive double-click)
+async function animOpenPath(path, name) {
+  const res = await fsCat(path);
+  if (res.error) { notify('⚠️', 'Open failed', res.error); return; }
+  try { const d = JSON.parse(res.content); anFrames = d.frames || [anEmptyFrame()]; anFps = d.fps || 8; anCur = 0; anPath = path;
+    const f = document.getElementById('an-fpsn'); if (f) f.value = anFps;
+    if (anCtx) { anDraw(); anRenderStrip(); anInfo(); } notify('🎞️', 'Opened', name);
+  } catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
+}
+function initAnimator() {
+  const c = document.getElementById('an-canvas'); if (!c) return;
+  anCtx = c.getContext('2d');
+  if (!anFrames.length) { anFrames = [anEmptyFrame()]; anCur = 0; anPath = null; }
+  anDraw(); anRenderStrip(); anInfo();
+  const xy = e => { const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * (AN_W / r.width), (t.clientY - r.top) * (AN_H / r.height)]; };
+  const start = e => { e.preventDefault(); anDrawing = true; anCtx.beginPath(); anCtx.moveTo(...xy(e)); };
+  const move = e => {
+    if (!anDrawing) return; e.preventDefault();
+    anCtx.lineCap = 'round'; anCtx.lineJoin = 'round';
+    anCtx.lineWidth = anTool === 'eraser' ? anSize * 2.5 : anSize;
+    anCtx.strokeStyle = anTool === 'eraser' ? '#10101f' : anColor;
+    anCtx.lineTo(...xy(e)); anCtx.stroke(); anCtx.beginPath(); anCtx.moveTo(...xy(e));
+  };
+  const end = () => { if (!anDrawing) return; anDrawing = false; anCommit(); };
+  c.onmousedown = c.ontouchstart = start;
+  c.onmousemove = c.ontouchmove = move;
+  c.onmouseup = c.onmouseleave = c.ontouchend = end;
+}
+function anEmptyFrame() { const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H; const x = cv.getContext('2d'); x.fillStyle = '#10101f'; x.fillRect(0, 0, AN_W, AN_H); return cv.toDataURL(); }
+function anSetTool(t) { anTool = t; document.querySelectorAll('.an-t').forEach(b => b.classList.remove('active')); document.getElementById('an-' + t)?.classList.add('active'); }
+function anSetColor(c) { anColor = c; anTool = 'pen'; anSetTool('pen'); }
+function anDraw() { // render current frame (with onion skin of previous) onto canvas
+  anCtx.fillStyle = '#10101f'; anCtx.fillRect(0, 0, AN_W, AN_H);
+  const drawImg = (src, alpha) => new Promise(res => { const im = new Image(); im.onload = () => { anCtx.globalAlpha = alpha; anCtx.drawImage(im, 0, 0); anCtx.globalAlpha = 1; res(); }; im.onerror = res; im.src = src; });
+  // onion skin previous frame faintly, then current
+  (async () => { if (anCur > 0) await drawImg(anFrames[anCur - 1], 0.25); await drawImg(anFrames[anCur], 1); })();
+}
+function anCommit() { anFrames[anCur] = document.getElementById('an-canvas').toDataURL(); anRenderStripThumb(anCur); }
+function anRenderStrip() {
+  const s = document.getElementById('an-strip'); if (!s) return;
+  s.innerHTML = anFrames.map((f, i) => `<div class="an-frame${i === anCur ? ' sel' : ''}" onclick="anGo(${i})"><img src="${f}"><span>${i + 1}</span></div>`).join('');
+  const sel = s.querySelector('.an-frame.sel'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+}
+function anRenderStripThumb(i) { const img = document.querySelectorAll('.an-frame img')[i]; if (img) img.src = anFrames[i]; }
+function anGo(i) { anCommit(); anCur = Math.max(0, Math.min(i, anFrames.length - 1)); anDraw(); anRenderStrip(); anInfo(); }
+function anAddFrame() { anCommit(); anFrames.splice(anCur + 1, 0, anEmptyFrame()); anCur++; anDraw(); anRenderStrip(); anInfo(); }
+function anDupFrame() { anCommit(); anFrames.splice(anCur + 1, 0, anFrames[anCur]); anCur++; anDraw(); anRenderStrip(); anInfo(); }
+function anDelFrame() { if (anFrames.length <= 1) { anClearFrame(); return; } anFrames.splice(anCur, 1); anCur = Math.max(0, anCur - 1); anDraw(); anRenderStrip(); anInfo(); }
+function anClearFrame() { anFrames[anCur] = anEmptyFrame(); anDraw(); anRenderStrip(); }
+function anInfo() { const el = document.getElementById('an-info'); if (el) el.textContent = `Frame ${anCur + 1} / ${anFrames.length}`; }
+function anPlayToggle() {
+  const btn = document.getElementById('an-play');
+  if (anPlay) { clearInterval(anPlay); anPlay = null; btn.textContent = '▶️ Play'; anGo(anCur); return; }
+  anCommit(); btn.textContent = '⏸ Stop'; let i = 0;
+  anPlay = setInterval(() => {
+    const im = new Image(); im.onload = () => { anCtx.globalAlpha = 1; anCtx.fillStyle = '#10101f'; anCtx.fillRect(0, 0, AN_W, AN_H); anCtx.drawImage(im, 0, 0); }; im.src = anFrames[i % anFrames.length];
+    i++;
+  }, 1000 / anFps);
+}
+async function anSave() {
+  if (anPlay) anPlayToggle();
+  anCommit();
+  const data = JSON.stringify({ fps: anFps, frames: anFrames });
+  if (anPath) { await driveWrite(anPath, data); notify('🎞️', 'Saved', anPath.split('/').pop()); return; }
+  const path = await driveSaveAs('animation.anim', data);
+  if (path) { anPath = path; notify('🎞️', 'Saved', path.split('/').pop()); }
+}
+async function anOpen() {
+  const picked = await drivePick(['anim']);
+  if (!picked) return;
+  try { const d = JSON.parse(picked.content); anFrames = d.frames || [anEmptyFrame()]; anFps = d.fps || 8; anCur = 0; anPath = picked.path;
+    const f = document.getElementById('an-fpsn'); if (f) f.value = anFps;
+    anDraw(); anRenderStrip(); anInfo(); notify('🎞️', 'Opened', picked.name);
+  } catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
+}
+function anGif() { // export current frame as PNG (full GIF encoding is heavy; PNG of frame is the practical export)
+  anCommit(); const a = document.createElement('a'); a.download = 'frame_' + (anCur + 1) + '.png'; a.href = anFrames[anCur]; a.click();
+  notify('⬇️', 'Exported frame', 'Saved frame ' + (anCur + 1) + ' as PNG');
+}
+
+// ── MAX VIDEO — timeline slideshow/movie editor ───────────────────────────────
+let vidClips = [], vidCur = 0, vidPlay = null, vidPath = null;
+function buildVideo() {
+  return `<div class="vid-app">
+    <div class="vid-stage" id="vid-stage"><div class="vid-empty">🎬 Add images to start your movie</div></div>
+    <div class="vid-controls">
+      <button class="vid-c" onclick="vidPlayToggle()" id="vid-play">▶️ Play</button>
+      <input type="text" id="vid-text" class="vid-text" placeholder="Caption for this clip…" oninput="vidSetText(this.value)">
+      <label class="vid-dur">Sec <input type="number" id="vid-dur" min="0.3" max="20" step="0.1" value="2" onchange="vidSetDur(+this.value)"></label>
+    </div>
+    <div class="vid-timeline" id="vid-timeline"></div>
+    <div class="vid-bar">
+      <button class="vid-b" onclick="vidAdd()">🖼️ Add Image</button>
+      <button class="vid-b" onclick="vidDup()">⧉ Duplicate</button>
+      <button class="vid-b" onclick="vidDel()">🗑 Delete</button>
+      <button class="vid-b" onclick="vidMove(-1)">◀ Move</button>
+      <button class="vid-b" onclick="vidMove(1)">Move ▶</button>
+      <span style="flex:1"></span>
+      <span class="vid-info" id="vid-info"></span>
+      <button class="vid-b" onclick="vidOpen()">📂 Open</button>
+      <button class="vid-b" onclick="vidSave()">💾 Save</button>
+    </div>
+    <input type="file" id="vid-file" accept="image/*" multiple style="display:none">
+  </div>`;
+}
+function initVideo() {
+  const f = document.getElementById('vid-file'); if (!f) return;
+  f.onchange = e => {
+    const files = [...e.target.files];
+    let pending = files.length;
+    files.forEach(file => {
+      const rd = new FileReader();
+      rd.onload = () => { vidClips.push({ src: rd.result, dur: 2, text: '' }); if (--pending === 0) { vidCur = vidClips.length - 1; vidRender(); } };
+      rd.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+  vidRender();
+}
+function vidAdd() { document.getElementById('vid-file').click(); }
+function vidRender() {
+  const tl = document.getElementById('vid-timeline'), stage = document.getElementById('vid-stage'), info = document.getElementById('vid-info');
+  if (!tl) return;
+  tl.innerHTML = vidClips.map((c, i) => `<div class="vid-clip${i === vidCur ? ' sel' : ''}" onclick="vidGo(${i})"><img src="${c.src}"><span>${c.dur}s</span></div>`).join('') || '<div class="vid-empty" style="padding:14px">No clips yet — Add Image</div>';
+  if (vidClips.length && vidClips[vidCur]) {
+    const c = vidClips[vidCur];
+    stage.innerHTML = `<img src="${c.src}" class="vid-frame">${c.text ? `<div class="vid-caption">${escapeHtml(c.text)}</div>` : ''}`;
+    const t = document.getElementById('vid-text'), d = document.getElementById('vid-dur');
+    if (t) t.value = c.text; if (d) d.value = c.dur;
+  } else { stage.innerHTML = '<div class="vid-empty">🎬 Add images to start your movie</div>'; }
+  const total = vidClips.reduce((s, c) => s + (+c.dur || 0), 0);
+  if (info) info.textContent = vidClips.length ? `${vidClips.length} clips · ${total.toFixed(1)}s` : '';
+}
+function vidGo(i) { vidCur = i; vidRender(); }
+function vidSetText(v) { if (vidClips[vidCur]) { vidClips[vidCur].text = v; const s = document.getElementById('vid-stage'); const cap = s.querySelector('.vid-caption'); if (cap) cap.textContent = v; else if (v) vidRender(); } }
+function vidSetDur(v) { if (vidClips[vidCur]) { vidClips[vidCur].dur = Math.max(0.3, Math.min(20, v || 2)); vidRender(); } }
+function vidDup() { if (!vidClips.length) return; vidClips.splice(vidCur + 1, 0, { ...vidClips[vidCur] }); vidCur++; vidRender(); }
+function vidDel() { if (!vidClips.length) return; vidClips.splice(vidCur, 1); vidCur = Math.max(0, vidCur - 1); vidRender(); }
+function vidMove(dir) {
+  const j = vidCur + dir; if (j < 0 || j >= vidClips.length) return;
+  [vidClips[vidCur], vidClips[j]] = [vidClips[j], vidClips[vidCur]]; vidCur = j; vidRender();
+}
+function vidPlayToggle() {
+  const btn = document.getElementById('vid-play'), stage = document.getElementById('vid-stage');
+  if (vidPlay) { clearTimeout(vidPlay); vidPlay = null; btn.textContent = '▶️ Play'; vidRender(); return; }
+  if (!vidClips.length) return;
+  btn.textContent = '⏸ Stop'; let i = 0;
+  const show = () => {
+    if (i >= vidClips.length) { clearTimeout(vidPlay); vidPlay = null; btn.textContent = '▶️ Play'; vidRender(); return; }
+    const c = vidClips[i];
+    stage.innerHTML = `<img src="${c.src}" class="vid-frame">${c.text ? `<div class="vid-caption">${escapeHtml(c.text)}</div>` : ''}`;
+    vidPlay = setTimeout(() => { i++; show(); }, (+c.dur || 2) * 1000);
+  };
+  show();
+}
+async function vidSave() {
+  if (vidPlay) vidPlayToggle();
+  const data = JSON.stringify({ clips: vidClips });
+  if (vidPath) { await driveWrite(vidPath, data); notify('🎬', 'Saved', vidPath.split('/').pop()); return; }
+  const path = await driveSaveAs('movie.video', data);
+  if (path) { vidPath = path; notify('🎬', 'Saved', path.split('/').pop()); }
+}
+async function vidOpen() {
+  const picked = await drivePick(['video']);
+  if (!picked) return;
+  try { const d = JSON.parse(picked.content); vidClips = d.clips || []; vidCur = 0; vidPath = picked.path; vidRender(); notify('🎬', 'Opened', picked.name); }
+  catch (e) { notify('⚠️', 'Open failed', 'Not a valid .video file'); }
+}
+// Open a .video file directly (from a MaxDrive double-click)
+async function videoOpenPath(path, name) {
+  const res = await fsCat(path);
+  if (res.error) { notify('⚠️', 'Open failed', res.error); return; }
+  try { const d = JSON.parse(res.content); vidClips = d.clips || []; vidCur = 0; vidPath = path; if (document.getElementById('vid-timeline')) vidRender(); notify('🎬', 'Opened', name); }
+  catch (e) { notify('⚠️', 'Open failed', 'Not a valid .video file'); }
 }
 
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
@@ -4516,11 +4770,11 @@ async function driveDelete(i) {
 function driveGo(path) { driveCwd = path; driveLoad(); }
 function driveIcon(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', board:'📌', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵' })[e] || '📄';
+  return ({ docs:'📘', md:'📝', txt:'📄', sheet:'📊', csv:'📊', maxsheet:'📊', forms:'📋', maxform:'📋', board:'📌', html:'🧪', js:'📜', json:'⚙️', png:'🖼️', jpg:'🖼️', mp3:'🎵', anim:'🎞️', video:'🎬' })[e] || '📄';
 }
 function driveKind(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON' })[e] || (e.toUpperCase() + ' file');
+  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON', anim:'Max Animator', video:'Max Video' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
 // Open a drive card by index — wired to native dblclick, which fires reliably
@@ -4537,6 +4791,8 @@ function driveOpen(path, type, name) {
   else if (ext === 'sheet' || ext === 'csv' || ext === 'maxsheet') { openApp('sheets'); setTimeout(() => sheetsOpenPath(path, name), 300); }
   else if (ext === 'forms' || ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
   else if (ext === 'board') { openApp('board'); setTimeout(() => boardOpenPath(path, name), 300); }
+  else if (ext === 'anim') { openApp('animator'); setTimeout(() => animOpenPath(path, name), 350); }
+  else if (ext === 'video') { openApp('video'); setTimeout(() => videoOpenPath(path, name), 350); }
   else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
 }
 async function driveNew(kind) {
@@ -5126,6 +5382,7 @@ const appInitHooks = {
   g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
   dice: () => {}, colors: initColors, maxcoin: initMaxcoin,
+  animator: initAnimator, video: initVideo,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,

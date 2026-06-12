@@ -31,6 +31,7 @@ const UserSchema = new mongoose.Schema({
   password:    { type: String, required: true },
   displayName: { type: String, default: '' },
   installed:   { type: [String], default: ['calc', 'music', 'snake', 'notes'] },
+  appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (MaxCoin wallet, etc.)
   suspended:   { type: Boolean, default: false },
   admin:       { type: Boolean, default: false },
 }, { timestamps: true });
@@ -228,6 +229,19 @@ app.get('/api/auth/me', auth, async (req, res) => {
 app.put('/api/me/installed', auth, async (req, res) => {
   try { await User.updateOne({ _id: req.user.id }, { installed: Array.isArray(req.body.installed) ? req.body.installed : [] }); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Per-user app data (KV store in Mongo): MaxCoin wallet, app prefs, etc. ────
+app.get('/api/me/data/:key', auth, async (req, res) => {
+  try { const u = await User.findById(req.user.id).select('appData'); res.json({ value: (u.appData || {})[req.params.key] ?? null }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/me/data/:key', auth, async (req, res) => {
+  try {
+    // Mixed paths need an explicit $set on the dotted key
+    await User.updateOne({ _id: req.user.id }, { $set: { ['appData.' + req.params.key]: req.body.value } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
