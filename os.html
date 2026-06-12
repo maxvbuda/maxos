@@ -4000,8 +4000,8 @@ function maxTranspile(src) {
     if (m = line.match(/^set\s+text\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${ref(m[1])}, ${m[2]});`);
     else if (m = line.match(/^set\s+html\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${ref(m[1])}, ${m[2]});`);
     else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) out.push(`${m[1]} = ${m[2]};`); // vars declared globally by maxCompile
-    else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} += ${m[1]};`);
-    else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} -= ${m[1]};`);
+    else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) + (parseFloat(${m[1]}) || 0);`);
+    else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) - (parseFloat(${m[1]}) || 0);`);
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${m[1]});`);
     else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${m[1]});`);
     else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); stack.push('block'); } // define function w/ inputs
