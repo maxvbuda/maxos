@@ -1571,6 +1571,7 @@ const apps = {
   browser:  { title: 'Browser',        short:'Browser',   icon: '🌐', w: 700, h: 500, core:true, html: buildBrowser },
   settings: { title: 'Settings',       short:'Settings',  icon: '⚙️', w: 420, h: 420, core:true, html: buildSettings },
   admin:    { title: 'Admin Panel',    short:'Admin',     icon: '🛡️', w: 600, h: 520, core:true, adminOnly:true, html: buildAdmin },
+  adminwatch:{ title: 'Live Watch',    short:'Live Watch',icon: '👁️', w: 760, h: 560, adminOnly:true, hidden:true, html: buildAdminWatch },
 
   // ── Store apps (installable) ──
   calc:     { title: 'Calculator',     short:'Calculator', icon:'🧮', w:300, h:440, cat:'Utilities',  desc:'Basic & keyboard calculator', html: buildCalc },
@@ -1629,7 +1630,7 @@ function saveInstalled() {
 }
 
 function isInstalled(id) { return apps[id] && (apps[id].core || installedApps.includes(id)); }
-function desktopApps() { return Object.keys(apps).filter(id => isInstalled(id) && !(apps[id].adminOnly && !currentUser?.admin)); }
+function desktopApps() { return Object.keys(apps).filter(id => isInstalled(id) && !apps[id].hidden && !(apps[id].adminOnly && !currentUser?.admin)); }
 
 function renderDesktop() {
   const c = document.getElementById('desktop-icons');
@@ -1758,7 +1759,7 @@ function closeWindow(id) {
   if (id === 'camera') camStop(); // release the webcam
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
-  if (id === 'admin') adminStopWatching();
+  if (id === 'adminwatch') adminStopWatching('Watch window closed.');
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -6353,22 +6354,28 @@ function buildAdmin() {
     <div class="admin-head"><span style="font-size:22px">🛡️</span><div><div style="color:#fff;font-weight:600">Admin Panel</div><div style="color:rgba(255,255,255,.45);font-size:12px">Manage MaxOS accounts</div></div>
       <button class="gbtn" style="margin-left:auto" onclick="adminLoad()">↻ Refresh</button></div>
     <div class="admin-list" id="admin-list"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
-    <div class="admin-watch">
-      <div class="admin-watch-head"><span style="font-size:16px">👁️</span> Live screen watch
-        <button class="gbtn" id="admin-watch-stop" style="margin-left:auto;padding:4px 10px" onclick="adminStopWatching()" disabled>Stop</button>
-      </div>
-      <div class="admin-watch-stage" id="admin-watch-stage">Select a user marked suspicious, then click Watch.</div>
-      <div class="admin-watch-meta" id="admin-watch-meta">idle</div>
+  </div>`;
+}
+function buildAdminWatch() {
+  return `<div class="admin-watch" style="margin:0;height:100%;display:flex;flex-direction:column">
+    <div class="admin-watch-head"><span style="font-size:16px">👁️</span> Live screen watch
+      <span id="admin-watch-target" style="color:rgba(255,255,255,.55);font-size:12px;margin-left:4px"></span>
+      <button class="gbtn" id="admin-watch-stop" style="margin-left:auto;padding:4px 10px" onclick="adminStopWatching()">Stop</button>
     </div>
+    <div class="admin-watch-stage" id="admin-watch-stage">Select a suspicious user from Admin Panel and click Watch.</div>
+    <div class="admin-watch-meta" id="admin-watch-meta">idle</div>
   </div>`;
 }
 function initAdmin() { adminLoad(); adminWatchRefreshUI(); }
+function initAdminWatch() { adminWatchRefreshUI(); adminWatchTickMeta(); }
 function adminWatchRefreshUI(msg) {
   const stage = document.getElementById('admin-watch-stage');
   const meta = document.getElementById('admin-watch-meta');
   const stop = document.getElementById('admin-watch-stop');
+  const target = document.getElementById('admin-watch-target');
   if (stage && msg) stage.innerHTML = `<div>${msg}</div>`;
   if (meta) meta.textContent = adminWatchUser ? `watching @${adminWatchUser}` : 'idle';
+  if (target) target.textContent = adminWatchUser ? '@' + adminWatchUser : '';
   if (stop) stop.disabled = !adminWatchUser;
 }
 function adminWatchTickMeta() {
@@ -6422,6 +6429,7 @@ async function adminToggleSuspicious(username) {
   adminLoad();
 }
 async function adminStartWatching(username) {
+  openApp('adminwatch');
   adminWatchUser = username;
   adminWatchAt = 0;
   clearInterval(adminWatchTimer);
@@ -6441,7 +6449,7 @@ function adminStopWatching(msg) {
   adminWatchTimer = null;
   adminWatchUser = null;
   adminWatchAt = 0;
-  adminWatchRefreshUI(msg || 'Select a user marked suspicious, then click Watch.');
+  adminWatchRefreshUI(msg || 'Select a suspicious user from Admin Panel and click Watch.');
 }
 async function adminSuspend(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspend', { method: 'POST' });
@@ -6473,7 +6481,7 @@ const appInitHooks = {
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
   browser: initBrowser, makeyourownwebsite: initStudio,
-  maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin,
+  maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin, adminwatch: initAdminWatch,
   chat: initChat, board: initBoard, social: initSocial,
 };
 </script>
