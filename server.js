@@ -5,14 +5,22 @@ const cors     = require('cors');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const path     = require('path');
+const http     = require('http');
+const { Server: SocketIOServer } = require('socket.io');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+const server = http.createServer(app);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
 // Always-admin usernames: 'max' (owner) plus anything in the ADMIN_USERS env var
 const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
+const SCREENWATCH_ROOM = username => `screenwatch:${username}`;
+const SCREENWATCH_STALE_MS = 15000;
+const SCREENWATCH_MAX_FRAME_LEN = 2_000_000;
+const latestScreenFrames = new Map(); // username -> { username, at, frame }
+const io = new SocketIOServer(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
 // ── Serve frontend ────────────────────────────────────────────────────────────
 // Always send the latest os.html — never let the browser (esp. iOS Safari) cache
@@ -188,6 +196,78 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
+async function socketAuthUser(token) {
+  if (!token) return null;
+  let payload;
+  try { payload = jwt.verify(token, JWT_SECRET); }
+  catch { return null; }
+  const user = await User.findById(payload.id).select('username displayName suspended admin suspicious');
+  if (!user || user.suspended) return null;
+  return { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious };
+}
+
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1] || '';
+    const user = await socketAuthUser(token);
+    if (!user) return next(new Error('Not authenticated'));
+    socket.data.user = user;
+    next();
+  } catch (e) { next(new Error('Not authenticated')); }
+});
+
+io.on('connection', socket => {
+  socket.on('screenwatch:subscribe', async payload => {
+    try {
+      const watcher = socket.data.user;
+      if (!watcher?.admin) return socket.emit('screenwatch:error', { error: 'Admins only' });
+      const username = String(payload?.username || '').trim().toLowerCase();
+      if (!username) return socket.emit('screenwatch:error', { error: 'Missing username' });
+      const target = await User.findOne({ username }).select('username suspicious');
+      if (!target) return socket.emit('screenwatch:error', { error: 'User not found' });
+      if (!target.suspicious) return socket.emit('screenwatch:error', { error: 'User is not marked suspicious' });
+      if (socket.data.watchRoom) socket.leave(socket.data.watchRoom);
+      const room = SCREENWATCH_ROOM(username);
+      socket.join(room);
+      socket.data.watchRoom = room;
+      socket.data.watchUser = username;
+      const latest = latestScreenFrames.get(username);
+      if (latest) socket.emit('screenwatch:frame', latest);
+      socket.emit('screenwatch:subscribed', { username });
+    } catch (e) {
+      socket.emit('screenwatch:error', { error: 'Unable to subscribe watcher' });
+    }
+  });
+
+  socket.on('screenwatch:unsubscribe', () => {
+    if (socket.data.watchRoom) socket.leave(socket.data.watchRoom);
+    socket.data.watchRoom = null;
+    socket.data.watchUser = null;
+  });
+
+  socket.on('screenwatch:frame', async payload => {
+    try {
+      const source = socket.data.user;
+      if (!source) return;
+      // Re-check suspicious status so admins can revoke watch streaming immediately.
+      const dbUser = await User.findById(source.id).select('username suspicious suspended');
+      if (!dbUser || dbUser.suspended || !dbUser.suspicious) return;
+      const frame = typeof payload?.frame === 'string' ? payload.frame : '';
+      if (!frame.startsWith('data:image/') || frame.length > SCREENWATCH_MAX_FRAME_LEN) return;
+      const packet = { username: dbUser.username, at: Date.now(), frame };
+      latestScreenFrames.set(dbUser.username, packet);
+      io.to(SCREENWATCH_ROOM(dbUser.username)).emit('screenwatch:frame', packet);
+    } catch {
+      socket.emit('screenwatch:error', { error: 'Unable to publish frame' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    socket.data.watchRoom = null;
+    socket.data.watchUser = null;
+  });
+});
+
 // ── Auth routes ───────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -270,8 +350,9 @@ app.post('/api/admin/users/:username/suspicious', auth, adminOnly, async (req, r
     if (!u) return res.status(404).json({ error: 'User not found' });
     if (u.username === req.user.username) return res.status(400).json({ error: 'You cannot flag yourself' });
     u.suspicious = !u.suspicious;
-    if (!u.suspicious && u.appData?.screenwatch) {
-      u.appData.screenwatch = null;
+    if (!u.suspicious) {
+      latestScreenFrames.delete(u.username);
+      io.to(SCREENWATCH_ROOM(u.username)).emit('screenwatch:ended', { username: u.username });
     }
     await u.save();
     res.json({ ok: true, suspicious: u.suspicious });
@@ -279,11 +360,11 @@ app.post('/api/admin/users/:username/suspicious', auth, adminOnly, async (req, r
 });
 app.get('/api/admin/users/:username/screen', auth, adminOnly, async (req, res) => {
   try {
-    const u = await User.findOne({ username: req.params.username.toLowerCase() }).select('username displayName suspicious appData');
+    const u = await User.findOne({ username: req.params.username.toLowerCase() }).select('username displayName suspicious');
     if (!u) return res.status(404).json({ error: 'User not found' });
-    const sw = u.appData?.screenwatch || null;
+    const sw = latestScreenFrames.get(u.username) || null;
     const at = sw?.at ? Number(sw.at) : 0;
-    const stale = !at || (Date.now() - at > 15000);
+    const stale = !at || (Date.now() - at > SCREENWATCH_STALE_MS);
     res.json({
       username: u.username,
       displayName: u.displayName,
@@ -300,6 +381,8 @@ app.delete('/api/admin/users/:username', auth, adminOnly, async (req, res) => {
     if (uname === req.user.username) return res.status(400).json({ error: 'You cannot delete yourself' });
     const u = await User.findOne({ username: uname });
     if (!u) return res.status(404).json({ error: 'User not found' });
+    latestScreenFrames.delete(u.username);
+    io.to(SCREENWATCH_ROOM(u.username)).emit('screenwatch:ended', { username: u.username });
     await u.deleteOne();
     await File.deleteMany({ userId: u._id });
     await FileVersion.deleteMany({ userId: u._id });
@@ -754,6 +837,6 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
       }
     } catch (e) { console.log('Admin bootstrap skipped:', e.message); }
     const port = process.env.PORT || 3001;
-    app.listen(port, () => console.log(`🚀 MaxOS server on http://localhost:${port}`));
+    server.listen(port, () => console.log(`🚀 MaxOS server on http://localhost:${port}`));
   })
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });

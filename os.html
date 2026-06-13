@@ -1001,6 +1001,7 @@ async function authSubmit() {
 
 function logout() {
   stopScreenWatchShare();
+  closeScreenWatchSocket();
   localStorage.removeItem('maxos_token');
   localStorage.removeItem('maxos_user');
   authToken = null; currentUser = null;
@@ -1046,6 +1047,7 @@ function startHeartbeat() {
 function accountRevoked(msg) {
   clearInterval(heartbeatTimer);
   stopScreenWatchShare();
+  closeScreenWatchSocket();
   localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
   // lock the screen immediately
   document.body.innerHTML = `<div style="position:fixed;inset:0;background:#0d0d1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;font-family:system-ui,sans-serif;z-index:9999999">
@@ -1056,6 +1058,47 @@ function accountRevoked(msg) {
 }
 
 let screenWatchShareTimer = null, screenWatchBusy = false;
+let screenWatchSocket = null, screenWatchScriptPromise = null;
+function closeScreenWatchSocket() {
+  if (screenWatchSocket) {
+    try { screenWatchSocket.disconnect(); } catch {}
+    screenWatchSocket = null;
+  }
+}
+function screenWatchSocketUrl() { return API.replace(/\/+$/, ''); }
+function loadSocketIO() {
+  if (window.io) return Promise.resolve(window.io);
+  if (screenWatchScriptPromise) return screenWatchScriptPromise;
+  screenWatchScriptPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = screenWatchSocketUrl() + '/socket.io/socket.io.js';
+    s.async = true;
+    s.onload = () => resolve(window.io);
+    s.onerror = () => reject(new Error('Socket.IO failed to load'));
+    document.head.appendChild(s);
+  }).catch(e => {
+    screenWatchScriptPromise = null;
+    throw e;
+  });
+  return screenWatchScriptPromise;
+}
+async function ensureScreenWatchSocket() {
+  if (!authToken) return null;
+  await loadSocketIO();
+  if (!window.io) throw new Error('Socket.IO client unavailable');
+  if (screenWatchSocket) return screenWatchSocket;
+  const socket = window.io(screenWatchSocketUrl(), {
+    transports: ['websocket', 'polling'],
+    auth: { token: authToken },
+  });
+  socket.on('screenwatch:frame', packet => adminReceiveWatchFrame(packet));
+  socket.on('screenwatch:ended', packet => adminReceiveWatchEnded(packet));
+  socket.on('screenwatch:error', packet => {
+    if (packet?.error && adminWatchUser) adminWatchRefreshUI(escapeHtml(packet.error));
+  });
+  screenWatchSocket = socket;
+  return socket;
+}
 function stopScreenWatchShare() {
   clearInterval(screenWatchShareTimer);
   screenWatchShareTimer = null;
@@ -1095,7 +1138,9 @@ async function screenWatchPushFrame() {
   try {
     const frame = await screenWatchCapture();
     if (!frame) return;
-    await apiFetch('/api/me/data/screenwatch', { method: 'PUT', body: JSON.stringify({ value: { at: Date.now(), frame } }) });
+    const socket = await ensureScreenWatchSocket();
+    if (!socket) return;
+    socket.emit('screenwatch:frame', { at: Date.now(), frame });
   } catch { /* best effort */ }
   finally { screenWatchBusy = false; }
 }
@@ -6326,6 +6371,29 @@ function adminWatchRefreshUI(msg) {
   if (meta) meta.textContent = adminWatchUser ? `watching @${adminWatchUser}` : 'idle';
   if (stop) stop.disabled = !adminWatchUser;
 }
+function adminWatchTickMeta() {
+  const meta = document.getElementById('admin-watch-meta');
+  if (!meta) return;
+  if (!adminWatchUser) { meta.textContent = 'idle'; return; }
+  const age = adminWatchAt ? Math.max(0, Math.floor((Date.now() - adminWatchAt) / 1000)) : null;
+  meta.textContent = age == null ? `watching @${adminWatchUser} · waiting for frame` : `watching @${adminWatchUser} · updated ${age}s ago${age > 15 ? ' (stale)' : ''}`;
+}
+function adminReceiveWatchFrame(packet) {
+  if (!packet || !adminWatchUser || packet.username !== adminWatchUser) return;
+  const stage = document.getElementById('admin-watch-stage');
+  if (!stage) return;
+  if (!stage.querySelector('#admin-watch-img')) stage.innerHTML = '<img id="admin-watch-img" alt="Live user screen">';
+  if (packet.at !== adminWatchAt) {
+    const img = document.getElementById('admin-watch-img');
+    if (img) img.src = packet.frame || '';
+    adminWatchAt = Number(packet.at) || Date.now();
+  }
+  adminWatchTickMeta();
+}
+function adminReceiveWatchEnded(packet) {
+  if (!packet || !adminWatchUser || packet.username !== adminWatchUser) return;
+  adminStopWatching('@' + escapeHtml(packet.username) + ' watch ended.');
+}
 async function adminLoad() {
   const el = document.getElementById('admin-list'); if (!el) return;
   const users = await apiFetch('/api/admin/users');
@@ -6342,6 +6410,9 @@ async function adminLoad() {
        <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
        <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>`}
   </div>`).join('') || '<div style="color:rgba(255,255,255,.4);padding:20px">No users.</div>';
+  if (adminWatchUser && !users.some(u => u.username === adminWatchUser && u.suspicious)) {
+    adminStopWatching('@' + escapeHtml(adminWatchUser) + ' is no longer marked suspicious.');
+  }
 }
 async function adminToggleSuspicious(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspicious', { method: 'POST' });
@@ -6350,54 +6421,27 @@ async function adminToggleSuspicious(username) {
   if (!r.suspicious && adminWatchUser === username) adminStopWatching();
   adminLoad();
 }
-function adminStartWatching(username) {
+async function adminStartWatching(username) {
   adminWatchUser = username;
   adminWatchAt = 0;
   clearInterval(adminWatchTimer);
+  adminWatchTimer = setInterval(adminWatchTickMeta, 1000);
   adminWatchRefreshUI('Connecting to @' + escapeHtml(username) + '…');
-  adminPollWatchFrame();
-  adminWatchTimer = setInterval(adminPollWatchFrame, 2200);
+  try {
+    const socket = await ensureScreenWatchSocket();
+    if (!socket) throw new Error('Socket unavailable');
+    socket.emit('screenwatch:subscribe', { username });
+  } catch (e) {
+    adminStopWatching('Unable to connect live watch socket.');
+  }
 }
-function adminStopWatching() {
+function adminStopWatching(msg) {
+  if (screenWatchSocket) screenWatchSocket.emit('screenwatch:unsubscribe');
   clearInterval(adminWatchTimer);
   adminWatchTimer = null;
   adminWatchUser = null;
   adminWatchAt = 0;
-  adminWatchRefreshUI('Select a user marked suspicious, then click Watch.');
-}
-async function adminPollWatchFrame() {
-  if (!adminWatchUser) return;
-  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(adminWatchUser) + '/screen');
-  const stage = document.getElementById('admin-watch-stage');
-  const meta = document.getElementById('admin-watch-meta');
-  if (r.error) {
-    if (stage) stage.innerHTML = `<div style="color:#ff8a84">${escapeHtml(r.error)}</div>`;
-    if (meta) meta.textContent = `watching @${adminWatchUser} · error`;
-    return;
-  }
-  if (!r.suspicious) {
-    adminStopWatching();
-    return;
-  }
-  if (!r.frame) {
-    if (stage) stage.innerHTML = `<div>Waiting for @${escapeHtml(adminWatchUser)} to publish screen frames…</div>`;
-    if (meta) meta.textContent = `watching @${adminWatchUser} · no frame yet`;
-    return;
-  }
-  if (stage) {
-    if (!stage.querySelector('#admin-watch-img')) {
-      stage.innerHTML = '<img id="admin-watch-img" alt="Live user screen">';
-    }
-    if (r.at !== adminWatchAt) {
-      const img = document.getElementById('admin-watch-img');
-      if (img) img.src = r.frame;
-      adminWatchAt = r.at;
-    }
-  }
-  if (meta) {
-    const age = r.at ? Math.max(0, Math.floor((Date.now() - r.at) / 1000)) : 0;
-    meta.textContent = `watching @${adminWatchUser} · updated ${age}s ago${r.stale ? ' (stale)' : ''}`;
-  }
+  adminWatchRefreshUI(msg || 'Select a user marked suspicious, then click Watch.');
 }
 async function adminSuspend(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspend', { method: 'POST' });
