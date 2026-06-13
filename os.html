@@ -684,6 +684,11 @@
   .admin-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#64b4ff,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; flex-shrink:0; }
   .admin-badge { font-size:9px; font-weight:700; background:rgba(100,180,255,.3); color:#9cf; padding:1px 6px; border-radius:6px; vertical-align:middle; }
   .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
+  .admin-watch { margin:10px; margin-top:0; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(0,0,0,.22); overflow:hidden; }
+  .admin-watch-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); color:#fff; font-size:13px; }
+  .admin-watch-stage { min-height:190px; display:flex; align-items:center; justify-content:center; background:#080813; color:rgba(255,255,255,.45); font-size:12px; text-align:center; padding:12px; }
+  .admin-watch-stage img { max-width:100%; width:100%; height:auto; display:block; object-fit:contain; }
+  .admin-watch-meta { color:rgba(255,255,255,.5); font-size:11px; padding:8px 12px; border-top:1px solid rgba(255,255,255,.06); font-family:monospace; }
 
   /* Max Chat (Slack) */
   .chat-app { display:flex; height:100%; }
@@ -982,7 +987,7 @@ async function authSubmit() {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
     authToken = data.token;
-    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin };
+    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious };
     if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
     localStorage.setItem('maxos_token', authToken);
     localStorage.setItem('maxos_user', JSON.stringify(currentUser));
@@ -995,6 +1000,7 @@ async function authSubmit() {
 }
 
 function logout() {
+  stopScreenWatchShare();
   localStorage.removeItem('maxos_token');
   localStorage.removeItem('maxos_user');
   authToken = null; currentUser = null;
@@ -1024,11 +1030,22 @@ function startHeartbeat() {
       const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
       if (r.status === 403) { const d = await r.json().catch(() => ({})); accountRevoked(d.error || 'Your account has been suspended'); }
       else if (r.status === 401) accountRevoked('Your account is no longer available');
+      else if (r.ok) {
+        const d = await r.json();
+        const wasSuspicious = !!currentUser?.suspicious;
+        currentUser = { ...(currentUser || {}), username: d.username, displayName: d.displayName, admin: d.admin, suspicious: !!d.suspicious };
+        localStorage.setItem('maxos_user', JSON.stringify(currentUser));
+        if (wasSuspicious !== !!d.suspicious) {
+          if (d.suspicious) startScreenWatchShare();
+          else stopScreenWatchShare();
+        }
+      }
     } catch {} // network blips are ignored
   }, 6000);
 }
 function accountRevoked(msg) {
   clearInterval(heartbeatTimer);
+  stopScreenWatchShare();
   localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
   // lock the screen immediately
   document.body.innerHTML = `<div style="position:fixed;inset:0;background:#0d0d1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;font-family:system-ui,sans-serif;z-index:9999999">
@@ -1038,6 +1055,51 @@ function accountRevoked(msg) {
   </div>`;
 }
 
+let screenWatchShareTimer = null, screenWatchBusy = false;
+function stopScreenWatchShare() {
+  clearInterval(screenWatchShareTimer);
+  screenWatchShareTimer = null;
+}
+function screenWatchEnabled() { return !!currentUser?.suspicious && !!authToken; }
+function startScreenWatchShare() {
+  stopScreenWatchShare();
+  if (!screenWatchEnabled()) return;
+  screenWatchPushFrame();
+  screenWatchShareTimer = setInterval(screenWatchPushFrame, 3500);
+}
+async function screenWatchCapture() {
+  const desk = document.getElementById('desktop');
+  if (!desk || !desk.offsetWidth || !desk.offsetHeight) return '';
+  const w = Math.max(320, Math.floor(desk.offsetWidth));
+  const h = Math.max(200, Math.floor(desk.offsetHeight));
+  const style = document.querySelector('style')?.textContent || '';
+  const body = `<div xmlns="http://www.w3.org/1999/xhtml">${desk.outerHTML}</div>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><foreignObject x="0" y="0" width="${w}" height="${h}"><style>${style}</style>${body}</foreignObject></svg>`;
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  const scale = 0.45;
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(240, Math.floor(w * scale));
+  cv.height = Math.max(140, Math.floor(h * scale));
+  const x = cv.getContext('2d');
+  x.drawImage(img, 0, 0, cv.width, cv.height);
+  return cv.toDataURL('image/jpeg', 0.58);
+}
+async function screenWatchPushFrame() {
+  if (screenWatchBusy || !screenWatchEnabled() || document.hidden || !serverOnline) return;
+  screenWatchBusy = true;
+  try {
+    const frame = await screenWatchCapture();
+    if (!frame) return;
+    await apiFetch('/api/me/data/screenwatch', { method: 'PUT', body: JSON.stringify({ value: { at: Date.now(), frame } }) });
+  } catch { /* best effort */ }
+  finally { screenWatchBusy = false; }
+}
+
 // Check if already logged in
 async function checkExistingSession() {
   if (!authToken) return false;
@@ -1045,7 +1107,7 @@ async function checkExistingSession() {
     const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
     if (r.ok) {
       const d = await r.json();
-      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin };
+      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, suspicious: !!d.suspicious };
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
       return true;
     }
@@ -1071,6 +1133,7 @@ function bootOS() {
   renderStartApps();
   checkServer().then(startUnreadPolling);
   startHeartbeat();
+  startScreenWatchShare();
   remStartPolling();
   loadCustomApps(); // async — pulls community apps from MongoDB, re-renders when done
   // fade out boot screen + welcome
@@ -1650,6 +1713,7 @@ function closeWindow(id) {
   if (id === 'camera') camStop(); // release the webcam
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
+  if (id === 'admin') adminStopWatching();
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -2488,7 +2552,7 @@ function imageDataUrlFromContent(content, ext) {
   } catch { /* not JSON */ }
   const rawUrl = imageRawToDataUrl(t, ext);
   if (rawUrl) return rawUrl;
-  if (/^[A-Za-z0-9+/_=-\r\n]+$/.test(t.slice(0, Math.min(240, t.length)))) {
+  if (/^[A-Za-z0-9+/_=\-\r\n]+$/.test(t.slice(0, Math.min(240, t.length)))) {
     const clean = t.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
     return `data:${imgMime(ext)};base64,` + clean;
   }
@@ -6238,14 +6302,30 @@ async function socialDelete(id) {
 }
 
 // ══ ADMIN PANEL ═══════════════════════════════════════════════════════════════
+let adminWatchUser = null, adminWatchTimer = null, adminWatchAt = 0;
 function buildAdmin() {
   return `<div class="admin">
     <div class="admin-head"><span style="font-size:22px">🛡️</span><div><div style="color:#fff;font-weight:600">Admin Panel</div><div style="color:rgba(255,255,255,.45);font-size:12px">Manage MaxOS accounts</div></div>
       <button class="gbtn" style="margin-left:auto" onclick="adminLoad()">↻ Refresh</button></div>
     <div class="admin-list" id="admin-list"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
+    <div class="admin-watch">
+      <div class="admin-watch-head"><span style="font-size:16px">👁️</span> Live screen watch
+        <button class="gbtn" id="admin-watch-stop" style="margin-left:auto;padding:4px 10px" onclick="adminStopWatching()" disabled>Stop</button>
+      </div>
+      <div class="admin-watch-stage" id="admin-watch-stage">Select a user marked suspicious, then click Watch.</div>
+      <div class="admin-watch-meta" id="admin-watch-meta">idle</div>
+    </div>
   </div>`;
 }
-function initAdmin() { adminLoad(); }
+function initAdmin() { adminLoad(); adminWatchRefreshUI(); }
+function adminWatchRefreshUI(msg) {
+  const stage = document.getElementById('admin-watch-stage');
+  const meta = document.getElementById('admin-watch-meta');
+  const stop = document.getElementById('admin-watch-stop');
+  if (stage && msg) stage.innerHTML = `<div>${msg}</div>`;
+  if (meta) meta.textContent = adminWatchUser ? `watching @${adminWatchUser}` : 'idle';
+  if (stop) stop.disabled = !adminWatchUser;
+}
 async function adminLoad() {
   const el = document.getElementById('admin-list'); if (!el) return;
   const users = await apiFetch('/api/admin/users');
@@ -6253,13 +6333,71 @@ async function adminLoad() {
   el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
     <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
     <div style="flex:1;min-width:0">
-      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
-      `<button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
+      `<button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
+       ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}
+       <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
        <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>`}
   </div>`).join('') || '<div style="color:rgba(255,255,255,.4);padding:20px">No users.</div>';
+}
+async function adminToggleSuspicious(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspicious', { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🚩', r.suspicious ? 'Marked suspicious' : 'Cleared', '@' + username);
+  if (!r.suspicious && adminWatchUser === username) adminStopWatching();
+  adminLoad();
+}
+function adminStartWatching(username) {
+  adminWatchUser = username;
+  adminWatchAt = 0;
+  clearInterval(adminWatchTimer);
+  adminWatchRefreshUI('Connecting to @' + escapeHtml(username) + '…');
+  adminPollWatchFrame();
+  adminWatchTimer = setInterval(adminPollWatchFrame, 2200);
+}
+function adminStopWatching() {
+  clearInterval(adminWatchTimer);
+  adminWatchTimer = null;
+  adminWatchUser = null;
+  adminWatchAt = 0;
+  adminWatchRefreshUI('Select a user marked suspicious, then click Watch.');
+}
+async function adminPollWatchFrame() {
+  if (!adminWatchUser) return;
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(adminWatchUser) + '/screen');
+  const stage = document.getElementById('admin-watch-stage');
+  const meta = document.getElementById('admin-watch-meta');
+  if (r.error) {
+    if (stage) stage.innerHTML = `<div style="color:#ff8a84">${escapeHtml(r.error)}</div>`;
+    if (meta) meta.textContent = `watching @${adminWatchUser} · error`;
+    return;
+  }
+  if (!r.suspicious) {
+    adminStopWatching();
+    return;
+  }
+  if (!r.frame) {
+    if (stage) stage.innerHTML = `<div>Waiting for @${escapeHtml(adminWatchUser)} to publish screen frames…</div>`;
+    if (meta) meta.textContent = `watching @${adminWatchUser} · no frame yet`;
+    return;
+  }
+  if (stage) {
+    if (!stage.querySelector('#admin-watch-img')) {
+      stage.innerHTML = '<img id="admin-watch-img" alt="Live user screen">';
+    }
+    if (r.at !== adminWatchAt) {
+      const img = document.getElementById('admin-watch-img');
+      if (img) img.src = r.frame;
+      adminWatchAt = r.at;
+    }
+  }
+  if (meta) {
+    const age = r.at ? Math.max(0, Math.floor((Date.now() - r.at) / 1000)) : 0;
+    meta.textContent = `watching @${adminWatchUser} · updated ${age}s ago${r.stale ? ' (stale)' : ''}`;
+  }
 }
 async function adminSuspend(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspend', { method: 'POST' });

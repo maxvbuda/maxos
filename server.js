@@ -33,6 +33,7 @@ const UserSchema = new mongoose.Schema({
   installed:   { type: [String], default: ['calc', 'music', 'snake', 'notes'] },
   appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (MaxCoin wallet, etc.)
   suspended:   { type: Boolean, default: false },
+  suspicious:  { type: Boolean, default: false },
   admin:       { type: Boolean, default: false },
 }, { timestamps: true });
 
@@ -201,7 +202,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -217,14 +218,14 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin installed');
+  const u = await User.findById(req.user.id).select('username displayName admin suspicious installed');
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, installed: u.installed });
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, suspicious: u.suspicious, installed: u.installed });
 });
 
 // Persist the user's installed apps (so it's not just a browser token)
@@ -249,9 +250,9 @@ app.put('/api/me/data/:key', auth, async (req, res) => {
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select('username displayName suspended admin createdAt').sort({ createdAt: 1 });
+    const users = await User.find().select('username displayName suspended suspicious admin createdAt').sort({ createdAt: 1 });
     const counts = {};
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, admin: u.admin, createdAt: u.createdAt })));
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, createdAt: u.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res) => {
@@ -261,6 +262,36 @@ app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res)
     if (u.username === req.user.username) return res.status(400).json({ error: 'You cannot suspend yourself' });
     u.suspended = !u.suspended; await u.save();
     res.json({ ok: true, suspended: u.suspended });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/users/:username/suspicious', auth, adminOnly, async (req, res) => {
+  try {
+    const u = await User.findOne({ username: req.params.username.toLowerCase() });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    if (u.username === req.user.username) return res.status(400).json({ error: 'You cannot flag yourself' });
+    u.suspicious = !u.suspicious;
+    if (!u.suspicious && u.appData?.screenwatch) {
+      u.appData.screenwatch = null;
+    }
+    await u.save();
+    res.json({ ok: true, suspicious: u.suspicious });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/users/:username/screen', auth, adminOnly, async (req, res) => {
+  try {
+    const u = await User.findOne({ username: req.params.username.toLowerCase() }).select('username displayName suspicious appData');
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    const sw = u.appData?.screenwatch || null;
+    const at = sw?.at ? Number(sw.at) : 0;
+    const stale = !at || (Date.now() - at > 15000);
+    res.json({
+      username: u.username,
+      displayName: u.displayName,
+      suspicious: !!u.suspicious,
+      at,
+      stale,
+      frame: stale ? '' : (sw?.frame || ''),
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/admin/users/:username', auth, adminOnly, async (req, res) => {
