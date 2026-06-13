@@ -1059,6 +1059,7 @@ function accountRevoked(msg) {
 
 let screenWatchShareTimer = null, screenWatchBusy = false;
 let screenWatchSocket = null, screenWatchScriptPromise = null;
+let adminWatchApp = '';
 function closeScreenWatchSocket() {
   if (screenWatchSocket) {
     try { screenWatchSocket.disconnect(); } catch {}
@@ -1104,13 +1105,24 @@ function stopScreenWatchShare() {
   screenWatchShareTimer = null;
 }
 function screenWatchEnabled() { return !!currentUser?.suspicious && !!authToken; }
+function screenWatchCurrentApp() {
+  const focused = document.querySelector('.window.focused');
+  if (focused?.id?.startsWith('win-')) {
+    const id = focused.id.slice(4);
+    const app = apps[id];
+    return { id, title: app?.title || id };
+  }
+  const seg = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (apps[seg]) return { id: seg, title: apps[seg].title || seg };
+  return { id: 'desktop', title: 'Desktop' };
+}
 function startScreenWatchShare() {
   stopScreenWatchShare();
   if (!screenWatchEnabled()) return;
   screenWatchPushFrame();
   screenWatchShareTimer = setInterval(screenWatchPushFrame, 3500);
 }
-async function screenWatchCapture() {
+async function screenWatchCapture(appTitle) {
   const desk = document.getElementById('desktop');
   if (!desk || !desk.offsetWidth || !desk.offsetHeight) return '';
   const w = Math.max(320, Math.floor(desk.offsetWidth));
@@ -1130,17 +1142,25 @@ async function screenWatchCapture() {
   cv.height = Math.max(140, Math.floor(h * scale));
   const x = cv.getContext('2d');
   x.drawImage(img, 0, 0, cv.width, cv.height);
+  // Burn active-app label onto the frame so admins can always identify context.
+  const label = String(appTitle || 'Desktop');
+  x.fillStyle = 'rgba(5,10,26,0.72)';
+  x.fillRect(8, 8, Math.min(cv.width - 16, 420), 24);
+  x.fillStyle = '#d8e6ff';
+  x.font = 'bold 13px system-ui, sans-serif';
+  x.fillText('App: ' + label, 14, 25, Math.min(cv.width - 28, 400));
   return cv.toDataURL('image/jpeg', 0.58);
 }
 async function screenWatchPushFrame() {
   if (screenWatchBusy || !screenWatchEnabled() || document.hidden || !serverOnline) return;
   screenWatchBusy = true;
   try {
-    const frame = await screenWatchCapture();
+    const app = screenWatchCurrentApp();
+    const frame = await screenWatchCapture(app.title);
     if (!frame) return;
     const socket = await ensureScreenWatchSocket();
     if (!socket) return;
-    socket.emit('screenwatch:frame', { at: Date.now(), frame });
+    socket.emit('screenwatch:frame', { at: Date.now(), frame, appId: app.id, appTitle: app.title });
   } catch { /* best effort */ }
   finally { screenWatchBusy = false; }
 }
@@ -6383,12 +6403,14 @@ function adminWatchTickMeta() {
   if (!meta) return;
   if (!adminWatchUser) { meta.textContent = 'idle'; return; }
   const age = adminWatchAt ? Math.max(0, Math.floor((Date.now() - adminWatchAt) / 1000)) : null;
-  meta.textContent = age == null ? `watching @${adminWatchUser} · waiting for frame` : `watching @${adminWatchUser} · updated ${age}s ago${age > 15 ? ' (stale)' : ''}`;
+  const appTxt = adminWatchApp ? ` · app: ${adminWatchApp}` : '';
+  meta.textContent = age == null ? `watching @${adminWatchUser}${appTxt} · waiting for frame` : `watching @${adminWatchUser}${appTxt} · updated ${age}s ago${age > 15 ? ' (stale)' : ''}`;
 }
 function adminReceiveWatchFrame(packet) {
   if (!packet || !adminWatchUser || packet.username !== adminWatchUser) return;
   const stage = document.getElementById('admin-watch-stage');
   if (!stage) return;
+  adminWatchApp = packet.appTitle || packet.appId || '';
   if (!stage.querySelector('#admin-watch-img')) stage.innerHTML = '<img id="admin-watch-img" alt="Live user screen">';
   if (packet.at !== adminWatchAt) {
     const img = document.getElementById('admin-watch-img');
@@ -6432,6 +6454,7 @@ async function adminStartWatching(username) {
   openApp('adminwatch');
   adminWatchUser = username;
   adminWatchAt = 0;
+  adminWatchApp = '';
   clearInterval(adminWatchTimer);
   adminWatchTimer = setInterval(adminWatchTickMeta, 1000);
   adminWatchRefreshUI('Connecting to @' + escapeHtml(username) + '…');
@@ -6449,6 +6472,7 @@ function adminStopWatching(msg) {
   adminWatchTimer = null;
   adminWatchUser = null;
   adminWatchAt = 0;
+  adminWatchApp = '';
   adminWatchRefreshUI(msg || 'Select a suspicious user from Admin Panel and click Watch.');
 }
 async function adminSuspend(username) {

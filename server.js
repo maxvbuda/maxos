@@ -19,6 +19,7 @@ const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s
 const SCREENWATCH_ROOM = username => `screenwatch:${username}`;
 const SCREENWATCH_STALE_MS = 15000;
 const SCREENWATCH_MAX_FRAME_LEN = 2_000_000;
+const SCREENWATCH_MAX_APP_LEN = 80;
 const latestScreenFrames = new Map(); // username -> { username, at, frame }
 const io = new SocketIOServer(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
@@ -254,7 +255,9 @@ io.on('connection', socket => {
       if (!dbUser || dbUser.suspended || !dbUser.suspicious) return;
       const frame = typeof payload?.frame === 'string' ? payload.frame : '';
       if (!frame.startsWith('data:image/') || frame.length > SCREENWATCH_MAX_FRAME_LEN) return;
-      const packet = { username: dbUser.username, at: Date.now(), frame };
+      const appId = typeof payload?.appId === 'string' ? payload.appId.slice(0, 40) : '';
+      const appTitle = typeof payload?.appTitle === 'string' ? payload.appTitle.slice(0, SCREENWATCH_MAX_APP_LEN) : '';
+      const packet = { username: dbUser.username, at: Date.now(), frame, appId, appTitle };
       latestScreenFrames.set(dbUser.username, packet);
       io.to(SCREENWATCH_ROOM(dbUser.username)).emit('screenwatch:frame', packet);
     } catch {
