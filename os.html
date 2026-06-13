@@ -504,6 +504,57 @@
   .vid-clip span { position:absolute; bottom:1px; right:3px; font-size:9px; color:#fff; text-shadow:0 1px 2px #000; }
   .vid-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 
+  /* Max Camera */
+  .cam-app { display:flex; flex-direction:column; height:100%; gap:10px; padding:12px; }
+  .cam-stage { flex:1; background:#000; border-radius:12px; overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center; }
+  #cam-video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .cam-msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.7); font-size:14px; text-align:center; padding:20px; }
+  .cam-filters { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .cam-f { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:999px; padding:5px 12px; font-size:12px; cursor:pointer; text-transform:capitalize; }
+  .cam-f.active { background:rgba(100,180,255,.3); border-color:rgba(100,180,255,.5); }
+  .cam-bar { display:flex; gap:8px; justify-content:center; }
+  .cam-b { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; }
+  .cam-b:hover:not(:disabled) { background:rgba(255,255,255,.2); }
+  .cam-b:disabled { opacity:.4; cursor:default; }
+
+  /* Reminders */
+  .rem-app { display:flex; flex-direction:column; height:100%; padding:12px; gap:10px; }
+  .rem-add { display:flex; gap:6px; }
+  .rem-input { flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:9px; padding:9px 12px; font-size:14px; }
+  .rem-due { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:9px; padding:6px; font-size:12px; color-scheme:dark; }
+  .rem-addbtn { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:9px; width:40px; font-size:20px; cursor:pointer; }
+  .rem-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .rem-empty { color:rgba(255,255,255,.4); text-align:center; padding:30px; }
+  .rem-item { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; }
+  .rem-item.done .rem-text { text-decoration:line-through; color:rgba(255,255,255,.4); }
+  .rem-check { cursor:pointer; font-size:18px; }
+  .rem-text { flex:1; color:#fff; font-size:14px; display:flex; flex-direction:column; gap:2px; }
+  .rem-when { font-size:11px; color:rgba(255,255,255,.45); }
+  .rem-when.over { color:#ff6b6b; }
+  .rem-del { cursor:pointer; opacity:.5; }
+  .rem-del:hover { opacity:1; }
+
+  /* Jump World */
+  .jump-app { display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; padding:12px; }
+  .jump-hud { color:#fff; font-size:16px; font-weight:600; }
+  #jump-canvas { background:#0d0d22; border-radius:12px; max-width:100%; touch-action:none; }
+  .jump-hint { color:rgba(255,255,255,.4); font-size:11px; text-align:center; }
+
+  /* Minesweeper */
+  .mines-app { display:flex; flex-direction:column; align-items:center; gap:10px; height:100%; padding:12px; }
+  .mines-hud { display:flex; align-items:center; gap:12px; }
+  .mines-face { font-size:22px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); border-radius:10px; width:42px; height:42px; cursor:pointer; }
+  .mines-flag { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  .mines-flag.on { background:rgba(255,159,10,.3); border-color:rgba(255,159,10,.5); }
+  #mines-flags { color:#fff; font-weight:600; font-size:14px; }
+  .mines-grid { display:grid; gap:3px; background:rgba(255,255,255,.06); padding:6px; border-radius:10px; }
+  .mcell { width:32px; height:32px; background:rgba(255,255,255,.14); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; cursor:pointer; user-select:none; }
+  .mcell:hover { background:rgba(255,255,255,.22); }
+  .mcell.rev { background:rgba(255,255,255,.04); cursor:default; }
+  .mcell[data-n="1"]{color:#64b4ff} .mcell[data-n="2"]{color:#28c840} .mcell[data-n="3"]{color:#ff5f57}
+  .mcell[data-n="4"]{color:#bf5af2} .mcell[data-n="5"]{color:#ff9f0a} .mcell[data-n="6"]{color:#30d6c0}
+  .mines-hint { color:rgba(255,255,255,.4); font-size:11px; }
+
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
   .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
@@ -1422,6 +1473,10 @@ const apps = {
   maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
   animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:820, h:600, cat:'Creativity', desc:'Frame animation with movable shapes, text & .pic images', html: buildAnimator },
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
+  camera:   { title: 'Max Camera',     short:'Camera',     icon:'📷', w:560, h:520, cat:'Creativity', desc:'Webcam photo booth with filters', html: buildCamera },
+  reminders:{ title: 'Reminders',      short:'Reminders',  icon:'✅', w:420, h:520, cat:'Productivity', desc:'To-dos & reminders that sync',  html: buildReminders },
+  jumpworld:{ title: 'Jump World',     short:'Jump World', icon:'🦘', w:480, h:560, cat:'Games',      desc:'Hop up the endless platforms',  html: buildJump },
+  mines:    { title: 'Minesweeper',    short:'Mines',      icon:'💣', w:440, h:520, cat:'Games',      desc:'Classic flag-the-mines puzzle', html: buildMines },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 
   // ── Premium apps ──
@@ -1577,6 +1632,10 @@ function closeWindow(id) {
   if (id === 'breakout') breakout?.stop();
   if (id === 'life') life?.stop();
   if (id === 'beats' && beats?.playing) beatsToggle();
+  if (id === 'camera') camStop(); // release the webcam
+  if (id === 'jumpworld') jump?.stop();
+  if (id === 'mines') mines?.stop();
+  if (id === 'reminders') clearInterval(remTimer);
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -3976,6 +4035,216 @@ async function videoOpenPath(path, name) {
   catch (e) { notify('⚠️', 'Open failed', 'Not a valid .video file'); }
 }
 
+// ── MAX CAMERA — webcam photo booth ───────────────────────────────────────────
+let camStream = null, camFilter = 'none', camShot = null;
+const CAM_FILTERS = { none:'none', mono:'grayscale(1)', invert:'invert(1)', sepia:'sepia(.8)', retro:'saturate(.6) contrast(1.3) sepia(.3)', cool:'hue-rotate(180deg) saturate(1.4)' };
+function buildCamera() {
+  return `<div class="cam-app">
+    <div class="cam-stage">
+      <video id="cam-video" autoplay playsinline muted></video>
+      <canvas id="cam-canvas" style="display:none"></canvas>
+      <div id="cam-msg" class="cam-msg">Starting camera…</div>
+    </div>
+    <div class="cam-filters">${Object.keys(CAM_FILTERS).map((f,i)=>`<button class="cam-f${i===0?' active':''}" data-f="${f}" onclick="camSetFilter('${f}')">${f}</button>`).join('')}</div>
+    <div class="cam-bar">
+      <button class="cam-b" id="cam-snap" onclick="camSnap()">📸 Snap</button>
+      <button class="cam-b" id="cam-save" onclick="camSave()" disabled>💾 Save</button>
+      <button class="cam-b" id="cam-dl" onclick="camDownload()" disabled>⬇️ Download</button>
+    </div>
+  </div>`;
+}
+async function initCamera() {
+  camShot = null; camFilter = 'none';
+  const v = document.getElementById('cam-video'), msg = document.getElementById('cam-msg');
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    v.srcObject = camStream; v.style.filter = CAM_FILTERS.none; if (msg) msg.style.display = 'none';
+  } catch (e) {
+    if (msg) { msg.style.display = 'flex'; msg.textContent = '📷 Camera unavailable — allow camera access and reopen.'; }
+  }
+}
+function camSetFilter(f) { camFilter = f; const v = document.getElementById('cam-video'); if (v) v.style.filter = CAM_FILTERS[f] || 'none'; document.querySelectorAll('.cam-f').forEach(b => b.classList.toggle('active', b.dataset.f === f)); }
+function camSnap() {
+  const v = document.getElementById('cam-video'), c = document.getElementById('cam-canvas');
+  if (!v || !v.videoWidth) { notify('📷', 'No camera', 'Camera not ready yet'); return; }
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  const x = c.getContext('2d'); x.filter = CAM_FILTERS[camFilter] || 'none'; x.drawImage(v, 0, 0, c.width, c.height);
+  camShot = c.toDataURL('image/png');
+  document.getElementById('cam-save').disabled = false; document.getElementById('cam-dl').disabled = false;
+  notify('📸', 'Snapped!', 'Save it to MaxDrive or download');
+}
+async function camSave() {
+  if (!camShot) return;
+  const path = await driveSaveAs('photo.png', camShot);
+  if (path) notify('📷', 'Saved', path.split('/').pop());
+}
+function camDownload() { if (!camShot) return; const a = document.createElement('a'); a.download = 'photo_' + Date.now() + '.png'; a.href = camShot; a.click(); }
+function camStop() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } }
+
+// ── REMINDERS — to-dos that persist in MongoDB ────────────────────────────────
+let remItems = [], remTimer = null;
+function buildReminders() {
+  return `<div class="rem-app">
+    <div class="rem-add">
+      <input id="rem-input" class="rem-input" placeholder="Add a reminder…" onkeydown="if(event.key==='Enter')remAdd()">
+      <input id="rem-due" class="rem-due" type="datetime-local" title="Optional due time">
+      <button class="rem-addbtn" onclick="remAdd()">＋</button>
+    </div>
+    <div id="rem-list" class="rem-list"></div>
+  </div>`;
+}
+async function initReminders() {
+  const res = await apiFetch('/api/me/data/reminders');
+  remItems = (res && !res.error && Array.isArray(res.value)) ? res.value : [];
+  remRender();
+  clearInterval(remTimer);
+  remTimer = setInterval(remCheckDue, 20000); // fire notifications for due items
+  remCheckDue();
+}
+function remSave() { apiFetch('/api/me/data/reminders', { method: 'PUT', body: JSON.stringify({ value: remItems }) }); }
+function remAdd() {
+  const inp = document.getElementById('rem-input'), due = document.getElementById('rem-due');
+  const text = inp.value.trim(); if (!text) return;
+  remItems.unshift({ id: Date.now(), text, done: false, due: due.value || null, notified: false });
+  inp.value = ''; due.value = ''; remSave(); remRender();
+}
+function remToggle(id) { const it = remItems.find(r => r.id === id); if (it) { it.done = !it.done; remSave(); remRender(); } }
+function remDel(id) { remItems = remItems.filter(r => r.id !== id); remSave(); remRender(); }
+function remRender() {
+  const l = document.getElementById('rem-list'); if (!l) return;
+  if (!remItems.length) { l.innerHTML = '<div class="rem-empty">No reminders yet. Add one above ✨</div>'; return; }
+  l.innerHTML = remItems.map(r => {
+    const dueTxt = r.due ? new Date(r.due).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const overdue = r.due && !r.done && new Date(r.due) < new Date();
+    return `<div class="rem-item${r.done ? ' done' : ''}">
+      <span class="rem-check" onclick="remToggle(${r.id})">${r.done ? '✅' : '⬜'}</span>
+      <span class="rem-text">${escapeHtml(r.text)}${dueTxt ? `<span class="rem-when${overdue ? ' over' : ''}">${overdue ? '⚠ ' : '🕒 '}${dueTxt}</span>` : ''}</span>
+      <span class="rem-del" onclick="remDel(${r.id})">🗑</span>
+    </div>`;
+  }).join('');
+}
+function remCheckDue() {
+  const now = Date.now();
+  let changed = false;
+  remItems.forEach(r => {
+    if (r.due && !r.done && !r.notified && new Date(r.due).getTime() <= now) {
+      r.notified = true; changed = true; notify('⏰', 'Reminder', r.text);
+    }
+  });
+  if (changed) { remSave(); remRender(); }
+}
+
+// ── JUMP WORLD — doodle-jump style climber ────────────────────────────────────
+let jump = null;
+function buildJump() {
+  return `<div class="jump-app">
+    <div class="jump-hud">🦘 <span id="jump-score">0</span> &nbsp; Best: <span id="jump-best">0</span></div>
+    <canvas id="jump-canvas" width="360" height="460"></canvas>
+    <div class="jump-hint">← → or A/D to move · don't fall off the bottom!</div>
+  </div>`;
+}
+function initJump() {
+  const c = document.getElementById('jump-canvas'); if (!c) return;
+  if (jump) jump.stop();
+  const ctx = c.getContext('2d'), W = c.width, H = c.height;
+  let best = +localStorage.getItem('maxos_jump_best') || 0;
+  document.getElementById('jump-best').textContent = best;
+  let px, py, vy, plats, score, running, raf, keys = {};
+  function newPlat(y) { return { x: Math.random() * (W - 60), y, w: 60 }; }
+  function reset() {
+    px = W / 2; py = H - 80; vy = -9; score = 0; running = true; plats = [];
+    for (let i = 0; i < 9; i++) plats.push(newPlat(H - i * 55 - 20));
+    plats[0] = { x: W / 2 - 30, y: H - 30, w: 60 };
+  }
+  function step() {
+    if (!running) return;
+    const vx = (keys.l ? -5 : 0) + (keys.r ? 5 : 0);
+    px += vx; if (px < -20) px = W; if (px > W + 20) px = 0;
+    vy += 0.4; py += vy;
+    if (py < H * 0.4) { const d = H * 0.4 - py; py = H * 0.4; plats.forEach(p => p.y += d); score += Math.round(d); }
+    plats = plats.filter(p => p.y < H + 10);
+    while (plats.length < 9) plats.push(newPlat(Math.min(...plats.map(p => p.y)) - 55));
+    for (const p of plats) if (vy > 0 && px + 12 > p.x && px - 12 < p.x + p.w && py + 18 > p.y && py + 18 < p.y + 16) vy = -9;
+    if (py > H + 20) return gameOver();
+    draw();
+    raf = requestAnimationFrame(step);
+  }
+  function draw() {
+    ctx.fillStyle = '#0d0d22'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#28c840'; plats.forEach(p => { ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, 12, 6); ctx.fill(); });
+    ctx.font = '26px system-ui'; ctx.textAlign = 'center'; ctx.fillText('🦘', px, py + 22);
+    document.getElementById('jump-score').textContent = score;
+  }
+  function gameOver() {
+    running = false; cancelAnimationFrame(raf);
+    if (score > best) { best = score; localStorage.setItem('maxos_jump_best', best); document.getElementById('jump-best').textContent = best; apiFetch('/api/me/data/jumpbest', { method: 'PUT', body: JSON.stringify({ value: best }) }); }
+    ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.font = '24px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('Game Over', W / 2, H / 2 - 10); ctx.font = '15px system-ui';
+    ctx.fillText('Score ' + score + ' · tap / Space to retry', W / 2, H / 2 + 24);
+  }
+  const kd = e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = 1; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = 1; if ((e.key === ' ' || e.key === 'Enter') && !running) { reset(); step(); } };
+  const ku = e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = 0; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = 0; };
+  addEventListener('keydown', kd); addEventListener('keyup', ku);
+  c.ontouchstart = c.onmousedown = e => { if (!running) { reset(); step(); return; } const r = c.getBoundingClientRect(), x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left; if (x < r.width / 2) keys.l = 1; else keys.r = 1; };
+  c.ontouchend = c.onmouseup = () => { keys.l = keys.r = 0; };
+  jump = { stop() { running = false; cancelAnimationFrame(raf); removeEventListener('keydown', kd); removeEventListener('keyup', ku); } };
+  reset(); step();
+}
+
+// ── MINESWEEPER ───────────────────────────────────────────────────────────────
+let mines = null, minesFlagMode = false;
+function buildMines() {
+  return `<div class="mines-app">
+    <div class="mines-hud"><button class="mines-face" id="mines-face" onclick="initMines()">🙂</button>
+      <button class="mines-flag" id="mines-flagbtn" onclick="minesToggleMode()">🚩 flag: off</button>
+      <span id="mines-flags">💣 10</span></div>
+    <div id="mines-grid" class="mines-grid"></div>
+    <div class="mines-hint">Click reveal · right-click or 🚩 mode to flag</div>
+  </div>`;
+}
+function minesToggleMode() { minesFlagMode = !minesFlagMode; const b = document.getElementById('mines-flagbtn'); if (b) { b.textContent = '🚩 flag: ' + (minesFlagMode ? 'on' : 'off'); b.classList.toggle('on', minesFlagMode); } }
+function initMines() {
+  const N = 9, M = 10;
+  const grid = document.getElementById('mines-grid'); if (!grid) return;
+  let cells = [], revealed = 0, flags = 0, over = false, placed = false;
+  document.getElementById('mines-face').textContent = '🙂';
+  document.getElementById('mines-flags').textContent = '💣 ' + M;
+  const idx = (r, c) => r * N + c;
+  cells = Array.from({ length: N * N }, () => ({ mine: false, rev: false, flag: false, n: 0 }));
+  grid.style.gridTemplateColumns = `repeat(${N},1fr)`;
+  grid.innerHTML = cells.map((_, i) => `<div class="mcell" data-i="${i}"></div>`).join('');
+  grid.querySelectorAll('.mcell').forEach(el => {
+    el.onclick = () => { const i = +el.dataset.i; minesFlagMode ? toggleFlag(i) : reveal(i); };
+    el.oncontextmenu = e => { e.preventDefault(); toggleFlag(+el.dataset.i); };
+  });
+  function place(safe) {
+    let m = 0;
+    while (m < M) { const i = Math.floor(Math.random() * N * N); if (!cells[i].mine && i !== safe) { cells[i].mine = true; m++; } }
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) { let n = 0; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const nr = r + dr, nc = c + dc; if (nr >= 0 && nr < N && nc >= 0 && nc < N && cells[idx(nr, nc)].mine) n++; } cells[idx(r, c)].n = n; }
+    placed = true;
+  }
+  function reveal(i) {
+    if (over || cells[i].rev || cells[i].flag) return;
+    if (!placed) place(i);
+    const cell = cells[i]; cell.rev = true; revealed++;
+    const el = grid.children[i]; el.classList.add('rev');
+    if (cell.mine) { el.textContent = '💥'; return lose(); }
+    if (cell.n) { el.textContent = cell.n; el.dataset.n = cell.n; }
+    else { const r = Math.floor(i / N), c = i % N; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const nr = r + dr, nc = c + dc; if (nr >= 0 && nr < N && nc >= 0 && nc < N) reveal(idx(nr, nc)); } }
+    if (revealed === N * N - M) win();
+  }
+  function toggleFlag(i) {
+    if (over || cells[i].rev) return;
+    cells[i].flag = !cells[i].flag; flags += cells[i].flag ? 1 : -1;
+    grid.children[i].textContent = cells[i].flag ? '🚩' : '';
+    document.getElementById('mines-flags').textContent = '💣 ' + (M - flags);
+  }
+  function lose() { over = true; document.getElementById('mines-face').textContent = '💀'; cells.forEach((c, i) => { if (c.mine && !c.flag) grid.children[i].textContent = '💣'; }); }
+  function win() { over = true; document.getElementById('mines-face').textContent = '😎'; notify('💣', 'Minesweeper', 'You cleared the board!'); }
+  mines = { stop() { over = true; } };
+}
+
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
 let colorRGB = { r: 100, g: 180, b: 255 };
 function buildColors() {
@@ -5691,6 +5960,7 @@ const appInitHooks = {
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
   dice: () => {}, colors: initColors, maxcoin: initMaxcoin,
   animator: initAnimator, video: initVideo,
+  camera: initCamera, reminders: initReminders, jumpworld: initJump, mines: initMines,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
