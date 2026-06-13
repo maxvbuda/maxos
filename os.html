@@ -1060,6 +1060,7 @@ function accountRevoked(msg) {
 let screenWatchShareTimer = null, screenWatchBusy = false;
 let screenWatchSocket = null, screenWatchScriptPromise = null;
 let adminWatchApp = '';
+let screenWatchLastAppId = null;
 function closeScreenWatchSocket() {
   if (screenWatchSocket) {
     try { screenWatchSocket.disconnect(); } catch {}
@@ -1105,15 +1106,37 @@ function stopScreenWatchShare() {
   screenWatchShareTimer = null;
 }
 function screenWatchEnabled() { return !!currentUser?.suspicious && !!authToken; }
+function screenWatchAppInfo(id) {
+  const app = apps[id];
+  return { id, title: app?.title || id };
+}
+function screenWatchTopWindowAppId() {
+  let topId = null, topZ = -Infinity;
+  Object.keys(windows).forEach(id => {
+    const w = windows[id];
+    if (!w || w.minimized || !w.el || w.el.style.display === 'none') return;
+    const z = Number(w.el.style.zIndex || 0);
+    if (z >= topZ) { topZ = z; topId = id; }
+  });
+  return topId;
+}
 function screenWatchCurrentApp() {
+  if (screenWatchLastAppId && windows[screenWatchLastAppId] && !windows[screenWatchLastAppId].minimized) {
+    return screenWatchAppInfo(screenWatchLastAppId);
+  }
   const focused = document.querySelector('.window.focused');
   if (focused?.id?.startsWith('win-')) {
     const id = focused.id.slice(4);
-    const app = apps[id];
-    return { id, title: app?.title || id };
+    screenWatchLastAppId = id;
+    return screenWatchAppInfo(id);
+  }
+  const topId = screenWatchTopWindowAppId();
+  if (topId) {
+    screenWatchLastAppId = topId;
+    return screenWatchAppInfo(topId);
   }
   const seg = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-  if (apps[seg]) return { id: seg, title: apps[seg].title || seg };
+  if (apps[seg]) return screenWatchAppInfo(seg);
   return { id: 'desktop', title: 'Desktop' };
 }
 function startScreenWatchShare() {
@@ -1750,6 +1773,7 @@ function focusWindow(id) {
   Object.keys(windows).forEach(k => windows[k].el.classList.remove('focused'));
   const w = windows[id];
   if (!w) return;
+  screenWatchLastAppId = id;
   w.el.style.zIndex = ++zTop;
   w.el.classList.add('focused');
   if (w.minimized) {
@@ -1788,6 +1812,7 @@ function closeWindow(id) {
     // Point the URL at another open window, or back to root
     const remaining = Object.keys(windows);
     setAppUrl(remaining.length ? remaining[remaining.length - 1] : null);
+    if (screenWatchLastAppId === id) screenWatchLastAppId = screenWatchTopWindowAppId();
   }, 160);
 }
 
@@ -1795,6 +1820,7 @@ function minimizeWindow(id) {
   const w = windows[id];
   w.el.style.display = 'none';
   w.minimized = true;
+  if (screenWatchLastAppId === id) screenWatchLastAppId = screenWatchTopWindowAppId();
   document.getElementById('tb-app-' + id)?.classList.remove('active');
 }
 
