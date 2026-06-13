@@ -4689,7 +4689,7 @@ function mapsLocate() {
 
 // ══ APP STUDIO — make & publish your own MaxOS apps ═══════════════════════════
 // ══ MAXSCRIPT — a beginner-friendly language that transpiles to JS ════════════
-const MS_RUNTIME = `const MS={out:null,_o(){if(!this.out){this.out=document.getElementById('ms-output');if(!this.out){this.out=document.createElement('div');this.out.id='ms-output';document.body.appendChild(this.out);}}return this.out;},show(v){const d=document.createElement('div');d.textContent=String(v);this._o().appendChild(d);},setText(id,v){const e=document.getElementById(id);if(e)e.textContent=String(v);},setHtml(id,v){const e=document.getElementById(id);if(e)e.innerHTML=String(v);},onClick(id,fn){const e=document.getElementById(id);if(e)e.addEventListener('click',fn);},ask(q){return prompt(q);},random(n){return Math.floor(Math.random()*n);}};`;
+const MS_RUNTIME = `const MS={out:null,_o(){if(!this.out){this.out=document.getElementById('ms-output');if(!this.out){this.out=document.createElement('div');this.out.id='ms-output';document.body.appendChild(this.out);}}return this.out;},show(v){const d=document.createElement('div');d.textContent=String(v);this._o().appendChild(d);},setText(id,v){const e=document.getElementById(id);if(e)e.textContent=String(v);},setHtml(id,v){const e=document.getElementById(id);if(e)e.innerHTML=String(v);},onClick(id,fn){const e=document.getElementById(id);if(e)e.addEventListener('click',fn);},ask(q){return prompt(q);},random(n){return Math.floor(Math.random()*(+n||0));},getValue(id){const e=document.getElementById(id);return e?(e.value!==undefined&&e.value!==null?e.value:e.textContent):'';},hide(id){const e=document.getElementById(id);if(e)e.style.display='none';},showEl(id){const e=document.getElementById(id);if(e)e.style.display='';},setStyle(id,k,v){const e=document.getElementById(id);if(e)e.style[k]=v;},every(sec,fn){return setInterval(fn,(+sec||1)*1000);}};`;
 function maxTranspile(src) {
   const out = [], stack = [];
   // Strip the common leading indent (button handlers are always indented in source).
@@ -4745,12 +4745,17 @@ function maxTranspile(src) {
     let m;
     if (m = line.match(/^set\s+text\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setText(${ref(m[1])}, ${m[2]});`);
     else if (m = line.match(/^set\s+html\s+(?:of\s+)?(.+?)\s+to\s+(.+)$/i)) out.push(`MS.setHtml(${ref(m[1])}, ${m[2]});`);
+    else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+value\s+of\s+(.+)$/i)) out.push(`${m[1]} = MS.getValue(${ref(m[2])});`); // read an input box
+    else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+random\s+(.+)$/i)) out.push(`${m[1]} = MS.random(${m[2]});`); // random 0..N-1
     else if (m = line.match(/^set\s+([a-zA-Z_]\w*)\s+to\s+(.+)$/i)) out.push(`${m[1]} = ${m[2]};`); // vars declared globally by maxCompile
     else if (m = line.match(/^add\s+(.+?)\s+to\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) + (parseFloat(${m[1]}) || 0);`);
     else if (m = line.match(/^subtract\s+(.+?)\s+from\s+([a-zA-Z_]\w*)$/i)) out.push(`${m[2]} = (parseFloat(${m[2]}) || 0) - (parseFloat(${m[1]}) || 0);`);
     else if (/^(mal|maxware|evil)$/i.test(line)) out.push(`(window.runMal||(window.parent&&window.parent.runMal)||function(){})();`); // run the MAXWARE siege over the real desktop
+    else if (m = line.match(/^hide\s+(.+)$/i)) out.push(`MS.hide(${ref(m[1])});`);
+    else if (m = line.match(/^reveal\s+(.+)$/i)) out.push(`MS.showEl(${ref(m[1])});`);
     else if (m = line.match(/^show\s+(.+)$/i)) out.push(`MS.show(${lit(m[1])});`);
     else if (m = line.match(/^alert\s+(.+)$/i)) out.push(`alert(${lit(m[1])});`);
+    else if (m = line.match(/^every\s+(.+?)\s+seconds?\s*:?\s*$/i)) { out.push(`MS.every(${m[1]}, function(){`); stack.push({ type: 'fn', openIndent: ind, sawBody: false }); } // repeating timer
     else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s+with\s+(.+?)\s*:$/i)) { out.push(`function ${m[1]}(${m[2]}){`); openBlock('fn'); } // define function w/ inputs
     else if (m = line.match(/^to\s+([a-zA-Z_]\w*)\s*:$/i)) { out.push(`function ${m[1]}(){`); openBlock('fn'); } // define function
     else if (m = line.match(/^call\s+([a-zA-Z_]\w*)\s+with\s+(.+)$/i)) out.push(`${m[1]}(${m[2]});`); // run function w/ inputs
@@ -4913,7 +4918,7 @@ const STUDIO_DEFAULTS = {
   html: '<div class="card">\n  <h1>👋 My App</h1>\n  <p id="msg">Click the button!</p>\n  <button id="btn" onclick="go()">Surprise</button>\n</div>',
   css: 'body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#1a1a2e,#0f3460);color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}\n.card{text-align:center}\nbutton{margin-top:14px;padding:10px 22px;border:none;border-radius:10px;background:#64b4ff;color:#fff;font-size:15px;cursor:pointer}',
 };
-let studioLang = 'js', studioEditId = null;
+let studioLang = 'maxscript', studioEditId = null;
 function buildStudio() {
   return `<div class="studio">
     <div class="studio-left">
@@ -4922,18 +4927,15 @@ function buildStudio() {
         <input id="st-name" class="studio-name" placeholder="My App Name" value="My App">
       </div>
       <div class="studio-tabs">
-        <button class="studio-tab active" data-t="html" onclick="studioTab('html')">HTML</button>
-        <button class="studio-tab" data-t="css" onclick="studioTab('css')">CSS</button>
-        <button class="studio-tab" data-t="js" onclick="studioTab('js')" id="st-codetab">JS</button>
-        <select id="st-lang" onchange="studioLangChange()" title="Logic language">
-          <option value="js">JavaScript</option>
-          <option value="maxscript">MaxScript ✨</option>
-        </select>
+        <button class="studio-tab active" id="st-codetab" data-t="js">✨ MaxScript</button>
+        <span style="flex:1"></span>
         <button class="studio-help" onclick="studioCheatsheet()" title="MaxScript help">?</button>
       </div>
-      <textarea id="st-html" class="studio-code" spellcheck="false" oninput="studioPreview()"></textarea>
-      <textarea id="st-css" class="studio-code" spellcheck="false" style="display:none" oninput="studioPreview()"></textarea>
-      <textarea id="st-js" class="studio-code" spellcheck="false" style="display:none" oninput="studioPreview()"></textarea>
+      <!-- HTML/CSS panes kept hidden+empty so the compile path stays the same; the
+           studio is MaxScript-only now to keep every app inside the ecosystem. -->
+      <textarea id="st-html" class="studio-code" spellcheck="false" style="display:none"></textarea>
+      <textarea id="st-css" class="studio-code" spellcheck="false" style="display:none"></textarea>
+      <textarea id="st-js" class="studio-code" spellcheck="false" oninput="studioPreview()"></textarea>
       <button class="studio-publish" onclick="studioPublish()">🚀 Publish to MaxOS</button>
     </div>
     <div class="studio-right">
@@ -4945,35 +4947,14 @@ function buildStudio() {
   </div>`;
 }
 function initStudio() {
-  studioEditId = null; studioLang = 'js';
-  document.getElementById('st-html').value = STUDIO_DEFAULTS.html;
-  document.getElementById('st-css').value = STUDIO_DEFAULTS.css;
-  document.getElementById('st-js').value = STUDIO_LANGS.js.sample;
-  document.getElementById('st-lang').value = 'js';
-  document.getElementById('st-codetab').textContent = 'JS';
-  studioTab('html'); studioPreview(); studioRenderList();
-}
-function studioTab(t) {
-  ['html', 'css', 'js'].forEach(x => { document.getElementById('st-' + x).style.display = x === t ? 'block' : 'none'; });
-  document.querySelectorAll('.studio-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t));
-}
-function studioLangChange() {
-  studioLang = document.getElementById('st-lang').value;
-  document.getElementById('st-codetab').textContent = studioLang === 'maxscript' ? 'MaxScript' : 'JS';
-  if (studioLang === 'maxscript') {
-    // MaxScript builds the whole UI itself — clear HTML/CSS so it stands alone
-    document.getElementById('st-html').value = '';
-    document.getElementById('st-css').value = '';
-    document.getElementById('st-js').value = STUDIO_LANGS.maxscript.sample;
-  } else {
-    document.getElementById('st-html').value = STUDIO_DEFAULTS.html;
-    document.getElementById('st-css').value = STUDIO_DEFAULTS.css;
-    document.getElementById('st-js').value = STUDIO_LANGS.js.sample;
-  }
-  studioTab('js'); studioPreview();
+  studioEditId = null; studioLang = 'maxscript';
+  document.getElementById('st-html').value = '';
+  document.getElementById('st-css').value = '';
+  document.getElementById('st-js').value = STUDIO_LANGS.maxscript.sample;
+  studioPreview(); studioRenderList();
 }
 function studioCheatsheet() {
-  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · Python-style if (just indent, no "end" needed): "if x is less than 10:" then indented lines · "elif x is greater than 20:" · "else:". The old "end" style still works. repeat 3 times: …. Compare with: is · is not · is less than · is greater than · is at least · is at most · == · < · > · and · or. Colors: red blue green yellow purple orange pink teal cyan magenta lime indigo violet gold coral mint sky rose … Functions: "to greet: … end" then "call greet". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 15000);
+  notify('✨', 'MaxScript cheat sheet', 'Elements: button: (blue, round, potato) · text count: Hi · title: (center) Hi · input box: Type here. Actions (indent under a button): set x to 5 · add 1 to x · show x · set text count to x · Python-style if (just indent, no "end" needed): "if x is less than 10:" then indented lines · "elif x is greater than 20:" · "else:". The old "end" style still works. repeat 3 times: …. Compare with: is · is not · is less than · is greater than · is at least · is at most · == · < · > · and · or. Inputs & extras: set x to value of myinput · set r to random 6 · hide myel · reveal myel · "every 1 seconds:" (indented body = a repeating timer). Colors: red blue green yellow purple orange pink teal cyan magenta lime indigo violet gold coral mint sky rose … Functions: "to greet:" then indent, then "call greet". Easter egg: a line that just says "mal" launches the MAXWARE prank. 😈', 16000);
 }
 function studioInject(frame) {
   const doc = frame.contentDocument || frame.contentWindow.document;
@@ -5005,15 +4986,14 @@ async function studioPublish() {
 }
 function studioEdit(id) {
   const d = customApps[id]; if (!d) return;
-  studioEditId = id; studioLang = d.lang || 'js';
+  studioEditId = id; studioLang = 'maxscript'; // studio is MaxScript-only now
   document.getElementById('st-name').value = d.title;
   document.getElementById('st-icon').value = d.icon;
-  document.getElementById('st-html').value = d.html || '';
-  document.getElementById('st-css').value = d.css || '';
+  // For legacy JS apps, surface their code in the editor; html/css stay hidden+empty
+  document.getElementById('st-html').value = '';
+  document.getElementById('st-css').value = '';
   document.getElementById('st-js').value = d.js || '';
-  document.getElementById('st-lang').value = studioLang;
-  document.getElementById('st-codetab').textContent = studioLang === 'maxscript' ? 'MaxScript' : 'JS';
-  studioTab('html'); studioPreview();
+  studioPreview();
   notify('✏️', 'Editing', d.title + ' — make changes and Publish to update');
 }
 function studioRenderList() {
