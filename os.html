@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MaxOS</title>
+<!-- Favicon: the MaxOS logo (glowing blue M on a monitor), inline SVG so the single-file app stays self-contained -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2364c4ff'/%3E%3Cstop offset='1' stop-color='%231f6fff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%23081226'/%3E%3Crect x='10' y='12' width='44' height='32' rx='6' fill='none' stroke='url(%23g)' stroke-width='3.5'/%3E%3Cpath d='M20 38 V22 L32 32 L44 22 V38' fill='none' stroke='url(%23g)' stroke-width='5' stroke-linejoin='round' stroke-linecap='round'/%3E%3Crect x='28' y='46' width='8' height='5' fill='url(%23g)'/%3E%3Crect x='22' y='51' width='20' height='3' rx='1.5' fill='url(%23g)'/%3E%3C/svg%3E">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
   body { width: 100vw; height: 100vh; overflow: hidden; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
@@ -534,11 +537,16 @@
   .rem-del { cursor:pointer; opacity:.5; }
   .rem-del:hover { opacity:1; }
 
-  /* Jump World */
-  .jump-app { display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; padding:12px; }
-  .jump-hud { color:#fff; font-size:16px; font-weight:600; }
-  #jump-canvas { background:#0d0d22; border-radius:12px; max-width:100%; touch-action:none; }
-  .jump-hint { color:rgba(255,255,255,.4); font-size:11px; text-align:center; }
+  /* Jump World (block sandbox) */
+  .jw-app { display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; padding:10px; }
+  .jw-palette { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; }
+  .jw-blk { width:26px; height:26px; border-radius:5px; border:2px solid rgba(255,255,255,.2); cursor:pointer; }
+  .jw-blk.active { border-color:#fff; box-shadow:0 0 0 2px rgba(100,180,255,.6); }
+  #jw-canvas { background:#6db3ff; border-radius:10px; max-width:100%; image-rendering:pixelated; touch-action:none; cursor:crosshair; }
+  .jw-bar { display:flex; align-items:center; gap:8px; width:100%; }
+  .jw-hint { color:rgba(255,255,255,.45); font-size:11px; }
+  .jw-b { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .jw-b:hover { background:rgba(255,255,255,.18); }
 
   /* Minesweeper */
   .mines-app { display:flex; flex-direction:column; align-items:center; gap:10px; height:100%; padding:12px; }
@@ -1475,7 +1483,7 @@ const apps = {
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   camera:   { title: 'Max Camera',     short:'Camera',     icon:'📷', w:560, h:520, cat:'Creativity', desc:'Webcam photo booth with filters', html: buildCamera },
   reminders:{ title: 'Reminders',      short:'Reminders',  icon:'✅', w:420, h:520, cat:'Productivity', desc:'To-dos & reminders that sync',  html: buildReminders },
-  jumpworld:{ title: 'Jump World',     short:'Jump World', icon:'🦘', w:480, h:560, cat:'Games',      desc:'Hop up the endless platforms',  html: buildJump },
+  jumpworld:{ title: 'Jump World',     short:'Jump World', icon:'🧱', w:760, h:560, cat:'Games',      desc:'Build & explore a block world',  html: buildJump },
   mines:    { title: 'Minesweeper',    short:'Mines',      icon:'💣', w:440, h:520, cat:'Games',      desc:'Classic flag-the-mines puzzle', html: buildMines },
   colors:   { title: 'Color Picker',   short:'Colors',     icon:'🌈', w:360, h:420, cat:'Creativity', desc:'Pick & copy color codes',     html: buildColors },
 
@@ -3930,13 +3938,70 @@ async function anOpen() {
   try { anApplyAnimData(JSON.parse(picked.content), picked.path); notify('🎞️', 'Opened', picked.name); }
   catch (e) { notify('⚠️', 'Open failed', 'Not a valid .anim file'); }
 }
-function anGif() {
+// LZW compressor for GIF (spec-compliant variable-width codes, sub-block packing
+// is done by the caller). `px` is an array of palette indices, minCode the min
+// code size (here 8 for a 256-color table).
+function gifLZW(px, minCode) {
+  const out = []; let curByte = 0, curBit = 0;
+  const put = (code, size) => { curByte |= code << curBit; curBit += size; while (curBit >= 8) { out.push(curByte & 0xFF); curByte >>= 8; curBit -= 8; } };
+  const clear = 1 << minCode, eoi = clear + 1;
+  let codeSize = minCode + 1, dict = {}, next = eoi + 1;
+  const resetDict = () => { dict = {}; for (let i = 0; i < clear; i++) dict[String.fromCharCode(i)] = i; next = eoi + 1; codeSize = minCode + 1; };
+  resetDict(); put(clear, codeSize);
+  let w = String.fromCharCode(px[0]);
+  for (let i = 1; i < px.length; i++) {
+    const c = String.fromCharCode(px[i]), wc = w + c;
+    if (dict[wc] !== undefined) { w = wc; }
+    else {
+      put(dict[w], codeSize);
+      dict[wc] = next++;
+      if (next === (1 << codeSize) + 1 && codeSize < 12) codeSize++;
+      if (next === 4096) { put(clear, codeSize); resetDict(); }
+      w = c;
+    }
+  }
+  put(dict[w], codeSize); put(eoi, codeSize);
+  if (curBit > 0) out.push(curByte & 0xFF);
+  return out;
+}
+// Encode RGBA frames (Uint8ClampedArray each, w*h*4) into an animated GIF89a
+// (R3G3B2 256-color palette). delayCs = per-frame delay in centiseconds.
+function gifEncode(frames, w, h, delayCs) {
+  const b = [], u8 = s => { for (let i = 0; i < s.length; i++) b.push(s.charCodeAt(i)); }, w16 = n => { b.push(n & 255, (n >> 8) & 255); };
+  u8('GIF89a'); w16(w); w16(h); b.push(0xF7, 0, 0); // global table, 256 colors
+  for (let i = 0; i < 256; i++) b.push(((i >> 5) & 7) * 255 / 7 | 0, ((i >> 2) & 7) * 255 / 7 | 0, (i & 3) * 255 / 3 | 0);
+  b.push(0x21, 0xFF, 0x0B); u8('NETSCAPE2.0'); b.push(0x03, 0x01, 0, 0, 0x00); // loop forever
+  const idxOf = (r, g, b2) => ((r >> 5) << 5) | ((g >> 5) << 2) | (b2 >> 6);
+  for (const f of frames) {
+    b.push(0x21, 0xF9, 0x04, 0x00, delayCs & 255, (delayCs >> 8) & 255, 0, 0x00); // graphic control (delay)
+    b.push(0x2C, 0, 0, 0, 0); w16(w); w16(h); b.push(0x00); // image descriptor
+    const px = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) px[i] = idxOf(f[i * 4], f[i * 4 + 1], f[i * 4 + 2]);
+    b.push(8); const data = gifLZW(px, 8);
+    for (let i = 0; i < data.length; i += 255) { const n = Math.min(255, data.length - i); b.push(n); for (let j = 0; j < n; j++) b.push(data[i + j]); }
+    b.push(0x00);
+  }
+  b.push(0x3B);
+  return new Uint8Array(b);
+}
+// Export the whole animation as an animated GIF.
+async function anGif() {
+  if (anPlay) anPlayToggle();
   anSyncBgFromCanvas();
-  const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H;
-  anRenderFrameTo(cv.getContext('2d'), anCurFrame(), 1, null).then(() => {
-    const a = document.createElement('a'); a.download = 'frame_' + (anCur + 1) + '.png'; a.href = cv.toDataURL('image/png'); a.click();
-    notify('⬇️', 'Exported frame', 'Saved frame ' + (anCur + 1) + ' as PNG');
-  });
+  notify('⬇️', 'Rendering GIF…', anFrames.length + ' frames');
+  const frames = [];
+  for (const fr of anFrames) {
+    const cv = document.createElement('canvas'); cv.width = AN_W; cv.height = AN_H;
+    const cx = cv.getContext('2d');
+    await anRenderFrameTo(cx, fr, 1, null);
+    frames.push(cx.getImageData(0, 0, AN_W, AN_H).data);
+  }
+  const bytes = gifEncode(frames, AN_W, AN_H, Math.max(2, Math.round(100 / (anFps || 8))));
+  const blob = new Blob([bytes], { type: 'image/gif' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.download = 'animation.gif'; a.href = url; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  notify('🎞️', 'Exported GIF', anFrames.length + ' frames @ ' + (anFps || 8) + ' fps');
 }
 
 // ── MAX VIDEO — timeline slideshow/movie editor ───────────────────────────────
@@ -4134,63 +4199,105 @@ function remCheckDue() {
   if (changed) { remSave(); remRender(); }
 }
 
-// ── JUMP WORLD — doodle-jump style climber ────────────────────────────────────
-let jump = null;
+// ── JUMP WORLD — a 2D Minecraft-style block sandbox ───────────────────────────
+let jump = null, jumpSel = 1;
+// block id → { name, color, solid }
+const JW_BLOCKS = [
+  { name: 'air',   color: null,      solid: false },
+  { name: 'grass', color: '#5bbd4e', solid: true },
+  { name: 'dirt',  color: '#8a5a3b', solid: true },
+  { name: 'stone', color: '#8a8f98', solid: true },
+  { name: 'wood',  color: '#9c6b3f', solid: true },
+  { name: 'leaf',  color: '#3fae5a', solid: true },
+  { name: 'sand',  color: '#e2cf86', solid: true },
+  { name: 'brick', color: '#c0573f', solid: true },
+  { name: 'glass', color: '#aee3ff', solid: true },
+  { name: 'water', color: '#3a7bd5', solid: false },
+];
+const JW_COLS = 32, JW_ROWS = 20, JW_TILE = 22;
 function buildJump() {
-  return `<div class="jump-app">
-    <div class="jump-hud">🦘 <span id="jump-score">0</span> &nbsp; Best: <span id="jump-best">0</span></div>
-    <canvas id="jump-canvas" width="360" height="460"></canvas>
-    <div class="jump-hint">← → or A/D to move · don't fall off the bottom!</div>
+  return `<div class="jw-app">
+    <div class="jw-palette" id="jw-palette">${JW_BLOCKS.slice(1).map((b, i) => `<button class="jw-blk${i === 0 ? ' active' : ''}" data-b="${i + 1}" title="${b.name}" style="background:${b.color}" onclick="jwPick(${i + 1})"></button>`).join('')}</div>
+    <canvas id="jw-canvas" width="${JW_COLS * JW_TILE}" height="${JW_ROWS * JW_TILE}"></canvas>
+    <div class="jw-bar">
+      <span class="jw-hint">Move: A/D · Jump: W/Space · Click place · Right-click break</span>
+      <span style="flex:1"></span>
+      <button class="jw-b" onclick="jwReset()">🌱 New world</button>
+    </div>
   </div>`;
 }
+function jwPick(b) { jumpSel = b; document.querySelectorAll('.jw-blk').forEach(el => el.classList.toggle('active', +el.dataset.b === b)); }
+function jwKey() { return 'maxos_jumpworld_' + (currentUser?.username || 'guest'); }
 function initJump() {
-  const c = document.getElementById('jump-canvas'); if (!c) return;
+  const c = document.getElementById('jw-canvas'); if (!c) return;
   if (jump) jump.stop();
-  const ctx = c.getContext('2d'), W = c.width, H = c.height;
-  let best = +localStorage.getItem('maxos_jump_best') || 0;
-  document.getElementById('jump-best').textContent = best;
-  let px, py, vy, plats, score, running, raf, keys = {};
-  function newPlat(y) { return { x: Math.random() * (W - 60), y, w: 60 }; }
-  function reset() {
-    px = W / 2; py = H - 80; vy = -9; score = 0; running = true; plats = [];
-    for (let i = 0; i < 9; i++) plats.push(newPlat(H - i * 55 - 20));
-    plats[0] = { x: W / 2 - 30, y: H - 30, w: 60 };
+  const ctx = c.getContext('2d'), W = c.width, H = c.height, T = JW_TILE;
+  let grid, px, py, vx, vy, onGround, raf, running = true, keys = {};
+  function genWorld() {
+    grid = Array.from({ length: JW_ROWS }, () => Array(JW_COLS).fill(0));
+    const surface = JW_ROWS - 6;
+    for (let x = 0; x < JW_COLS; x++) {
+      const h = surface + Math.round(Math.sin(x / 4) * 1.5);
+      for (let y = 0; y < JW_ROWS; y++) {
+        if (y === h) grid[y][x] = 1;          // grass
+        else if (y > h && y < h + 3) grid[y][x] = 2; // dirt
+        else if (y >= h + 3) grid[y][x] = 3;  // stone
+      }
+    }
+    // a little tree
+    const tx = 6, th = surface - 1;
+    for (let i = 0; i < 3; i++) grid[th - i][tx] = 4;
+    for (let dy = -2; dy <= 0; dy++) for (let dx = -1; dx <= 1; dx++) if (grid[th - 3 + dy] && grid[th - 3 + dy][tx + dx] === 0) grid[th - 3 + dy][tx + dx] = 5;
   }
+  function save() { try { localStorage.setItem(jwKey(), JSON.stringify(grid)); } catch (e) {} }
+  function load() { try { const g = JSON.parse(localStorage.getItem(jwKey()) || 'null'); if (Array.isArray(g) && g.length === JW_ROWS) { grid = g; return true; } } catch (e) {} return false; }
+  const solidAt = (x, y) => { const cx = Math.floor(x / T), cy = Math.floor(y / T); return cy >= 0 && cy < JW_ROWS && cx >= 0 && cx < JW_COLS && JW_BLOCKS[grid[cy][cx]].solid; };
+  function spawn() { px = T * 2; py = T; vx = vy = 0; }
   function step() {
     if (!running) return;
-    const vx = (keys.l ? -5 : 0) + (keys.r ? 5 : 0);
-    px += vx; if (px < -20) px = W; if (px > W + 20) px = 0;
-    vy += 0.4; py += vy;
-    if (py < H * 0.4) { const d = H * 0.4 - py; py = H * 0.4; plats.forEach(p => p.y += d); score += Math.round(d); }
-    plats = plats.filter(p => p.y < H + 10);
-    while (plats.length < 9) plats.push(newPlat(Math.min(...plats.map(p => p.y)) - 55));
-    for (const p of plats) if (vy > 0 && px + 12 > p.x && px - 12 < p.x + p.w && py + 18 > p.y && py + 18 < p.y + 16) vy = -9;
-    if (py > H + 20) return gameOver();
+    vx = (keys.l ? -2.6 : 0) + (keys.r ? 2.6 : 0);
+    // horizontal
+    let nx = px + vx;
+    if (vx) { if (!solidAt(nx + (vx > 0 ? 15 : 0), py + 2) && !solidAt(nx + (vx > 0 ? 15 : 0), py + 28)) px = nx; }
+    // gravity
+    vy = Math.min(vy + 0.5, 9); let ny = py + vy; onGround = false;
+    if (vy > 0) { if (solidAt(px + 3, ny + 30) || solidAt(px + 13, ny + 30)) { py = Math.floor((ny + 30) / T) * T - 30; vy = 0; onGround = true; } else py = ny; }
+    else if (vy < 0) { if (solidAt(px + 3, ny) || solidAt(px + 13, ny)) vy = 0; else py = ny; }
+    if (py > H + 40) spawn();
+    px = Math.max(0, Math.min(W - 16, px));
     draw();
     raf = requestAnimationFrame(step);
   }
   function draw() {
-    ctx.fillStyle = '#0d0d22'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#28c840'; plats.forEach(p => { ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, 12, 6); ctx.fill(); });
-    ctx.font = '26px system-ui'; ctx.textAlign = 'center'; ctx.fillText('🦘', px, py + 22);
-    document.getElementById('jump-score').textContent = score;
+    // sky
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#6db3ff'); g.addColorStop(1, '#bfe0ff'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (let y = 0; y < JW_ROWS; y++) for (let x = 0; x < JW_COLS; x++) {
+      const b = grid[y][x]; if (!b) continue;
+      const bl = JW_BLOCKS[b];
+      ctx.fillStyle = bl.color; ctx.globalAlpha = bl.name === 'water' || bl.name === 'glass' ? 0.6 : 1;
+      ctx.fillRect(x * T, y * T, T, T);
+      ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.strokeRect(x * T + .5, y * T + .5, T, T);
+    }
+    ctx.fillStyle = '#ff5f57'; ctx.fillRect(px, py, 16, 30); // player
+    ctx.fillStyle = '#fff'; ctx.fillRect(px + 3, py + 6, 4, 4); ctx.fillRect(px + 9, py + 6, 4, 4);
   }
-  function gameOver() {
-    running = false; cancelAnimationFrame(raf);
-    if (score > best) { best = score; localStorage.setItem('maxos_jump_best', best); document.getElementById('jump-best').textContent = best; apiFetch('/api/me/data/jumpbest', { method: 'PUT', body: JSON.stringify({ value: best }) }); }
-    ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#fff'; ctx.font = '24px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('Game Over', W / 2, H / 2 - 10); ctx.font = '15px system-ui';
-    ctx.fillText('Score ' + score + ' · tap / Space to retry', W / 2, H / 2 + 24);
+  function edit(e, place) {
+    const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e;
+    const cx = Math.floor((t.clientX - r.left) * (W / r.width) / T), cy = Math.floor((t.clientY - r.top) * (H / r.height) / T);
+    if (cy < 0 || cy >= JW_ROWS || cx < 0 || cx >= JW_COLS) return;
+    grid[cy][cx] = place ? jumpSel : 0; save();
   }
-  const kd = e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = 1; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = 1; if ((e.key === ' ' || e.key === 'Enter') && !running) { reset(); step(); } };
-  const ku = e => { if (e.key === 'ArrowLeft' || e.key === 'a') keys.l = 0; if (e.key === 'ArrowRight' || e.key === 'd') keys.r = 0; };
+  const kd = e => { const k = e.key.toLowerCase(); if (k === 'a' || e.key === 'ArrowLeft') keys.l = 1; if (k === 'd' || e.key === 'ArrowRight') keys.r = 1; if ((k === 'w' || k === ' ' || e.key === 'ArrowUp') && onGround) { vy = -8.4; e.preventDefault(); } };
+  const ku = e => { const k = e.key.toLowerCase(); if (k === 'a' || e.key === 'ArrowLeft') keys.l = 0; if (k === 'd' || e.key === 'ArrowRight') keys.r = 0; };
   addEventListener('keydown', kd); addEventListener('keyup', ku);
-  c.ontouchstart = c.onmousedown = e => { if (!running) { reset(); step(); return; } const r = c.getBoundingClientRect(), x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left; if (x < r.width / 2) keys.l = 1; else keys.r = 1; };
-  c.ontouchend = c.onmouseup = () => { keys.l = keys.r = 0; };
-  jump = { stop() { running = false; cancelAnimationFrame(raf); removeEventListener('keydown', kd); removeEventListener('keyup', ku); } };
-  reset(); step();
+  c.onmousedown = e => { edit(e, e.button !== 2); };
+  c.oncontextmenu = e => { e.preventDefault(); edit(e, false); };
+  c.ontouchstart = e => { e.preventDefault(); edit(e, true); };
+  jump = { stop() { running = false; cancelAnimationFrame(raf); removeEventListener('keydown', kd); removeEventListener('keyup', ku); }, _new() { genWorld(); save(); spawn(); } };
+  if (!load()) genWorld();
+  spawn(); step();
 }
+function jwReset() { if (jump && jump._new) jump._new(); }
 
 // ── MINESWEEPER ───────────────────────────────────────────────────────────────
 let mines = null, minesFlagMode = false;
