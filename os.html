@@ -2451,19 +2451,47 @@ const IMG_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']);
 function imgMime(ext) {
   return ({ png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', bmp:'image/bmp' })[ext] || 'image/png';
 }
+function imageRawMime(t, ext) {
+  if (!t) return '';
+  const c0 = t.charCodeAt(0) & 0xff;
+  const c1 = t.charCodeAt(1) & 0xff;
+  const c2 = t.charCodeAt(2) & 0xff;
+  const c3 = t.charCodeAt(3) & 0xff;
+  if (c0 === 0x89 && c1 === 0x50 && c2 === 0x4e && c3 === 0x47) return 'image/png';
+  if (c0 === 0xff && c1 === 0xd8 && c2 === 0xff) return 'image/jpeg';
+  if (t.startsWith('GIF87a') || t.startsWith('GIF89a')) return 'image/gif';
+  if (t.startsWith('BM')) return 'image/bmp';
+  if (t.startsWith('RIFF') && t.slice(8, 12) === 'WEBP') return 'image/webp';
+  return ext ? imgMime(ext) : '';
+}
+function imageRawToDataUrl(t, ext) {
+  const mime = imageRawMime(t, ext);
+  if (!mime) return '';
+  let bin = '';
+  for (let i = 0; i < t.length; i++) bin += String.fromCharCode(t.charCodeAt(i) & 0xff);
+  return `data:${mime};base64,` + btoa(bin);
+}
 function imageDataUrlFromContent(content, ext) {
   if (!content) return '';
-  const t = content.trim();
-  if (t.startsWith('data:image')) return t;
-  try { const j = JSON.parse(t); if (j.format === 'maxos.pic' && j.data) return j.data; } catch { /* not JSON */ }
-  if (t.charCodeAt(0) === 0x89 && t.slice(1, 4) === 'PNG') {
-    const bytes = new Uint8Array(t.length);
-    for (let i = 0; i < t.length; i++) bytes[i] = t.charCodeAt(i) & 0xff;
-    let bin = '';
-    bytes.forEach(b => { bin += String.fromCharCode(b); });
-    return 'data:image/png;base64,' + btoa(bin);
+  if (typeof content === 'object') {
+    if (content.data) return imageDataUrlFromContent(content.data, ext);
+    if (content.content) return imageDataUrlFromContent(content.content, ext);
+    return '';
   }
-  if (/^[A-Za-z0-9+/=\r\n]+$/.test(t.slice(0, Math.min(200, t.length)))) return `data:${imgMime(ext)};base64,` + t.replace(/\s/g, '');
+  const t = String(content).trim();
+  if (t.startsWith('data:image')) return t;
+  try {
+    const j = JSON.parse(t);
+    if (typeof j === 'string') return imageDataUrlFromContent(j, ext);
+    if (j && j.format === 'maxos.pic' && j.data) return imageDataUrlFromContent(j.data, ext);
+    if (j && j.data) return imageDataUrlFromContent(j.data, ext);
+  } catch { /* not JSON */ }
+  const rawUrl = imageRawToDataUrl(t, ext);
+  if (rawUrl) return rawUrl;
+  if (/^[A-Za-z0-9+/_=-\r\n]+$/.test(t.slice(0, Math.min(240, t.length)))) {
+    const clean = t.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    return `data:${imgMime(ext)};base64,` + clean;
+  }
   return '';
 }
 function openDriveFile(path, type, name) {
@@ -4305,17 +4333,22 @@ async function camSave() {
   const base = camPath ? camPath.split('/').pop().replace(/\.pic$/i, '') : ('photo_' + Date.now());
   const mime = camShot.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
   const content = picMake(base, camShot, mime, camDims.w, camDims.h);
-  if (camPath && camPath.endsWith('.pic')) {
-    await driveWrite(camPath, content);
-    notify('📷', 'Saved', camPath.split('/').pop());
-    return;
-  }
-  const path = await picSaveToDrive(base, content);
-  if (path) {
-    camPath = path;
-    const fname = document.getElementById('cam-fname');
-    if (fname) fname.textContent = path.split('/').pop();
-    notify('📷', 'Saved as .pic', path.split('/').pop());
+  try {
+    if (camPath && camPath.endsWith('.pic')) {
+      const r = await driveWrite(camPath, content);
+      if (r.error) throw new Error(r.error);
+      notify('📷', 'Saved as .pic', camPath.split('/').pop());
+      return;
+    }
+    const path = await picSaveToDrive(base, content);
+    if (path) {
+      camPath = path;
+      const fname = document.getElementById('cam-fname');
+      if (fname) fname.textContent = path.split('/').pop();
+      notify('📷', 'Saved as .pic', path.split('/').pop());
+    }
+  } catch (e) {
+    notify('⚠️', 'Save failed', e?.message || 'Could not save image');
   }
 }
 function camDownload() {
