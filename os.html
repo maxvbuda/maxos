@@ -1071,6 +1071,7 @@ function bootOS() {
   renderStartApps();
   checkServer().then(startUnreadPolling);
   startHeartbeat();
+  remStartPolling();
   loadCustomApps(); // async — pulls community apps from MongoDB, re-renders when done
   // fade out boot screen + welcome
   setTimeout(() => {
@@ -1649,7 +1650,6 @@ function closeWindow(id) {
   if (id === 'camera') camStop(); // release the webcam
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
-  if (id === 'reminders') clearInterval(remTimer);
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -4339,13 +4339,27 @@ function buildReminders() {
     <div id="rem-list" class="rem-list"></div>
   </div>`;
 }
-async function initReminders() {
+async function remLoad() {
   const res = await apiFetch('/api/me/data/reminders');
   remItems = (res && !res.error && Array.isArray(res.value)) ? res.value : [];
-  remRender();
-  clearInterval(remTimer);
-  remTimer = setInterval(remCheckDue, 20000); // fire notifications for due items
+}
+async function remStartPolling() {
+  await remLoad();
+  if (remTimer) clearInterval(remTimer);
+  remTimer = setInterval(remCheckDue, 10000);
   remCheckDue();
+}
+async function initReminders() {
+  await remLoad();
+  remRender();
+  remCheckDue();
+}
+function remAlarmSound() {
+  const vol = 0.62, type = 'square', step = 0.26, beep = 0.24;
+  const hi = 880, lo = 554;
+  for (let i = 0; i < 8; i++) tone(i % 2 ? lo : hi, beep, type, vol, i * step);
+  for (let i = 0; i < 8; i++) tone(i % 2 ? lo : hi, beep, type, vol, 2.6 + i * step);
+  for (let i = 0; i < 8; i++) tone(i % 2 ? lo : hi, beep, type, vol, 5.2 + i * step);
 }
 function remSave() { apiFetch('/api/me/data/reminders', { method: 'PUT', body: JSON.stringify({ value: remItems }) }); }
 function remAdd() {
@@ -4371,12 +4385,14 @@ function remRender() {
 }
 function remCheckDue() {
   const now = Date.now();
-  let changed = false;
+  let changed = false, alarm = false;
   remItems.forEach(r => {
     if (r.due && !r.done && !r.notified && new Date(r.due).getTime() <= now) {
-      r.notified = true; changed = true; notify('⏰', 'Reminder', r.text);
+      r.notified = true; changed = true; alarm = true;
+      notify('⏰', 'Reminder', r.text, 12000);
     }
   });
+  if (alarm) remAlarmSound();
   if (changed) { remSave(); remRender(); }
 }
 
