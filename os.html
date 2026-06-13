@@ -522,6 +522,7 @@
   .cam-app { display:flex; flex-direction:column; height:100%; gap:10px; padding:12px; }
   .cam-stage { flex:1; background:#000; border-radius:12px; overflow:hidden; position:relative; display:flex; align-items:center; justify-content:center; }
   #cam-video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  #cam-preview { width:100%; height:100%; object-fit:contain; display:none; }
   .cam-msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.7); font-size:14px; text-align:center; padding:20px; }
   .cam-filters { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
   .cam-f { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:999px; padding:5px 12px; font-size:12px; cursor:pointer; text-transform:capitalize; }
@@ -2575,8 +2576,7 @@ function openDriveFile(path, type, name) {
   else if (ext === 'forms' || ext === 'maxform') { openApp('forms'); setTimeout(() => formsOpenPath(path, name), 300); }
   else if (ext === 'board') { openApp('board'); setTimeout(() => boardOpenPath(path, name), 300); }
   else if (ext === 'anim') { openApp('animator'); setTimeout(() => animOpenPath(path, name), 350); }
-  else if (ext === 'pic') { setTimeout(() => picOpenPath(path, name), 200); }
-  else if (PKT_IMG_EXT.has(ext)) { setTimeout(() => pktOpenPath(path, name), 200); }
+  else if (ext === 'pic' || PKT_IMG_EXT.has(ext)) { setTimeout(() => camOpenPath(path, name), 250); }
   else if (ext === 'video') { openApp('video'); setTimeout(() => videoOpenPath(path, name), 350); }
   else { openApp('editor'); setTimeout(() => editorOpenFile(path, name), 300); }
 }
@@ -4240,49 +4240,164 @@ async function videoOpenPath(path, name) {
 }
 
 // ── MAX CAMERA — webcam photo booth ───────────────────────────────────────────
-let camStream = null, camFilter = 'none', camShot = null;
+let camStream = null, camFilter = 'none', camShot = null, camPath = null, camDims = { w: 0, h: 0 };
 const CAM_FILTERS = { none:'none', mono:'grayscale(1)', invert:'invert(1)', sepia:'sepia(.8)', retro:'saturate(.6) contrast(1.3) sepia(.3)', cool:'hue-rotate(180deg) saturate(1.4)' };
 function buildCamera() {
   return `<div class="cam-app">
     <div class="cam-stage">
       <video id="cam-video" autoplay playsinline muted></video>
+      <img id="cam-preview" alt="">
       <canvas id="cam-canvas" style="display:none"></canvas>
       <div id="cam-msg" class="cam-msg">Starting camera…</div>
     </div>
-    <div class="cam-filters">${Object.keys(CAM_FILTERS).map((f,i)=>`<button class="cam-f${i===0?' active':''}" data-f="${f}" onclick="camSetFilter('${f}')">${f}</button>`).join('')}</div>
+    <div class="cam-filters" id="cam-filters">${Object.keys(CAM_FILTERS).map((f,i)=>`<button class="cam-f${i===0?' active':''}" data-f="${f}" onclick="camSetFilter('${f}')">${f}</button>`).join('')}</div>
     <div class="cam-bar">
-      <button class="cam-b" id="cam-snap" onclick="camSnap()">📸 Snap</button>
-      <button class="cam-b" id="cam-save" onclick="camSave()" disabled>💾 Save</button>
+      <button class="cam-b" onclick="camOpenFromDrive()">📂 Open</button>
+      <button class="cam-b" id="cam-snap" onclick="camSnap()" disabled>📸 Snap</button>
+      <button class="cam-b" id="cam-retake" onclick="camRetake()" style="display:none">↩ Retake</button>
+      <button class="cam-b" id="cam-save" onclick="camSave()" disabled>💾 Save .pic</button>
       <button class="cam-b" id="cam-dl" onclick="camDownload()" disabled>⬇️ Download</button>
     </div>
+    <div id="cam-fname" style="color:rgba(255,255,255,.45);font-size:12px;text-align:center"></div>
   </div>`;
 }
+function camSetUi(live) {
+  const v = document.getElementById('cam-video'), prev = document.getElementById('cam-preview');
+  const filters = document.getElementById('cam-filters'), retake = document.getElementById('cam-retake');
+  const snap = document.getElementById('cam-snap');
+  if (v) v.style.display = live ? '' : 'none';
+  if (prev) prev.style.display = live ? 'none' : 'block';
+  if (filters) filters.style.display = live ? '' : 'none';
+  if (retake) retake.style.display = live ? 'none' : '';
+  if (snap) snap.disabled = !live || !camStream;
+}
 async function initCamera() {
-  camShot = null; camFilter = 'none';
+  camShot = null; camPath = null; camFilter = 'none'; camDims = { w: 0, h: 0 };
   const v = document.getElementById('cam-video'), msg = document.getElementById('cam-msg');
+  const save = document.getElementById('cam-save'), dl = document.getElementById('cam-dl');
+  const fname = document.getElementById('cam-fname');
+  if (fname) fname.textContent = '';
+  if (save) save.disabled = true;
+  if (dl) dl.disabled = true;
+  const prev = document.getElementById('cam-preview');
+  if (prev) prev.removeAttribute('src');
+  camSetUi(true);
+  camStop();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    if (msg) { msg.style.display = 'flex'; msg.textContent = '📷 Camera not supported on this device'; }
+    return;
+  }
+  if (msg) { msg.style.display = 'flex'; msg.textContent = 'Starting camera…'; }
   try {
     camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-    v.srcObject = camStream; v.style.filter = CAM_FILTERS.none; if (msg) msg.style.display = 'none';
+    if (!v) return;
+    v.srcObject = camStream;
+    v.style.filter = CAM_FILTERS.none;
+    v.onloadedmetadata = () => {
+      v.play().catch(() => {});
+      if (msg) msg.style.display = 'none';
+      const snap = document.getElementById('cam-snap');
+      if (snap) snap.disabled = false;
+    };
   } catch (e) {
-    if (msg) { msg.style.display = 'flex'; msg.textContent = '📷 Camera unavailable — allow camera access and reopen.'; }
+    if (msg) { msg.style.display = 'flex'; msg.textContent = '📷 Camera unavailable — allow camera access and reopen Max Camera.'; }
   }
 }
-function camSetFilter(f) { camFilter = f; const v = document.getElementById('cam-video'); if (v) v.style.filter = CAM_FILTERS[f] || 'none'; document.querySelectorAll('.cam-f').forEach(b => b.classList.toggle('active', b.dataset.f === f)); }
+function camSetFilter(f) {
+  if (!camShot) camFilter = f;
+  const v = document.getElementById('cam-video');
+  if (v && v.style.display !== 'none') v.style.filter = CAM_FILTERS[f] || 'none';
+  document.querySelectorAll('.cam-f').forEach(b => b.classList.toggle('active', b.dataset.f === f));
+}
 function camSnap() {
-  const v = document.getElementById('cam-video'), c = document.getElementById('cam-canvas');
-  if (!v || !v.videoWidth) { notify('📷', 'No camera', 'Camera not ready yet'); return; }
+  const v = document.getElementById('cam-video'), c = document.getElementById('cam-canvas'), prev = document.getElementById('cam-preview');
+  if (!v || !v.videoWidth) { notify('📷', 'Not ready', 'Wait for the camera to start'); return; }
   c.width = v.videoWidth; c.height = v.videoHeight;
-  const x = c.getContext('2d'); x.filter = CAM_FILTERS[camFilter] || 'none'; x.drawImage(v, 0, 0, c.width, c.height);
+  camDims = { w: c.width, h: c.height };
+  const x = c.getContext('2d');
+  x.save();
+  x.translate(c.width, 0);
+  x.scale(-1, 1); // match mirrored selfie preview
+  x.filter = CAM_FILTERS[camFilter] || 'none';
+  x.drawImage(v, 0, 0, c.width, c.height);
+  x.restore();
   camShot = c.toDataURL('image/png');
-  document.getElementById('cam-save').disabled = false; document.getElementById('cam-dl').disabled = false;
-  notify('📸', 'Snapped!', 'Save it to MaxDrive or download');
+  camPath = null;
+  if (prev) prev.src = camShot;
+  camSetUi(false);
+  document.getElementById('cam-save').disabled = false;
+  document.getElementById('cam-dl').disabled = false;
+  const fname = document.getElementById('cam-fname');
+  if (fname) fname.textContent = 'Unsaved photo — tap Save .pic';
+  notify('📸', 'Snapped!', 'Save to MaxDrive as .pic or download');
+}
+async function camRetake() {
+  camShot = null; camPath = null;
+  document.getElementById('cam-save').disabled = true;
+  document.getElementById('cam-dl').disabled = true;
+  const fname = document.getElementById('cam-fname');
+  if (fname) fname.textContent = '';
+  await initCamera();
+}
+function camShowPhoto(dataUrl, name, path) {
+  camStop();
+  camShot = dataUrl;
+  camPath = path || null;
+  camFilter = 'none';
+  const prev = document.getElementById('cam-preview'), msg = document.getElementById('cam-msg');
+  if (prev) {
+    prev.onload = () => { camDims = { w: prev.naturalWidth, h: prev.naturalHeight }; };
+    prev.src = dataUrl;
+  }
+  if (msg) msg.style.display = 'none';
+  camSetUi(false);
+  document.getElementById('cam-save').disabled = false;
+  document.getElementById('cam-dl').disabled = false;
+  const fname = document.getElementById('cam-fname');
+  if (fname) fname.textContent = name || '';
+}
+async function camOpenPath(path, name) {
+  openApp('camera');
+  const res = await fsCat(path);
+  if (res.error) { notify('⚠️', 'Open failed', res.error); return; }
+  const ext = name.split('.').pop().toLowerCase();
+  const url = imageDataUrlFromContent(res.content, ext);
+  if (!url) { notify('⚠️', 'Not an image', 'Could not display this file'); return; }
+  setTimeout(() => camShowPhoto(url, name, path), 250);
+}
+function camOpenFromDrive() {
+  drivePick([...PKT_IMG_EXT, 'pic']).then(picked => {
+    if (!picked) return;
+    const ext = picked.name.split('.').pop().toLowerCase();
+    const url = imageDataUrlFromContent(picked.content, ext);
+    if (url) camShowPhoto(url, picked.name, picked.path);
+    else notify('⚠️', 'Not an image', 'Could not display this file');
+  });
 }
 async function camSave() {
   if (!camShot) return;
-  const path = await driveSaveAs('photo.png', camShot);
-  if (path) notify('📷', 'Saved', path.split('/').pop());
+  const base = camPath ? camPath.split('/').pop().replace(/\.pic$/i, '') : ('photo_' + Date.now());
+  const content = picMake(base, camShot, 'image/png', camDims.w, camDims.h);
+  if (camPath && camPath.endsWith('.pic')) {
+    await driveWrite(camPath, content);
+    notify('📷', 'Saved', camPath.split('/').pop());
+    return;
+  }
+  const path = await picSaveToDrive(base, content);
+  if (path) {
+    camPath = path;
+    const fname = document.getElementById('cam-fname');
+    if (fname) fname.textContent = path.split('/').pop();
+    notify('📷', 'Saved as .pic', path.split('/').pop());
+  }
 }
-function camDownload() { if (!camShot) return; const a = document.createElement('a'); a.download = 'photo_' + Date.now() + '.png'; a.href = camShot; a.click(); }
+function camDownload() {
+  if (!camShot) return;
+  const a = document.createElement('a');
+  a.download = (camPath ? camPath.split('/').pop().replace(/\.pic$/i, '') : 'photo_' + Date.now()) + '.png';
+  a.href = camShot;
+  a.click();
+}
 function camStop() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } }
 
 // ── REMINDERS — to-dos that persist in MongoDB ────────────────────────────────
@@ -5596,7 +5711,7 @@ function driveIcon(name) {
 }
 function driveKind(name) {
   const e = name.split('.').pop().toLowerCase();
-  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON', anim:'Max Animator', video:'Max Video', pic:'Max Picture', png:'Picture', jpg:'Picture', jpeg:'Picture', gif:'Picture', webp:'Picture' })[e] || (e.toUpperCase() + ' file');
+  return ({ docs:'Max Docs', md:'Max MD', txt:'Text', sheet:'Max Sheets', csv:'Max Sheets', maxsheet:'Max Sheets', forms:'Max Form', maxform:'Max Form', board:'Max Board', html:'Max Code', json:'JSON', anim:'Max Animator', video:'Max Video', pic:'Max Camera', png:'Max Camera', jpg:'Max Camera', jpeg:'Max Camera', gif:'Max Camera', webp:'Max Camera' })[e] || (e.toUpperCase() + ' file');
 }
 // Open a file in the right Max app based on extension
 // Open a drive card by index — wired to native dblclick, which fires reliably
