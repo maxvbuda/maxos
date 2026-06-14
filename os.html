@@ -1326,7 +1326,11 @@ const localFs = {
 // cache real server reads/writes so the user's actual files are available offline.
 const LOCAL_FS_KEY = () => 'maxos_fs_' + (currentUser?.username || 'guest');
 let _fsSaveT = null;
-function localFsSave() { clearTimeout(_fsSaveT); _fsSaveT = setTimeout(() => { try { localStorage.setItem(LOCAL_FS_KEY(), JSON.stringify({ dirs: localFs.dirs, files: localFs.files })); } catch (e) { /* quota — best effort */ } }, 400); }
+function localFsFlush() { try { localStorage.setItem(LOCAL_FS_KEY(), JSON.stringify({ dirs: localFs.dirs, files: localFs.files })); } catch (e) { /* quota — best effort */ } }
+function localFsSave() { clearTimeout(_fsSaveT); _fsSaveT = setTimeout(localFsFlush, 400); }
+// Flush immediately before a reload/close so nothing in the debounce window is lost
+addEventListener('pagehide', () => { if (currentUser) localFsFlush(); });
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && currentUser) localFsFlush(); });
 function localFsLoad() { try { const s = JSON.parse(localStorage.getItem(LOCAL_FS_KEY()) || 'null'); if (s && s.dirs && s.files) { localFs.dirs = s.dirs; localFs.files = s.files; } } catch (e) {} }
 function cacheLs(path, list) { // mirror a server directory listing
   if (!Array.isArray(list)) return;
@@ -1362,6 +1366,7 @@ function localMkdir(path, name, parent) {
   if (localFs.dirs[path]) return { error: `mkdir: ${name}: Already exists` };
   localFs.dirs[path] = [];
   if (localFs.dirs[parent] && !localFs.dirs[parent].includes(name)) localFs.dirs[parent].push(name);
+  localFsSave();
   return { path, name, type: 'directory' };
 }
 
@@ -1369,12 +1374,19 @@ function localTouch(path, name, parent) {
   if (localFs.files[path] !== undefined) return { error: `touch: ${name}: Already exists` };
   localFs.files[path] = '';
   if (localFs.dirs[parent] && !localFs.dirs[parent].includes(name)) localFs.dirs[parent].push(name);
+  localFsSave();
   return { path, name, type: 'file' };
 }
 
 function localWrite(path, content) {
-  if (localFs.files[path] === undefined) return { error: 'File not found' };
+  // Create-if-missing so offline saves always stick, and register it in the parent listing
+  if (localFs.files[path] === undefined) {
+    const parent = path.slice(0, path.lastIndexOf('/')) || '/', name = path.split('/').pop();
+    if (!localFs.dirs[parent]) localFs.dirs[parent] = [];
+    if (!localFs.dirs[parent].includes(name)) localFs.dirs[parent].push(name);
+  }
   localFs.files[path] = content;
+  localFsSave();
   return { ok: true, path };
 }
 
@@ -1389,6 +1401,7 @@ function localRm(path) {
     return { error: `rm: ${name}: No such file or directory` };
   }
   if (localFs.dirs[parent]) localFs.dirs[parent] = localFs.dirs[parent].filter(n => n !== name);
+  localFsSave();
   return { ok: true };
 }
 
