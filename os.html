@@ -589,6 +589,11 @@
   .sch-btn { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:9px; padding:9px 14px; font-size:13px; cursor:pointer; white-space:nowrap; }
   .sch-or { text-align:center; color:rgba(255,255,255,.35); font-size:12px; }
   .sch-del, .sch-leave { align-self:flex-start; background:rgba(255,95,87,.15); border:1px solid rgba(255,95,87,.3); color:#ff8a82; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .sch-flags { background:rgba(255,95,87,.08); border:1px solid rgba(255,95,87,.25); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:6px; }
+  .sch-flagh { color:#ff8a82; font-size:12px; font-weight:700; }
+  .sch-flag { font-size:12px; color:rgba(255,255,255,.8); }
+  .sch-flagt { color:rgba(255,255,255,.4); font-size:11px; }
+  .sch-flagsnip { color:#ffb3ad; font-style:italic; font-size:12px; }
 
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
@@ -1754,6 +1759,10 @@ async function loadSchoolState() {
     schoolState = r;
     renderDesktop(); renderStartApps();
     if (typeof renderDock === 'function') renderDock();
+    // Close any disallowed app that opened before the state loaded (e.g. via a
+    // /terminal deep link) so students can't bypass the gate.
+    if (schoolState.restricted) Object.keys(windows).forEach(id => { if (!schoolAllows(id)) closeWindow(id); });
+    schoolApplyMonitoring();
   }
 }
 function desktopApps() {
@@ -4840,9 +4849,11 @@ function schoolAssignable() { return Object.keys(apps).filter(id => !apps[id].ad
 function schoolTeacherCard(c) {
   return `<div class="sch-card">
     <div class="sch-cardtop"><b>${escapeHtml(c.name)}</b><span class="sch-code">join code: <b>${c.code}</b></span></div>
-    <div class="sch-sub">Students (${c.students.length}): ${c.students.length ? c.students.map(s => `<span class="sch-stud">@${escapeHtml(s)} <span class="sch-x" onclick="schoolRemove('${c.id}','${s}')">✕</span></span>`).join(' ') : '<i>none yet — share the code</i>'}</div>
+    <div class="sch-sub">Students (${c.students.length}): ${c.students.length ? c.students.map(s => `<span class="sch-stud">@${escapeHtml(s)} <span class="sch-x" title="Dismiss student" onclick="schoolDismiss('${c.id}','${s}')">✕</span></span>`).join(' ') : '<i>none yet — add students below</i>'}</div>
+    <div class="sch-join"><input id="sch-add-${c.id}" class="sch-input" placeholder="Add student by username" onkeydown="if(event.key==='Enter')schoolAdd('${c.id}')"><button class="sch-btn" onclick="schoolAdd('${c.id}')">Add</button></div>
     <div class="sch-sub">Tap apps to assign them to students:</div>
     <div class="sch-grid">${schoolAssignable().map(id => `<button class="sch-toggle${c.allowedApps.includes(id) ? ' on' : ''}" onclick="schoolToggle('${c.id}','${id}')">${apps[id].icon} ${apps[id].short || apps[id].title}</button>`).join('')}</div>
+    ${schoolFlagsHtml(c)}
     <button class="sch-del" onclick="schoolDelete('${c.id}')">Delete class</button>
   </div>`;
 }
@@ -4861,8 +4872,7 @@ function schoolRender() {
         <div class="sch-cardtop"><b>${escapeHtml(c.name)}</b><span class="sch-teacher">teacher: @${escapeHtml(c.teacher)}</span></div>
         <div class="sch-sub">Apps your teacher has assigned:</div>
         <div class="sch-applist">${chips || '<span class="sch-none">Nothing assigned yet — check back soon.</span>'}</div>
-        <div class="sch-note">🔒 In school mode you can only open assigned apps, and Messages can only text your teacher.</div>
-        <button class="sch-leave" onclick="schoolLeave('${c.id}')">Leave class</button>
+        <div class="sch-note">🔒 In school mode you can only open assigned apps, and Messages can only text your teacher. Only your teacher can remove you from the class.</div>
       </div>`;
   }
   if (!schoolState.enrolled) {
@@ -4895,9 +4905,56 @@ async function schoolToggle(id, appId) {
   if (r.error) return notify('🏫', 'Error', r.error);
   initSchool();
 }
-async function schoolRemove(id, student) { const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [student] }) }); if (!r.error) initSchool(); }
-async function schoolLeave(id) { if (!confirm('Leave this class?')) return; const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [currentUser.username] }) }); if (!r.error) initSchool(); }
+async function schoolAdd(id) {
+  const inp = document.getElementById('sch-add-' + id); const u = inp?.value.trim(); if (!u) return;
+  const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ add: [u] }) });
+  if (r.error) return notify('🏫', 'Error', r.error);
+  if (r.notFound && r.notFound.length) notify('🏫', 'No such user', '@' + r.notFound[0] + " isn't a MaxOS account");
+  else notify('🏫', 'Added', '@' + u.toLowerCase().replace(/^@/, '') + ' joined the class');
+  initSchool();
+}
+async function schoolDismiss(id, student) { if (!confirm('Dismiss @' + student + ' from the class?')) return; const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [student] }) }); if (!r.error) { notify('🏫', 'Dismissed', '@' + student + ' was removed'); initSchool(); } }
 async function schoolDelete(id) { if (!confirm('Delete this class?')) return; const r = await apiFetch('/api/classes/' + id, { method: 'DELETE' }); if (!r.error) initSchool(); }
+
+// ── School safety monitoring: flag risky student writing, alert the teacher,
+// and start a PostHog session recording (classroom-safety, shown to the student).
+function schoolFlagsHtml(c) {
+  const flags = c.flags || [];
+  if (!flags.length) return '';
+  return `<div class="sch-flags"><div class="sch-flagh">⚠ Safety alerts (${flags.length})</div>${flags.slice(0, 8).map(f => `<div class="sch-flag"><b>@${escapeHtml(f.student)}</b> <span class="sch-flagt">${new Date(f.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><div class="sch-flagsnip">“${escapeHtml(f.snippet)}”</div></div>`).join('')}<div class="sch-note">Screen recordings are in your PostHog dashboard (identified by the student's username).</div></div>`;
+}
+// Words/phrases that trigger a teacher alert (profanity + harm/self-harm signals)
+const SCHOOL_BAD = /\b(f+u+c+k|sh[i1]t|b[i1]tch|assh[o0]le|bastard|d[i1]ck|piss|cunt|slut|wh[o0]re|fag|n[i1]gg(a|er)|retard|kys|kill (yourself|myself|him|her|them)|i (want to|wanna) die|hate (you|myself)|hurt (myself|someone)|nsfw|porn)\b/i;
+function schoolModerate(text) { return SCHOOL_BAD.test(text || ''); }
+let _schoolMonOn = false;
+function schoolApplyMonitoring() {
+  if (!schoolState.restricted || _schoolMonOn) return;
+  _schoolMonOn = true;
+  document.addEventListener('input', e => {
+    const t = e.target; if (!t) return;
+    const val = (t.value !== undefined && t.value !== null ? t.value : t.textContent) || '';
+    if (val.length > 1 && schoolModerate(val)) schoolFlag(val.slice(0, 200));
+  }, true);
+}
+let _phLoaded = false, _phRecording = false, _lastFlagAt = 0;
+function loadPosthog() {
+  if (_phLoaded) return; _phLoaded = true;
+  !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId startSessionRecording stopSessionRecording".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+  try { window.posthog.init('phc_sloVEwzIB8ds3BbJpYmgxRj36tofr4gVi4YcMnqikco', { api_host: 'https://us.i.posthog.com', autocapture: false, capture_pageview: false, disable_session_recording: true }); } catch (e) {}
+}
+async function schoolFlag(snippet) {
+  const now = Date.now();
+  if (now - _lastFlagAt < 15000) return; // throttle repeated triggers
+  _lastFlagAt = now;
+  try {
+    loadPosthog();
+    window.posthog.identify(currentUser.username, { username: currentUser.username, class: schoolState.enrolled?.name });
+    if (!_phRecording) { window.posthog.startSessionRecording(); _phRecording = true; }
+    window.posthog.capture('school_flag', { snippet, student: currentUser.username, teacher: schoolState.teachers[0] });
+  } catch (e) {}
+  apiFetch('/api/classes/flag', { method: 'POST', body: JSON.stringify({ snippet }) });
+  notify('⚠️', 'Heads up', 'Your teacher has been notified about what you typed.');
+}
 
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
 let colorRGB = { r: 100, g: 180, b: 255 };

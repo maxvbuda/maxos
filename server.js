@@ -160,6 +160,7 @@ const ClassSchema = new mongoose.Schema({
   teacher:     { type: String, required: true }, // username
   students:    { type: [String], default: [] },  // usernames
   allowedApps: { type: [String], default: [] },  // app ids students are allowed to open
+  flags:       { type: [{ student: String, snippet: String, at: { type: Date, default: Date.now } }], default: [] }, // safety alerts for the teacher
 }, { timestamps: true });
 
 const User    = mongoose.model('User', UserSchema);
@@ -174,7 +175,7 @@ const Shared = mongoose.model('Shared', SharedSchema);
 const Response = mongoose.model('Response', ResponseSchema);
 const Klass = mongoose.model('Class', ClassSchema);
 
-const serializeClass = c => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [] });
+const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
 // the resulting restrictions. A teacher is never restricted.
 async function getSchoolState(username) {
@@ -183,8 +184,8 @@ async function getSchoolState(username) {
   const enrolled = await Klass.findOne({ students: username }).lean();
   const restricted = !!enrolled && teaching.length === 0;
   return {
-    teaching: teaching.map(serializeClass),
-    enrolled: enrolled ? serializeClass(enrolled) : null,
+    teaching: teaching.map(c => serializeClass(c, true)), // teachers see safety flags
+    enrolled: enrolled ? serializeClass(enrolled, false) : null,
     restricted,
     allowedApps: enrolled ? (enrolled.allowedApps || []) : [],
     teachers: enrolled ? [enrolled.teacher] : [],
@@ -555,17 +556,36 @@ app.put('/api/classes/:id/apps', auth, async (req, res) => {
     await k.save(); res.json(serializeClass(k));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Teacher: remove students / Student: leave (remove yourself)
+// Teacher controls the roster: add students by username, or dismiss them.
+// Students cannot add or remove themselves — only the teacher manages the class.
 app.put('/api/classes/:id/students', auth, async (req, res) => {
   try {
     const k = await Klass.findById(req.params.id);
     if (!k) return res.status(404).json({ error: 'Class not found' });
-    const isTeacher = k.teacher === req.user.username;
-    let remove = Array.isArray(req.body.remove) ? req.body.remove.map(s => s.toLowerCase()) : [];
-    if (!isTeacher) remove = remove.filter(s => s === req.user.username); // students can only remove themselves
-    if (!isTeacher && !remove.length) return res.status(403).json({ error: 'Only the teacher can change this' });
-    k.students = k.students.filter(s => !remove.includes(s));
-    await k.save(); res.json(serializeClass(k));
+    if (k.teacher !== req.user.username) return res.status(403).json({ error: 'Only the teacher can manage the class roster' });
+    const add = Array.isArray(req.body.add) ? req.body.add.map(s => String(s).trim().toLowerCase().replace(/^@/, '')) : [];
+    const remove = Array.isArray(req.body.remove) ? req.body.remove.map(s => String(s).trim().toLowerCase()) : [];
+    const notFound = [];
+    for (const u of add) {
+      if (!u || u === k.teacher || k.students.includes(u)) continue;
+      const exists = await User.findOne({ username: u });
+      if (exists) k.students.push(u); else notFound.push(u);
+    }
+    if (remove.length) k.students = k.students.filter(s => !remove.includes(s));
+    await k.save();
+    res.json({ ...serializeClass(k), ...(notFound.length ? { notFound } : {}) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Student safety flag: record an alert for the teacher (content the student typed)
+app.post('/api/classes/flag', auth, async (req, res) => {
+  try {
+    const snippet = String(req.body.snippet || '').slice(0, 200);
+    const k = await Klass.findOne({ students: req.user.username });
+    if (!k) return res.json({ ok: false }); // not in a class — nothing to flag
+    k.flags.push({ student: req.user.username, snippet, at: new Date() });
+    if (k.flags.length > 60) k.flags = k.flags.slice(-60);
+    await k.save();
+    res.json({ ok: true, teacher: k.teacher });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Teacher: delete the class
