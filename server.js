@@ -34,6 +34,33 @@ function sendOS(res) {
 }
 app.get('/', (req, res) => sendOS(res));
 
+// ── Offline mode: a service worker that caches the app shell ──────────────────
+// Network-first for the page so online users always get the latest build, but it
+// falls back to the last cached shell when there's no connection.
+app.get('/sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  res.set('Service-Worker-Allowed', '/');
+  res.set('Cache-Control', 'no-cache');
+  res.send(`
+const CACHE = 'maxos-shell-v1';
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;        // leave cross-origin alone
+  if (url.pathname.startsWith('/api/')) return;       // never cache the API
+  const isShell = req.mode === 'navigate' || req.destination === 'document' || url.pathname === '/' || url.pathname === '/os.html';
+  if (!isShell) return;
+  e.respondWith(
+    fetch(req)
+      .then(resp => { const copy = resp.clone(); caches.open(CACHE).then(c => c.put('/', copy)); return resp; })
+      .catch(() => caches.open(CACHE).then(c => c.match('/')).then(r => r || new Response('<h1>MaxOS is offline</h1><p>Open it once online to cache it.</p>', { headers: { 'Content-Type': 'text/html' } })))
+  );
+});`);
+});
+
 // ── Schemas ───────────────────────────────────────────────────────────────────
 const UserSchema = new mongoose.Schema({
   username:    { type: String, required: true, unique: true, lowercase: true, trim: true },

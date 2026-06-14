@@ -1216,6 +1216,7 @@ function bootOS() {
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
   fmCwd   = `/home/${currentUser?.username || 'user'}`;
+  localFsLoad(); // restore the offline file mirror for this account
   applyDeviceMode();
   renderDesktop();
   renderStartApps();
@@ -1291,7 +1292,7 @@ async function checkServer() {
   const badge = document.getElementById('server-badge');
   if (badge) {
     badge.textContent = serverOnline ? '🟢' : '🔴';
-    badge.title = serverOnline ? 'MongoDB connected' : 'Offline mode — deploy backend to enable persistence';
+    badge.title = serverOnline ? 'Online — synced to the cloud' : 'Offline mode — using your locally cached files';
   }
 }
 
@@ -1311,6 +1312,20 @@ const localFs = {
     '/home/max/documents/ideas.md':   '# Ideas\n- Add more apps\n- Multi-user support\n- File drag & drop',
   },
 };
+
+// ── Offline mirror: persist the local FS to localStorage and write-through
+// cache real server reads/writes so the user's actual files are available offline.
+const LOCAL_FS_KEY = () => 'maxos_fs_' + (currentUser?.username || 'guest');
+let _fsSaveT = null;
+function localFsSave() { clearTimeout(_fsSaveT); _fsSaveT = setTimeout(() => { try { localStorage.setItem(LOCAL_FS_KEY(), JSON.stringify({ dirs: localFs.dirs, files: localFs.files })); } catch (e) { /* quota — best effort */ } }, 400); }
+function localFsLoad() { try { const s = JSON.parse(localStorage.getItem(LOCAL_FS_KEY()) || 'null'); if (s && s.dirs && s.files) { localFs.dirs = s.dirs; localFs.files = s.files; } } catch (e) {} }
+function cacheLs(path, list) { // mirror a server directory listing
+  if (!Array.isArray(list)) return;
+  localFs.dirs[path] = list.map(f => f.name);
+  list.forEach(f => { if (f.type === 'directory' && localFs.dirs[f.path] === undefined) localFs.dirs[f.path] = []; });
+  localFsSave();
+}
+function cacheCat(path, content) { localFs.files[path] = content; localFsSave(); }
 
 function localLs(path) {
   const entries = localFs.dirs[path];
@@ -1369,12 +1384,12 @@ function localRm(path) {
 }
 
 // Unified API — tries server first, falls back to local
-async function fsLs(path)              { if (serverOnline) { const r=await apiFetch('/api/ls?path='+encodeURIComponent(path)); if (!r.error) return r; } return localLs(path); }
+async function fsLs(path)              { if (serverOnline) { const r=await apiFetch('/api/ls?path='+encodeURIComponent(path)); if (!r.error) { cacheLs(path, r); return r; } } return localLs(path); }
 async function fsStat(path)            { if (serverOnline) { const r=await apiFetch('/api/stat?path='+encodeURIComponent(path)); if (!r.error) return r; } return localStat(path); }
-async function fsCat(path)             { if (serverOnline) { const r=await apiFetch('/api/cat?path='+encodeURIComponent(path)); if (!r.error) return r; } return localCat(path); }
+async function fsCat(path)             { if (serverOnline) { const r=await apiFetch('/api/cat?path='+encodeURIComponent(path)); if (!r.error) { cacheCat(path, r.content); return r; } } return localCat(path); }
 async function fsMkdir(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localMkdir(path,name,par); }
 async function fsTouch(path,name,par)  { if (serverOnline) { const r=await apiFetch('/api/touch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name,parent:par})}); if (!r.error) return r; } return localTouch(path,name,par); }
-async function fsWrite(path,content,auto)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content,auto:!!auto})}); if (!r.error) return r; } return localWrite(path,content); }
+async function fsWrite(path,content,auto)   { if (serverOnline) { const r=await apiFetch('/api/write',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,content,auto:!!auto})}); if (!r.error) { cacheCat(path, content); return r; } } return localWrite(path,content); }
 async function fsRm(path)              { if (serverOnline) { const r=await apiFetch('/api/rm?path='+encodeURIComponent(path),{method:'DELETE'}); if (!r.error) return r; } return localRm(path); }
 async function fsAllFiles()            { if (serverOnline) { const r=await apiFetch('/api/files'); if (Array.isArray(r)) return r; } return Object.keys(localFs.files).map(p => ({ name: p.split('/').pop(), path: p })); }
 
@@ -1491,6 +1506,8 @@ let zTop = 200;
 const windows = {};
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
+// Offline mode: cache the app shell so MaxOS loads even with no connection
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 initAuth();
 
 // ── Clock ────────────────────────────────────────────────────────────────────
