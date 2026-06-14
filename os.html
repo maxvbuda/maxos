@@ -1197,11 +1197,20 @@ async function checkExistingSession() {
       const d = await r.json();
       currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, suspicious: !!d.suspicious };
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
+      localStorage.setItem('maxos_user', JSON.stringify(currentUser));
       return true;
     }
-  } catch {}
-  // 401/404 → the account was deleted or token invalid: force logout
-  localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
+    // The server answered but rejected us (401/403/404) → token invalid or account gone
+    if (r.status === 401 || r.status === 403 || r.status === 404) {
+      localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
+      return false;
+    }
+    // Other server error (500, etc.): keep the session, fall through to offline boot below
+  } catch {
+    // Network error / offline — do NOT log out. Stay signed in using the cached identity.
+  }
+  // Offline (or transient server error) but we have a remembered user → boot in offline mode
+  if (currentUser && currentUser.username) return true;
   return false;
 }
 
