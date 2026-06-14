@@ -153,6 +153,15 @@ const ResponseSchema = new mongoose.Schema({
 }, { timestamps: true });
 ResponseSchema.index({ sharedId: 1, createdAt: -1 });
 
+// School mode: a class with a teacher, students, and the apps students may open
+const ClassSchema = new mongoose.Schema({
+  name:        { type: String, required: true },
+  code:        { type: String, required: true, unique: true, uppercase: true }, // join code
+  teacher:     { type: String, required: true }, // username
+  students:    { type: [String], default: [] },  // usernames
+  allowedApps: { type: [String], default: [] },  // app ids students are allowed to open
+}, { timestamps: true });
+
 const User    = mongoose.model('User', UserSchema);
 const File    = mongoose.model('File', FileSchema);
 const Message = mongoose.model('Message', MessageSchema);
@@ -163,6 +172,24 @@ const AppModel = mongoose.model('App', AppSchema);
 const FileVersion = mongoose.model('FileVersion', VersionSchema);
 const Shared = mongoose.model('Shared', SharedSchema);
 const Response = mongoose.model('Response', ResponseSchema);
+const Klass = mongoose.model('Class', ClassSchema);
+
+const serializeClass = c => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [] });
+// A user's school state: classes they teach, the class they're a student in, and
+// the resulting restrictions. A teacher is never restricted.
+async function getSchoolState(username) {
+  username = (username || '').toLowerCase();
+  const teaching = await Klass.find({ teacher: username }).lean();
+  const enrolled = await Klass.findOne({ students: username }).lean();
+  const restricted = !!enrolled && teaching.length === 0;
+  return {
+    teaching: teaching.map(serializeClass),
+    enrolled: enrolled ? serializeClass(enrolled) : null,
+    restricted,
+    allowedApps: enrolled ? (enrolled.allowedApps || []) : [],
+    teachers: enrolled ? [enrolled.teacher] : [],
+  };
+}
 
 // `allow` (the viewer list) is only revealed to the owner, never to plain viewers
 const serializeShared = (d, isOwner) => ({ id: d.id, type: d.type, title: d.title, content: d.content, author: d.authorName, views: d.views, visibility: d.visibility || 'public', ...(isOwner ? { allow: d.allow || [] } : {}) });
@@ -476,6 +503,9 @@ app.post('/api/messages', auth, async (req, res) => {
     if (!to || !text?.trim()) return res.status(400).json({ error: 'Recipient and text required' });
     const recipient = await User.findOne({ username: to.toLowerCase() });
     if (!recipient) return res.status(404).json({ error: 'User not found' });
+    // School mode: students may only message their class teacher
+    const ss = await getSchoolState(req.user.username);
+    if (ss.restricted && !ss.teachers.includes(to.toLowerCase())) return res.status(403).json({ error: 'School mode: you can only message your teacher' });
     const msg = await Message.create({ from: req.user.username, to: to.toLowerCase(), text: text.trim() });
     res.json({ from: msg.from, to: msg.to, text: msg.text, at: msg.createdAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -486,6 +516,65 @@ app.get('/api/messages/unread', auth, async (req, res) => {
   try {
     const count = await Message.countDocuments({ to: req.user.username, read: false });
     res.json({ count });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── School mode: classes ──────────────────────────────────────────────────────
+// Current user's school state (teaching, enrolled, restrictions)
+app.get('/api/me/school', auth, async (req, res) => {
+  try { res.json(await getSchoolState(req.user.username)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Create a class (creator becomes the teacher)
+app.post('/api/classes', auth, async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim() || 'My Class';
+    let code; do { code = Math.random().toString(36).slice(2, 7).toUpperCase(); } while (await Klass.findOne({ code }));
+    const k = await Klass.create({ name, code, teacher: req.user.username, students: [], allowedApps: [] });
+    res.json(serializeClass(k));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Join a class by code (becomes a student)
+app.post('/api/classes/join', auth, async (req, res) => {
+  try {
+    const code = (req.body.code || '').trim().toUpperCase();
+    const k = await Klass.findOne({ code });
+    if (!k) return res.status(404).json({ error: 'No class with that code' });
+    if (k.teacher === req.user.username) return res.status(400).json({ error: "You're the teacher of this class" });
+    if (!k.students.includes(req.user.username)) { k.students.push(req.user.username); await k.save(); }
+    res.json(serializeClass(k));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Teacher: set which apps students can open
+app.put('/api/classes/:id/apps', auth, async (req, res) => {
+  try {
+    const k = await Klass.findById(req.params.id);
+    if (!k) return res.status(404).json({ error: 'Class not found' });
+    if (k.teacher !== req.user.username) return res.status(403).json({ error: 'Only the teacher can change this' });
+    k.allowedApps = Array.isArray(req.body.allowedApps) ? req.body.allowedApps : [];
+    await k.save(); res.json(serializeClass(k));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Teacher: remove students / Student: leave (remove yourself)
+app.put('/api/classes/:id/students', auth, async (req, res) => {
+  try {
+    const k = await Klass.findById(req.params.id);
+    if (!k) return res.status(404).json({ error: 'Class not found' });
+    const isTeacher = k.teacher === req.user.username;
+    let remove = Array.isArray(req.body.remove) ? req.body.remove.map(s => s.toLowerCase()) : [];
+    if (!isTeacher) remove = remove.filter(s => s === req.user.username); // students can only remove themselves
+    if (!isTeacher && !remove.length) return res.status(403).json({ error: 'Only the teacher can change this' });
+    k.students = k.students.filter(s => !remove.includes(s));
+    await k.save(); res.json(serializeClass(k));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Teacher: delete the class
+app.delete('/api/classes/:id', auth, async (req, res) => {
+  try {
+    const k = await Klass.findById(req.params.id);
+    if (!k) return res.status(404).json({ error: 'Class not found' });
+    if (k.teacher !== req.user.username) return res.status(403).json({ error: 'Only the teacher can delete this class' });
+    await k.deleteOne(); res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

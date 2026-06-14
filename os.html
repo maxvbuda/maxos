@@ -564,6 +564,32 @@
   .mcell[data-n="4"]{color:#bf5af2} .mcell[data-n="5"]{color:#ff9f0a} .mcell[data-n="6"]{color:#30d6c0}
   .mines-hint { color:rgba(255,255,255,.4); font-size:11px; }
 
+  /* Classroom (school mode) */
+  .sch-app { height:100%; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .sch-loading, .sch-none { color:rgba(255,255,255,.4); }
+  .sch-h { color:rgba(255,255,255,.55); font-size:12px; text-transform:uppercase; letter-spacing:1px; font-weight:600; margin-top:4px; }
+  .sch-card { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .sch-cardtop { display:flex; align-items:center; justify-content:space-between; color:#fff; font-size:16px; }
+  .sch-code, .sch-teacher { font-size:12px; color:rgba(255,255,255,.55); font-weight:400; }
+  .sch-code b { color:#64b4ff; font-family:monospace; font-size:14px; letter-spacing:1px; }
+  .sch-sub { color:rgba(255,255,255,.7); font-size:13px; }
+  .sch-stud { background:rgba(255,255,255,.08); border-radius:6px; padding:2px 7px; font-size:12px; display:inline-block; margin:2px 0; }
+  .sch-x { cursor:pointer; opacity:.5; margin-left:3px; }
+  .sch-x:hover { opacity:1; color:#ff6b6b; }
+  .sch-grid { display:flex; flex-wrap:wrap; gap:6px; }
+  .sch-toggle { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.7); border-radius:9px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  .sch-toggle.on { background:rgba(40,200,64,.25); border-color:rgba(40,200,64,.5); color:#fff; }
+  .sch-toggle:hover { border-color:rgba(255,255,255,.3); }
+  .sch-applist { display:flex; flex-wrap:wrap; gap:8px; }
+  .sch-appchip { background:rgba(100,180,255,.18); border:1px solid rgba(100,180,255,.35); color:#fff; border-radius:10px; padding:8px 12px; font-size:13px; cursor:pointer; }
+  .sch-appchip:hover { background:rgba(100,180,255,.3); }
+  .sch-note { color:rgba(255,255,255,.45); font-size:11px; }
+  .sch-join { display:flex; gap:8px; }
+  .sch-input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); color:#fff; border-radius:9px; padding:9px 12px; font-size:13px; }
+  .sch-btn { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:9px; padding:9px 14px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .sch-or { text-align:center; color:rgba(255,255,255,.35); font-size:12px; }
+  .sch-del, .sch-leave { align-self:flex-start; background:rgba(255,95,87,.15); border:1px solid rgba(255,95,87,.3); color:#ff8a82; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
   .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
@@ -1229,7 +1255,7 @@ function bootOS() {
   applyDeviceMode();
   renderDesktop();
   renderStartApps();
-  checkServer().then(startUnreadPolling);
+  checkServer().then(() => { startUnreadPolling(); loadSchoolState(); });
   startHeartbeat();
   startScreenWatchShare();
   remStartPolling();
@@ -1653,6 +1679,7 @@ const apps = {
   browser:  { title: 'Browser',        short:'Browser',   icon: '🌐', w: 700, h: 500, core:true, html: buildBrowser },
   settings: { title: 'Settings',       short:'Settings',  icon: '⚙️', w: 420, h: 420, core:true, html: buildSettings },
   admin:    { title: 'Admin Panel',    short:'Admin',     icon: '🛡️', w: 600, h: 520, core:true, adminOnly:true, html: buildAdmin },
+  school:   { title: 'Classroom',      short:'Classroom', icon: '🏫', w: 600, h: 560, core:true, html: buildSchool },
   adminwatch:{ title: 'Live Watch',    short:'Live Watch',icon: '👁️', w: 760, h: 560, adminOnly:true, hidden:true, html: buildAdminWatch },
 
   // ── Store apps (installable) ──
@@ -1712,7 +1739,28 @@ function saveInstalled() {
 }
 
 function isInstalled(id) { return apps[id] && (apps[id].core || installedApps.includes(id)); }
-function desktopApps() { return Object.keys(apps).filter(id => isInstalled(id) && !apps[id].hidden && !(apps[id].adminOnly && !currentUser?.admin)); }
+// ── School mode ───────────────────────────────────────────────────────────────
+let schoolState = { teaching: [], enrolled: null, restricted: false, allowedApps: [], teachers: [] };
+// Apps a restricted student can always reach (so they can see their class, message
+// the teacher, and manage their own account / sign out).
+const SCHOOL_BASELINE = ['school', 'messages', 'settings'];
+function schoolAllows(id) {
+  if (!schoolState.restricted) return true;
+  return SCHOOL_BASELINE.includes(id) || schoolState.allowedApps.includes(id);
+}
+async function loadSchoolState() {
+  const r = await apiFetch('/api/me/school');
+  if (r && !r.error) {
+    schoolState = r;
+    renderDesktop(); renderStartApps();
+    if (typeof renderDock === 'function') renderDock();
+  }
+}
+function desktopApps() {
+  let ids = Object.keys(apps).filter(id => isInstalled(id) && !apps[id].hidden && !(apps[id].adminOnly && !currentUser?.admin));
+  if (schoolState.restricted) ids = ids.filter(schoolAllows);
+  return ids;
+}
 
 function renderDesktop() {
   const c = document.getElementById('desktop-icons');
@@ -1769,6 +1817,7 @@ function openApp(id) {
   if (id === 'picturetaker') id = 'camera'; // merged into Photo Booth
   if (!apps[id]) return;
   if (apps[id].adminOnly && !currentUser?.admin) { notify('🛡️', 'Admins only', 'You do not have access to that.'); return; }
+  if (!schoolAllows(id)) { notify('🏫', 'Locked by your teacher', (apps[id].title || 'That app') + ' isn’t assigned right now.'); return; }
   if (windows[id]) { focusWindow(id); return; }
 
   const app = apps[id];
@@ -3347,17 +3396,24 @@ async function msgLoadConversations() {
     </div>`).join('');
 }
 async function msgNewChat() {
-  const users = await apiFetch('/api/users');
+  let users = await apiFetch('/api/users');
   if (users.error) { notify('💬', 'Offline', 'Cannot load users'); return; }
+  // School mode: students may only message their teacher
+  if (schoolState.restricted) {
+    users = users.filter(u => schoolState.teachers.includes(u.username));
+    if (!users.length) { notify('🏫', 'School mode', 'You can only message your teacher.'); return; }
+  }
   if (!users.length) { notify('💬', 'No other users', 'Invite a friend to register!'); return; }
   const list = document.getElementById('msg-userlist');
-  list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">All Users</div>` +
+  list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">${schoolState.restricted ? 'Your teacher' : 'All Users'}</div>` +
     users.map(u => `<div class="msg-user" onclick="msgOpenChat('${u.username}')">
       <div class="msg-avatar">${u.username[0].toUpperCase()}</div>
       <div class="msg-user-info"><div class="msg-user-name">${u.displayName || u.username}</div><div class="msg-user-last">@${u.username}</div></div>
     </div>`).join('');
 }
 function msgOpenChat(user) {
+  // School mode: block opening a chat with anyone but the teacher
+  if (schoolState.restricted && !schoolState.teachers.includes(user)) { notify('🏫', 'School mode', 'You can only message your teacher.'); return; }
   msgActiveUser = user;
   const main = document.getElementById('msg-main');
   main.innerHTML = `
@@ -4776,6 +4832,72 @@ function initMines() {
   function win() { over = true; document.getElementById('mines-face').textContent = '😎'; notify('💣', 'Minesweeper', 'You cleared the board!'); }
   mines = { stop() { over = true; } };
 }
+
+// ── CLASSROOM — school mode (teacher assigns apps; students get gated) ────────
+function buildSchool() { return `<div class="sch-app" id="sch-app"><div class="sch-loading">Loading classroom…</div></div>`; }
+async function initSchool() { await loadSchoolState(); schoolRender(); }
+function schoolAssignable() { return Object.keys(apps).filter(id => !apps[id].adminOnly && id !== 'admin' && id !== 'school'); }
+function schoolTeacherCard(c) {
+  return `<div class="sch-card">
+    <div class="sch-cardtop"><b>${escapeHtml(c.name)}</b><span class="sch-code">join code: <b>${c.code}</b></span></div>
+    <div class="sch-sub">Students (${c.students.length}): ${c.students.length ? c.students.map(s => `<span class="sch-stud">@${escapeHtml(s)} <span class="sch-x" onclick="schoolRemove('${c.id}','${s}')">✕</span></span>`).join(' ') : '<i>none yet — share the code</i>'}</div>
+    <div class="sch-sub">Tap apps to assign them to students:</div>
+    <div class="sch-grid">${schoolAssignable().map(id => `<button class="sch-toggle${c.allowedApps.includes(id) ? ' on' : ''}" onclick="schoolToggle('${c.id}','${id}')">${apps[id].icon} ${apps[id].short || apps[id].title}</button>`).join('')}</div>
+    <button class="sch-del" onclick="schoolDelete('${c.id}')">Delete class</button>
+  </div>`;
+}
+function schoolRender() {
+  const el = document.getElementById('sch-app'); if (!el) return;
+  let html = '';
+  if (schoolState.teaching.length) {
+    html += `<div class="sch-h">👩‍🏫 Classes you teach</div>`;
+    schoolState.teaching.forEach(c => html += schoolTeacherCard(c));
+  }
+  if (schoolState.enrolled) {
+    const c = schoolState.enrolled;
+    const chips = (c.allowedApps || []).filter(a => apps[a]).map(a => `<button class="sch-appchip" onclick="openApp('${a}')">${apps[a].icon} ${apps[a].title}</button>`).join('');
+    html += `<div class="sch-h">🎒 Your class</div>
+      <div class="sch-card">
+        <div class="sch-cardtop"><b>${escapeHtml(c.name)}</b><span class="sch-teacher">teacher: @${escapeHtml(c.teacher)}</span></div>
+        <div class="sch-sub">Apps your teacher has assigned:</div>
+        <div class="sch-applist">${chips || '<span class="sch-none">Nothing assigned yet — check back soon.</span>'}</div>
+        <div class="sch-note">🔒 In school mode you can only open assigned apps, and Messages can only text your teacher.</div>
+        <button class="sch-leave" onclick="schoolLeave('${c.id}')">Leave class</button>
+      </div>`;
+  }
+  if (!schoolState.enrolled) {
+    html += `<div class="sch-h">Join or start a class</div>
+      <div class="sch-card">
+        <div class="sch-join"><input id="sch-code" class="sch-input" placeholder="Class code (e.g. AB3CD)" maxlength="8"><button class="sch-btn" onclick="schoolJoin()">Join as student</button></div>
+        <div class="sch-or">— or —</div>
+        <div class="sch-join"><input id="sch-name" class="sch-input" placeholder="New class name"><button class="sch-btn" onclick="schoolCreate()">Create a class (you’re the teacher)</button></div>
+      </div>`;
+  }
+  el.innerHTML = html;
+}
+async function schoolCreate() {
+  const name = document.getElementById('sch-name')?.value.trim();
+  const r = await apiFetch('/api/classes', { method: 'POST', body: JSON.stringify({ name }) });
+  if (r.error) return notify('🏫', 'Error', r.error);
+  notify('🏫', 'Class created', 'Share join code ' + r.code); initSchool();
+}
+async function schoolJoin() {
+  const code = document.getElementById('sch-code')?.value.trim();
+  if (!code) return;
+  const r = await apiFetch('/api/classes/join', { method: 'POST', body: JSON.stringify({ code }) });
+  if (r.error) return notify('🏫', 'Error', r.error);
+  notify('🏫', 'Joined', 'Welcome to ' + r.name); initSchool();
+}
+async function schoolToggle(id, appId) {
+  const c = schoolState.teaching.find(x => x.id === id); if (!c) return;
+  const set = new Set(c.allowedApps); set.has(appId) ? set.delete(appId) : set.add(appId);
+  const r = await apiFetch('/api/classes/' + id + '/apps', { method: 'PUT', body: JSON.stringify({ allowedApps: [...set] }) });
+  if (r.error) return notify('🏫', 'Error', r.error);
+  initSchool();
+}
+async function schoolRemove(id, student) { const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [student] }) }); if (!r.error) initSchool(); }
+async function schoolLeave(id) { if (!confirm('Leave this class?')) return; const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [currentUser.username] }) }); if (!r.error) initSchool(); }
+async function schoolDelete(id) { if (!confirm('Delete this class?')) return; const r = await apiFetch('/api/classes/' + id, { method: 'DELETE' }); if (!r.error) initSchool(); }
 
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
 let colorRGB = { r: 100, g: 180, b: 255 };
@@ -6569,7 +6691,7 @@ const appInitHooks = {
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
   beats: initBeats, fractal: initFractal, markdown: initMarkdown, codepen: initCodepen,
   typing: initTyping, wiki: () => {}, chess: initChess, maps: initMaps,
-  browser: initBrowser, makeyourownwebsite: initStudio,
+  browser: initBrowser, makeyourownwebsite: initStudio, school: initSchool,
   maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin, adminwatch: initAdminWatch,
   chat: initChat, board: initBoard, social: initSocial,
 };
