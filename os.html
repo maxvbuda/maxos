@@ -716,6 +716,7 @@
   .admin-badge { font-size:9px; font-weight:700; background:rgba(100,180,255,.3); color:#9cf; padding:1px 6px; border-radius:6px; vertical-align:middle; }
   .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
   .admin-badge.teach { background:rgba(40,200,64,.3); color:#9ff0a8; }
+  .admin-badge.req { background:rgba(255,159,10,.3); color:#ffce8a; }
   .admin-watch { margin:10px; margin-top:0; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(0,0,0,.22); overflow:hidden; }
   .admin-watch-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); color:#fff; font-size:13px; }
   .admin-watch-stage { min-height:190px; display:flex; align-items:center; justify-content:center; background:#080813; color:rgba(255,255,255,.45); font-size:12px; text-align:center; padding:12px; }
@@ -1137,7 +1138,7 @@ function startHeartbeat() {
       else if (r.ok) {
         const d = await r.json();
         const wasSuspicious = !!currentUser?.suspicious;
-        currentUser = { ...(currentUser || {}), username: d.username, displayName: d.displayName, admin: d.admin, suspicious: !!d.suspicious };
+        currentUser = { ...(currentUser || {}), username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious };
         localStorage.setItem('maxos_user', JSON.stringify(currentUser));
         if (wasSuspicious !== !!d.suspicious) {
           if (d.suspicious) startScreenWatchShare();
@@ -1298,7 +1299,7 @@ async function checkExistingSession() {
     const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
     if (r.ok) {
       const d = await r.json();
-      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, suspicious: !!d.suspicious };
+      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious };
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
       localStorage.setItem('maxos_user', JSON.stringify(currentUser));
       return true;
@@ -2673,6 +2674,8 @@ function buildSettings() {
       <div class="setting-row"><label>Notifications</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
       <div class="setting-row"><label>Sound effects</label><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
     </div>
+    <h3>Roles &amp; Access</h3>
+    <div class="setting-card" id="roles-card">${rolesCardHtml()}</div>
     <h3>About</h3>
     <div class="setting-card">
       <div class="setting-row"><label>Version</label><span style="color:rgba(255,255,255,.45);font-size:13px">MaxOS 1.0 Web Edition</span></div>
@@ -2680,6 +2683,25 @@ function buildSettings() {
       <div class="setting-row"><label>Keyboard shortcut</label><span style="color:rgba(255,255,255,.45);font-size:12px">Ctrl+Space = Spotlight</span></div>
     </div>
   </div>`;
+}
+function rolesCardHtml() {
+  const u = currentUser || {};
+  const status = u.admin ? '<span style="color:#9cf">Admin 🛡️</span>' : (u.teacher ? '<span style="color:#9ff0a8">Teacher 🎓</span>' : '<span style="color:rgba(255,255,255,.5)">Student</span>');
+  const teacherBtn = u.admin || u.teacher ? '' :
+    (u.teacherRequest ? '<button class="gbtn" disabled>🎓 Teacher request pending…</button>' : `<button class="gbtn" onclick="requestRole('teacher')">🎓 Request teacher access</button>`);
+  const adminBtn = u.admin ? '' :
+    (u.adminRequest ? '<button class="gbtn" disabled>🛡️ Admin request pending…</button>' : `<button class="gbtn" onclick="requestRole('admin')">🛡️ Request admin access</button>`);
+  return `<div class="setting-row"><label>Your role</label><span style="font-size:13px">${status}</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px;padding:4px 0 10px">${teacherBtn}${adminBtn}
+    ${(u.admin) ? '<span style="color:rgba(255,255,255,.4);font-size:12px">You can manage roles in the Admin Panel.</span>' : '<span style="color:rgba(255,255,255,.4);font-size:12px">An admin reviews requests. One request at a time.</span>'}</div>`;
+}
+async function requestRole(role) {
+  const r = await apiFetch('/api/requests/' + role, { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Request', r.error); return; }
+  if (role === 'teacher') currentUser.teacherRequest = true; else currentUser.adminRequest = true;
+  localStorage.setItem('maxos_user', JSON.stringify(currentUser));
+  notify('✅', 'Request sent', 'An admin will review your ' + role + ' request.');
+  const card = document.getElementById('roles-card'); if (card) card.innerHTML = rolesCardHtml();
 }
 function setWallpaper(i, el) {
   document.getElementById('desktop').style.background = wallpapers[i];
@@ -6747,11 +6769,14 @@ async function adminLoad() {
   el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
     <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
     <div style="flex:1;min-width:0">
-      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
-      `<button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
+      `${u.teacherRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleTeacher('${u.username}')">✅ Grant teacher</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','teacher')">✖ Deny</button>` : ''}
+       ${u.adminRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleAdmin('${u.username}')">✅ Grant admin</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','admin')">✖ Deny</button>` : ''}
+       <button class="gbtn" style="padding:5px 10px" onclick="adminToggleAdmin('${u.username}')">${u.admin ? '🛡️ Remove admin' : '🛡️ Make admin'}</button>
+       <button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
        ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
@@ -6765,6 +6790,18 @@ async function adminToggleTeacher(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/teacher', { method: 'POST' });
   if (r.error) { notify('🛡️', 'Error', r.error); return; }
   notify('🎓', r.teacher ? 'Appointed teacher' : 'Removed teacher', '@' + username + (r.teacher ? ' can now create classes' : ''));
+  adminLoad();
+}
+async function adminToggleAdmin(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/admin', { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🛡️', r.admin ? 'Made admin' : 'Removed admin', '@' + username);
+  adminLoad();
+}
+async function adminDenyRequest(username, role) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/deny/' + role, { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('✖', 'Denied', '@' + username + "'s " + role + ' request');
   adminLoad();
 }
 async function adminToggleSuspicious(username) {

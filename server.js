@@ -106,6 +106,8 @@ const UserSchema = new mongoose.Schema({
   suspicious:  { type: Boolean, default: false },
   teacher:     { type: Boolean, default: false }, // appointed by an admin; only teachers can create classes
   admin:       { type: Boolean, default: false },
+  adminRequest:   { type: Boolean, default: false }, // pending request to become admin (one at a time)
+  teacherRequest: { type: Boolean, default: false }, // pending request to become teacher (one at a time)
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -394,7 +396,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -410,14 +412,28 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin suspicious installed');
+  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed');
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, suspicious: u.suspicious, installed: u.installed });
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed });
+});
+
+// Request to become a teacher or admin — one pending request per role (anti-spam)
+app.post('/api/requests/:role', auth, async (req, res) => {
+  try {
+    const role = req.params.role;
+    if (role !== 'admin' && role !== 'teacher') return res.status(400).json({ error: 'Bad role' });
+    const u = await User.findById(req.user.id);
+    if (u[role]) return res.status(400).json({ error: `You are already a ${role}.` });
+    const field = role + 'Request';
+    if (u[field]) return res.status(400).json({ error: 'You already have a pending request.' });
+    u[field] = true; await u.save();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Persist the user's installed apps (so it's not just a browser token)
@@ -442,17 +458,40 @@ app.put('/api/me/data/:key', auth, async (req, res) => {
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select('username displayName suspended suspicious admin teacher createdAt').sort({ createdAt: 1 });
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, createdAt: u.createdAt })));
+    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest createdAt').sort({ createdAt: 1 });
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, createdAt: u.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Superadmin appoints (or removes) a teacher — only teachers can create classes
+// Superadmin appoints (or removes) a teacher; also clears any pending teacher request
 app.post('/api/admin/users/:username/teacher', auth, adminOnly, async (req, res) => {
   try {
     const u = await User.findOne({ username: req.params.username.toLowerCase() });
     if (!u) return res.status(404).json({ error: 'User not found' });
-    u.teacher = !u.teacher; await u.save();
+    u.teacher = !u.teacher; u.teacherRequest = false; await u.save();
     res.json({ ok: true, teacher: u.teacher });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Superadmin makes (or removes) an admin; also clears any pending admin request
+app.post('/api/admin/users/:username/admin', auth, adminOnly, async (req, res) => {
+  try {
+    const name = req.params.username.toLowerCase();
+    if (ADMIN_USERS.includes(name)) return res.status(400).json({ error: 'That account is a permanent superadmin' });
+    if (name === req.user.username) return res.status(400).json({ error: 'You cannot change your own admin status' });
+    const u = await User.findOne({ username: name });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    u.admin = !u.admin; u.adminRequest = false; await u.save();
+    res.json({ ok: true, admin: u.admin });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Deny a pending role request without granting it
+app.post('/api/admin/users/:username/deny/:role', auth, adminOnly, async (req, res) => {
+  try {
+    const role = req.params.role;
+    if (role !== 'admin' && role !== 'teacher') return res.status(400).json({ error: 'Bad role' });
+    const u = await User.findOne({ username: req.params.username.toLowerCase() });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    u[role + 'Request'] = false; await u.save();
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res) => {
