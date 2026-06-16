@@ -459,7 +459,7 @@ app.put('/api/me/data/:key', auth, async (req, res) => {
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
     const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest createdAt').sort({ createdAt: 1 });
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, createdAt: u.createdAt })));
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Superadmin appoints (or removes) a teacher; also clears any pending teacher request
@@ -499,6 +499,7 @@ app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res)
     const u = await User.findOne({ username: req.params.username.toLowerCase() });
     if (!u) return res.status(404).json({ error: 'User not found' });
     if (u.username === req.user.username) return res.status(400).json({ error: 'You cannot suspend yourself' });
+    if (ADMIN_USERS.includes(u.username)) return res.status(403).json({ error: 'The superadmin cannot be suspended' });
     u.suspended = !u.suspended; await u.save();
     res.json({ ok: true, suspended: u.suspended });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -538,6 +539,7 @@ app.delete('/api/admin/users/:username', auth, adminOnly, async (req, res) => {
   try {
     const uname = req.params.username.toLowerCase();
     if (uname === req.user.username) return res.status(400).json({ error: 'You cannot delete yourself' });
+    if (ADMIN_USERS.includes(uname)) return res.status(403).json({ error: 'The superadmin cannot be deleted' });
     const u = await User.findOne({ username: uname });
     if (!u) return res.status(404).json({ error: 'User not found' });
     latestScreenFrames.delete(u.username);

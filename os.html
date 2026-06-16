@@ -6769,10 +6769,11 @@ async function adminLoad() {
   el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
     <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
     <div style="flex:1;min-width:0">
-      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.superadmin ? '<span class="admin-badge" style="background:rgba(191,90,242,.35);color:#e3b6ff">SUPERADMIN 👑</span>' : (u.admin ? '<span class="admin-badge">ADMIN</span>' : '')} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
+      u.superadmin ? '<span style="color:rgba(255,255,255,.35);font-size:12px">🔒 protected</span>' :
       `${u.teacherRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleTeacher('${u.username}')">✅ Grant teacher</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','teacher')">✖ Deny</button>` : ''}
        ${u.adminRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleAdmin('${u.username}')">✅ Grant admin</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','admin')">✖ Deny</button>` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleAdmin('${u.username}')">${u.admin ? '🛡️ Remove admin' : '🛡️ Make admin'}</button>
