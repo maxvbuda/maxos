@@ -104,6 +104,7 @@ const UserSchema = new mongoose.Schema({
   appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (MaxCoin wallet, etc.)
   suspended:   { type: Boolean, default: false },
   suspicious:  { type: Boolean, default: false },
+  teacher:     { type: Boolean, default: false }, // appointed by an admin; only teachers can create classes
   admin:       { type: Boolean, default: false },
 }, { timestamps: true });
 
@@ -266,7 +267,7 @@ async function auth(req, res, next) {
   const user = await User.findById(payload.id);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
   if (user.suspended) return res.status(403).json({ error: 'Account suspended' });
-  req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin };
+  req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin, teacher: !!user.teacher };
   next();
 }
 function adminOnly(req, res, next) {
@@ -441,9 +442,17 @@ app.put('/api/me/data/:key', auth, async (req, res) => {
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select('username displayName suspended suspicious admin createdAt').sort({ createdAt: 1 });
-    const counts = {};
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, createdAt: u.createdAt })));
+    const users = await User.find().select('username displayName suspended suspicious admin teacher createdAt').sort({ createdAt: 1 });
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, createdAt: u.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Superadmin appoints (or removes) a teacher — only teachers can create classes
+app.post('/api/admin/users/:username/teacher', auth, adminOnly, async (req, res) => {
+  try {
+    const u = await User.findOne({ username: req.params.username.toLowerCase() });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    u.teacher = !u.teacher; await u.save();
+    res.json({ ok: true, teacher: u.teacher });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res) => {
@@ -576,12 +585,17 @@ app.get('/api/messages/unread', auth, async (req, res) => {
 // ── School mode: classes ──────────────────────────────────────────────────────
 // Current user's school state (teaching, enrolled, restrictions)
 app.get('/api/me/school', auth, async (req, res) => {
-  try { res.json(await getSchoolState(req.user.username)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const state = await getSchoolState(req.user.username);
+    // Only appointed teachers (or admins) may create classes
+    state.canCreateClass = !!(req.user.teacher || req.user.admin);
+    res.json(state);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Create a class (creator becomes the teacher)
+// Create a class — appointed teachers (or admins) only
 app.post('/api/classes', auth, async (req, res) => {
   try {
+    if (!req.user.teacher && !req.user.admin) return res.status(403).json({ error: 'Only a teacher can create a class. Ask an admin to make you a teacher.' });
     const name = (req.body.name || '').trim() || 'My Class';
     let code; do { code = Math.random().toString(36).slice(2, 7).toUpperCase(); } while (await Klass.findOne({ code }));
     const k = await Klass.create({ name, code, teacher: req.user.username, students: [], allowedApps: [] });

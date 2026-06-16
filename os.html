@@ -715,6 +715,7 @@
   .admin-avatar { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#64b4ff,#bf5af2); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; flex-shrink:0; }
   .admin-badge { font-size:9px; font-weight:700; background:rgba(100,180,255,.3); color:#9cf; padding:1px 6px; border-radius:6px; vertical-align:middle; }
   .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
+  .admin-badge.teach { background:rgba(40,200,64,.3); color:#9ff0a8; }
   .admin-watch { margin:10px; margin-top:0; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(0,0,0,.22); overflow:hidden; }
   .admin-watch-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); color:#fff; font-size:13px; }
   .admin-watch-stage { min-height:190px; display:flex; align-items:center; justify-content:center; background:#080813; color:rgba(255,255,255,.45); font-size:12px; text-align:center; padding:12px; }
@@ -4947,11 +4948,12 @@ function schoolRender() {
       </div>`;
   }
   if (!schoolState.enrolled) {
-    html += `<div class="sch-h">Join or start a class</div>
+    html += `<div class="sch-h">Join a class</div>
       <div class="sch-card">
         <div class="sch-join"><input id="sch-code" class="sch-input" placeholder="Class code (e.g. AB3CD)" maxlength="8"><button class="sch-btn" onclick="schoolJoin()">Join as student</button></div>
-        <div class="sch-or">— or —</div>
-        <div class="sch-join"><input id="sch-name" class="sch-input" placeholder="New class name"><button class="sch-btn" onclick="schoolCreate()">Create a class (you’re the teacher)</button></div>
+        ${schoolState.canCreateClass
+          ? `<div class="sch-or">— or, as a teacher —</div><div class="sch-join"><input id="sch-name" class="sch-input" placeholder="New class name"><button class="sch-btn" onclick="schoolCreate()">Create a class</button></div>`
+          : `<div class="sch-note" style="margin-top:8px">Only teachers can create classes. Ask an admin to make you a teacher.</div>`}
       </div>`;
   }
   el.innerHTML = html;
@@ -6745,11 +6747,12 @@ async function adminLoad() {
   el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
     <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
     <div style="flex:1;min-width:0">
-      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.admin ? '<span class="admin-badge">ADMIN</span>' : ''} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
-      `<button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
+      `<button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
+       <button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
        ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
        <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>`}
@@ -6757,6 +6760,12 @@ async function adminLoad() {
   if (adminWatchUser && !users.some(u => u.username === adminWatchUser && u.suspicious)) {
     adminStopWatching('@' + escapeHtml(adminWatchUser) + ' is no longer marked suspicious.');
   }
+}
+async function adminToggleTeacher(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/teacher', { method: 'POST' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🎓', r.teacher ? 'Appointed teacher' : 'Removed teacher', '@' + username + (r.teacher ? ' can now create classes' : ''));
+  adminLoad();
 }
 async function adminToggleSuspicious(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/suspicious', { method: 'POST' });
