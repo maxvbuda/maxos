@@ -6,6 +6,7 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const path     = require('path');
 const http     = require('http');
+const crypto   = require('crypto');
 const { Server: SocketIOServer } = require('socket.io');
 
 const app = express();
@@ -23,6 +24,25 @@ function rateLimit(key, max, windowMs) {
   return arr.length <= max; // true = allowed
 }
 setInterval(() => { const now = Date.now(); for (const [k, arr] of rateHits) { if (!arr.some(t => now - t < 3600000)) rateHits.delete(k); } }, 600000).unref?.();
+
+// ── Proof-of-work sign-up challenge ───────────────────────────────────────────
+// The browser must find a nonce so sha256(salt:nonce) starts with N zero hex
+// chars. Stateless (HMAC-signed), so it costs real CPU per account (slows bots)
+// without any per-IP penalty — classroom-friendly. ~4 zeros ≈ a second of work.
+const POW_DIFFICULTY = 4;
+const POW_TTL = 3 * 60 * 1000;
+const usedPow = new Set();
+const powSig = (salt, exp) => crypto.createHmac('sha256', JWT_SECRET).update(salt + '.' + exp).digest('hex').slice(0, 16);
+function powValid(p) {
+  if (!p || !p.salt || !p.exp || !p.sig || p.nonce === undefined) return false;
+  if (Date.now() > +p.exp) return false;
+  if (powSig(p.salt, p.exp) !== p.sig) return false;          // we issued this challenge
+  if (usedPow.has(p.salt)) return false;                       // no replay
+  const h = crypto.createHash('sha256').update(p.salt + ':' + p.nonce).digest('hex');
+  if (!h.startsWith('0'.repeat(POW_DIFFICULTY))) return false; // work actually done
+  usedPow.add(p.salt); setTimeout(() => usedPow.delete(p.salt), POW_TTL).unref?.();
+  return true;
+}
 const server = http.createServer(app);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
@@ -339,13 +359,24 @@ io.on('connection', socket => {
 });
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
+// Hand out a proof-of-work challenge for sign-up
+app.get('/api/auth/challenge', (req, res) => {
+  if (!rateLimit('chal:' + req.ip, 80, 10 * 60 * 1000)) return res.status(429).json({ error: 'Slow down' });
+  const salt = crypto.randomBytes(8).toString('hex');
+  const exp = Date.now() + POW_TTL;
+  res.json({ salt, exp, sig: powSig(salt, exp), difficulty: POW_DIFFICULTY });
+});
+
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password, displayName, hp } = req.body;
+    const { username, password, displayName, hp, pow } = req.body;
     // ── Bot guards ──
     // 1) Honeypot: a hidden form field real users never fill. Bots auto-fill it.
     if (hp) return res.status(400).json({ error: 'Signup blocked' });
-    // 2) Rate limit signups per IP — lenient so a whole classroom (shared IP) can
+    // 2) Proof-of-work: the browser must have solved our challenge (server-verified,
+    //    so direct-API bots can't skip it like they can the client human-check).
+    if (!powValid(pow)) return res.status(400).json({ error: 'Verification failed — please reload and try again.' });
+    // 3) Rate limit signups per IP — lenient so a whole classroom (shared IP) can
     //    register, but a runaway bot making hundreds gets stopped.
     if (!rateLimit('reg:' + req.ip, 20, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many sign-ups from this network. Try again in a bit.' });
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });

@@ -1016,6 +1016,49 @@ function selectDevice(mode, btn) {
   localStorage.setItem('maxos_device', mode);
 }
 
+// Tiny synchronous SHA-256 (hex) for the sign-up proof-of-work (geraintluff/sha256).
+function sha256hex(ascii) {
+  function rightRotate(v, a) { return (v >>> a) | (v << (32 - a)); }
+  var mathPow = Math.pow, maxWord = mathPow(2, 32), result = '', words = [], asciiBitLength = ascii.length * 8;
+  var hash = sha256hex.h = sha256hex.h || [], k = sha256hex.k = sha256hex.k || [], primeCounter = k.length, isComposite = {};
+  for (var candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (var i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+      hash[primeCounter] = (mathPow(candidate, .5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+  ascii += '\x80';
+  while (ascii.length % 64 - 56) ascii += '\x00';
+  for (i = 0; i < ascii.length; i++) { var j = ascii.charCodeAt(i); if (j >> 8) return; words[i >> 2] |= j << ((3 - i) % 4) * 8; }
+  words[words.length] = (asciiBitLength / maxWord) | 0;
+  words[words.length] = asciiBitLength;
+  for (var jj = 0; jj < words.length;) {
+    var w = words.slice(jj, jj += 16), oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (i = 0; i < 64; i++) {
+      var w15 = w[i - 15], w2 = w[i - 2], a = hash[0], e = hash[4];
+      var temp1 = hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) + ((e & hash[5]) ^ ((~e) & hash[6])) + k[i] +
+        (w[i] = i < 16 ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) | 0);
+      var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash); hash[4] = (hash[4] + temp1) | 0;
+    }
+    for (i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+  }
+  for (i = 0; i < 8; i++) for (var j2 = 3; j2 + 1; j2--) { var b = (hash[i] >> (j2 * 8)) & 255; result += ((b < 16) ? 0 : '') + b.toString(16); }
+  return result;
+}
+// Fetch a challenge and find a nonce so sha256(salt:nonce) has `difficulty` leading zeros
+async function solveSignupPow() {
+  const c = await (await fetch(`${API}/api/auth/challenge`)).json();
+  if (!c || !c.salt) throw new Error('no challenge');
+  const target = '0'.repeat(c.difficulty || 4);
+  for (let nonce = 0; nonce < 50000000; nonce++) {
+    if (sha256hex(c.salt + ':' + nonce).startsWith(target)) return { salt: c.salt, exp: c.exp, sig: c.sig, nonce };
+  }
+  throw new Error('pow timeout');
+}
+
 async function authSubmit() {
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value;
@@ -1031,10 +1074,17 @@ async function authSubmit() {
   const hp = document.getElementById('auth-hp')?.value || '';
   btn.textContent = '...'; btn.disabled = true;
   try {
+    // Bot guard: solve the server's proof-of-work before creating an account
+    let pow = null;
+    if (authMode === 'register') {
+      btn.textContent = 'Verifying…';
+      try { pow = await solveSignupPow(); }
+      catch (e) { errEl.textContent = 'Could not verify — check your connection and retry.'; btn.textContent = 'Create Account'; btn.disabled = false; return; }
+    }
     const res = await fetch(`${API}/api/auth/${authMode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, displayName, hp }),
+      body: JSON.stringify({ username, password, displayName, hp, pow }),
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
