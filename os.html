@@ -1053,7 +1053,7 @@ async function solveSignupPow() {
   const c = await (await fetch(`${API}/api/auth/challenge`)).json();
   if (!c || !c.salt) throw new Error('no challenge');
   const target = '0'.repeat(c.difficulty || 4);
-  for (let nonce = 0; nonce < 50000000; nonce++) {
+  for (let nonce = 0; nonce < 400000000; nonce++) {
     if (sha256hex(c.salt + ':' + nonce).startsWith(target)) return { salt: c.salt, exp: c.exp, sig: c.sig, nonce };
   }
   throw new Error('pow timeout');

@@ -29,7 +29,9 @@ setInterval(() => { const now = Date.now(); for (const [k, arr] of rateHits) { i
 // The browser must find a nonce so sha256(salt:nonce) starts with N zero hex
 // chars. Stateless (HMAC-signed), so it costs real CPU per account (slows bots)
 // without any per-IP penalty — classroom-friendly. ~4 zeros ≈ a second of work.
-const POW_DIFFICULTY = 4;
+// Number of leading zero hex chars required in sha256(salt:nonce). Each +1 is ~16×
+// more work for the browser. 5 ≈ ~1s on a phone; raise POW_DIFFICULTY env to go harder.
+const POW_DIFFICULTY = Math.max(3, Math.min(6, parseInt(process.env.POW_DIFFICULTY, 10) || 5));
 const POW_TTL = 3 * 60 * 1000;
 const usedPow = new Set();
 const powSig = (salt, exp) => crypto.createHmac('sha256', JWT_SECRET).update(salt + '.' + exp).digest('hex').slice(0, 16);
