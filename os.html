@@ -902,6 +902,12 @@
     <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username">
     <input class="login-input" id="auth-display" type="text" placeholder="Display name" autocomplete="off" style="display:none">
     <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
+    <!-- Honeypot: hidden from humans; bots that auto-fill every field get blocked -->
+    <input id="auth-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+    <div class="login-human" id="auth-human" style="display:none">
+      <label class="login-device-label" id="auth-human-q">Are you human? Solve: </label>
+      <input class="login-input" id="auth-human-a" type="text" inputmode="numeric" placeholder="Your answer" autocomplete="off">
+    </div>
     <div class="login-error" id="auth-error"></div>
     <div class="login-device-label">Device</div>
     <div class="login-device-select">
@@ -985,12 +991,21 @@ function authHeaders() {
 }
 
 let authMode = 'login';
+let humanA = 0, humanB = 0;
+function newHumanCheck() {
+  humanA = 2 + Math.floor(Math.random() * 8); humanB = 1 + Math.floor(Math.random() * 8);
+  const q = document.getElementById('auth-human-q'); if (q) q.textContent = `Are you human? What is ${humanA} + ${humanB}?`;
+  const a = document.getElementById('auth-human-a'); if (a) a.value = '';
+}
 function switchAuthTab(mode, btn) {
   authMode = mode;
   document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
   document.getElementById('auth-display').style.display = mode === 'register' ? 'block' : 'none';
+  // Bot guard: only require the human-check when creating an account
+  const human = document.getElementById('auth-human');
+  if (human) { human.style.display = mode === 'register' ? 'block' : 'none'; if (mode === 'register') newHumanCheck(); }
   document.getElementById('auth-error').textContent = '';
 }
 
@@ -1008,12 +1023,18 @@ async function authSubmit() {
   const errEl = document.getElementById('auth-error');
   const btn = document.getElementById('auth-btn');
   if (!username || !password) { errEl.textContent = 'Please fill in all fields'; return; }
+  // Bot guard: the human-check must be correct to create an account
+  if (authMode === 'register') {
+    const ans = parseInt(document.getElementById('auth-human-a')?.value, 10);
+    if (ans !== humanA + humanB) { errEl.textContent = 'Please answer the human-check correctly.'; newHumanCheck(); return; }
+  }
+  const hp = document.getElementById('auth-hp')?.value || '';
   btn.textContent = '...'; btn.disabled = true;
   try {
     const res = await fetch(`${API}/api/auth/${authMode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, displayName }),
+      body: JSON.stringify({ username, password, displayName, hp }),
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }

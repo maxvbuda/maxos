@@ -9,8 +9,20 @@ const http     = require('http');
 const { Server: SocketIOServer } = require('socket.io');
 
 const app = express();
+app.set('trust proxy', 1); // Render runs behind a proxy — get the real client IP from X-Forwarded-For
 app.use(cors());
 app.use(express.json());
+
+// ── Simple in-memory rate limiter (per IP, sliding window) ────────────────────
+const rateHits = new Map(); // key -> [timestamps]
+function rateLimit(key, max, windowMs) {
+  const now = Date.now();
+  const arr = (rateHits.get(key) || []).filter(t => now - t < windowMs);
+  arr.push(now);
+  rateHits.set(key, arr);
+  return arr.length <= max; // true = allowed
+}
+setInterval(() => { const now = Date.now(); for (const [k, arr] of rateHits) { if (!arr.some(t => now - t < 3600000)) rateHits.delete(k); } }, 600000).unref?.();
 const server = http.createServer(app);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
@@ -329,8 +341,16 @@ io.on('connection', socket => {
 // ── Auth routes ───────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password, displayName } = req.body;
+    const { username, password, displayName, hp } = req.body;
+    // ── Bot guards ──
+    // 1) Honeypot: a hidden form field real users never fill. Bots auto-fill it.
+    if (hp) return res.status(400).json({ error: 'Signup blocked' });
+    // 2) Rate limit signups per IP — lenient so a whole classroom (shared IP) can
+    //    register, but a runaway bot making hundreds gets stopped.
+    if (!rateLimit('reg:' + req.ip, 20, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many sign-ups from this network. Try again in a bit.' });
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    // 3) Basic username sanity — letters/numbers/_/- only, 3–24 chars
+    if (!/^[a-z0-9_-]{3,24}$/i.test(username)) return res.status(400).json({ error: 'Username must be 3–24 letters, numbers, _ or -' });
     if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
     const exists = await User.findOne({ username: username.toLowerCase() });
     if (exists) return res.status(409).json({ error: 'Username already taken' });
