@@ -607,6 +607,10 @@
   .otp-row { display:flex; gap:8px; }
   .otp-mini { flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px; font-size:12px; cursor:pointer; }
   .otp-note { color:rgba(255,255,255,.5); font-size:11px; margin-top:auto; line-height:1.5; }
+  .otp-step { color:rgba(255,255,255,.7); font-size:12px; margin:8px 0 4px; }
+  .otp-step .mono, .dh-demo .mono { font-family:monospace; color:#9fe; font-size:11px; }
+  .dh-demo { margin-top:8px; display:flex; flex-direction:column; gap:4px; font-size:12px; color:rgba(255,255,255,.75); background:rgba(255,255,255,.04); border-radius:8px; padding:10px; }
+  .dh-demo:empty { display:none; }
 
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
@@ -5073,7 +5077,7 @@ function otpB64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i++) s +=
 function otpFromB64(b64) { const s = atob(b64.trim()); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
 function buildOTP() {
   return `<div class="otp-app">
-    <div class="otp-tabs"><button class="otp-tab active" id="otp-tab-enc" onclick="otpTab('enc')">🔒 Encrypt</button><button class="otp-tab" id="otp-tab-dec" onclick="otpTab('dec')">🔓 Decrypt</button></div>
+    <div class="otp-tabs"><button class="otp-tab active" id="otp-tab-enc" onclick="otpTab('enc')">🔒 Encrypt</button><button class="otp-tab" id="otp-tab-dec" onclick="otpTab('dec')">🔓 Decrypt</button><button class="otp-tab" id="otp-tab-dh" onclick="otpTab('dh')">🤝 Key Swap</button></div>
     <div id="otp-enc">
       <label class="otp-lbl">Secret message</label>
       <textarea id="otp-msg" class="otp-area" placeholder="Type your secret…"></textarea>
@@ -5093,15 +5097,76 @@ function buildOTP() {
       <label class="otp-lbl">Revealed message</label>
       <textarea id="otp-msg-out" class="otp-area" readonly placeholder="decoded message appears here"></textarea>
     </div>
+    <div id="otp-dh" style="display:none">
+      <div class="otp-note" style="margin:0 0 8px">🤝 Agree on a secret key with a friend you've <b>never met</b> — even with a spy listening. (This is the "shout the paint colors" trick: Diffie–Hellman.)</div>
+      <div class="otp-step"><b>1.</b> Make your secret + your public number</div>
+      <button class="otp-btn" onclick="dhGenerate()">🎨 Generate mine</button>
+      <label class="otp-lbl">📤 Your public number — send this to your friend (safe!)</label>
+      <textarea id="dh-mine" class="otp-area mono" readonly placeholder="appears after you generate"></textarea>
+      <button class="otp-mini" onclick="otpCopy('dh-mine')">Copy my number</button>
+      <div class="otp-step"><b>2.</b> Paste your friend's public number</div>
+      <textarea id="dh-theirs" class="otp-area mono" placeholder="paste their number here"></textarea>
+      <button class="otp-btn" onclick="dhCompute()">🤝 Make the shared key</button>
+      <label class="otp-lbl">🔑 Your shared secret (both of you get the SAME one!)</label>
+      <textarea id="dh-shared" class="otp-area mono" readonly placeholder="the matching secret appears here"></textarea>
+      <div id="dh-fp" class="otp-step" style="color:#9fe"></div>
+      <div class="otp-step" style="border-top:1px solid rgba(255,255,255,.1);padding-top:10px;margin-top:6px">Just curious? Watch it work with a pretend friend:</div>
+      <button class="otp-mini" onclick="dhDemo()">🎭 Run a full demo (you + a pretend friend)</button>
+      <div id="dh-demo" class="dh-demo"></div>
+    </div>
     <div class="otp-note">🔒 A one-time pad is mathematically <b>unbreakable</b> — if the key is random, as long as the message, and never reused. Use a fresh key every time!</div>
   </div>`;
 }
 function initOTP() { otpTab('enc'); }
 function otpTab(t) {
-  document.getElementById('otp-enc').style.display = t === 'enc' ? 'block' : 'none';
-  document.getElementById('otp-dec').style.display = t === 'dec' ? 'block' : 'none';
-  document.getElementById('otp-tab-enc').classList.toggle('active', t === 'enc');
-  document.getElementById('otp-tab-dec').classList.toggle('active', t === 'dec');
+  ['enc', 'dec', 'dh'].forEach(x => { const el = document.getElementById('otp-' + x); if (el) el.style.display = x === t ? 'block' : 'none'; const tab = document.getElementById('otp-tab-' + x); if (tab) tab.classList.toggle('active', x === t); });
+}
+
+// ── Diffie–Hellman key exchange (the "mix paint out loud" trick) ──────────────
+// Real DH over the RFC 3526 1536-bit MODP group. Two people agree on the same
+// secret by swapping only public numbers — a listener can't work backwards.
+const DH_P = BigInt('0x' + ('FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
+  '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
+  '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
+  'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
+  '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
+  '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF'));
+const DH_G = 2n;
+function dhModPow(base, exp, mod) { base %= mod; let r = 1n; while (exp > 0n) { if (exp & 1n) r = (r * base) % mod; exp >>= 1n; base = (base * base) % mod; } return r; }
+function dhRandomSecret() { const b = new Uint8Array(32); crypto.getRandomValues(b); let n = 0n; for (const x of b) n = (n << 8n) | BigInt(x); return n + 2n; }
+let dhMySecret = null;
+function dhFingerprint(hex) { return sha256hex(hex).slice(0, 16).replace(/(.{4})/g, '$1 ').trim(); }
+function dhGenerate() {
+  dhMySecret = dhRandomSecret();
+  const pub = dhModPow(DH_G, dhMySecret, DH_P);
+  document.getElementById('dh-mine').value = pub.toString(16);
+  document.getElementById('dh-shared').value = '';
+  document.getElementById('dh-fp').textContent = '';
+}
+function dhCompute() {
+  if (dhMySecret === null) { notify('🤝', 'Generate first', 'Tap "Generate mine" in step 1'); return; }
+  const raw = document.getElementById('dh-theirs').value.trim().replace(/^0x/i, '');
+  if (!/^[0-9a-f]+$/i.test(raw)) { notify('🤝', "That doesn't look right", "Paste your friend's public number"); return; }
+  const shared = dhModPow(BigInt('0x' + raw), dhMySecret, DH_P);
+  const hex = shared.toString(16);
+  document.getElementById('dh-shared').value = hex;
+  document.getElementById('dh-fp').textContent = '🔎 Key fingerprint: ' + dhFingerprint(hex) + '  — if your friend sees the same fingerprint, it worked!';
+}
+function dhDemo() {
+  const a = dhRandomSecret(), b = dhRandomSecret();
+  const A = dhModPow(DH_G, a, DH_P), B = dhModPow(DH_G, b, DH_P);
+  const youKey = dhModPow(B, a, DH_P), friendKey = dhModPow(A, b, DH_P);
+  const match = youKey === friendKey;
+  const fp = dhFingerprint(youKey.toString(16));
+  const short = n => { const h = n.toString(16); return h.slice(0, 10) + '…' + h.slice(-6); };
+  document.getElementById('dh-demo').innerHTML =
+    `<div>🟡 Public start: g=2, big prime p (everyone knows these)</div>
+     <div>🔴 <b>You</b> pick a secret → send public <span class="mono">${short(A)}</span></div>
+     <div>🔵 <b>Friend</b> picks a secret → sends public <span class="mono">${short(B)}</span></div>
+     <div>🟤 You mix their number with your secret → <span class="mono">${short(youKey)}</span></div>
+     <div>🟤 Friend mixes your number with their secret → <span class="mono">${short(friendKey)}</span></div>
+     <div style="margin-top:6px;color:${match ? '#9ff0a8' : '#ff6b6b'};font-weight:700">${match ? '✅ Both landed on the SAME secret! Fingerprint: ' + fp : '❌ mismatch'}</div>
+     <div style="color:rgba(255,255,255,.5)">A spy heard the two public numbers but still can't make the brown. 🕵️</div>`;
 }
 function otpEncrypt() {
   const msg = document.getElementById('otp-msg').value;
