@@ -310,6 +310,17 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', socket => {
+  // Real-time rooms: a personal room for DMs/unread, plus the shared feed.
+  const me = socket.data.user;
+  if (me?.username) socket.join('user:' + me.username);
+  socket.join('feed');
+  socket.on('chat:join', ch => {
+    if (typeof ch !== 'string') return;
+    if (socket.data.chatRoom) socket.leave(socket.data.chatRoom);
+    socket.data.chatRoom = 'chan:' + ch.toLowerCase();
+    socket.join(socket.data.chatRoom);
+  });
+
   socket.on('screenwatch:subscribe', async payload => {
     try {
       const watcher = socket.data.user;
@@ -611,6 +622,9 @@ app.post('/api/messages', auth, async (req, res) => {
     const ss = await getSchoolState(req.user.username);
     if (ss.restricted && !ss.teachers.includes(to.toLowerCase())) return res.status(403).json({ error: 'School mode: you can only message your teacher' });
     const msg = await Message.create({ from: req.user.username, to: to.toLowerCase(), text: text.trim() });
+    // Real-time: notify both ends so the chat list/thread/unread refresh instantly
+    io.to('user:' + msg.to).emit('dm', { from: msg.from });
+    io.to('user:' + msg.from).emit('dm', { to: msg.to });
     res.json({ from: msg.from, to: msg.to, text: msg.text, at: msg.createdAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -717,6 +731,7 @@ app.post('/api/chat/:channel', auth, async (req, res) => {
   try {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty message' });
     const m = await Chat.create({ channel: req.params.channel.toLowerCase(), from: req.user.username, text: req.body.text.trim() });
+    io.to('chan:' + m.channel).emit('chat', { channel: m.channel }); // real-time channel update
     res.json({ from: m.from, text: m.text, at: m.createdAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -757,6 +772,7 @@ app.post('/api/posts', auth, async (req, res) => {
   try {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Say something!' });
     const p = await Post.create({ author: req.user.username, text: req.body.text.trim().slice(0, 1000), bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    io.to('feed').emit('feed');
     res.json(serializePost(p, req.user.username));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -765,7 +781,7 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
     const i = p.likes.indexOf(req.user.username);
     if (i >= 0) p.likes.splice(i, 1); else p.likes.push(req.user.username);
-    await p.save(); res.json({ likes: p.likes.length, liked: i < 0 });
+    await p.save(); io.to('feed').emit('feed'); res.json({ likes: p.likes.length, liked: i < 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/posts/:id/comment', auth, async (req, res) => {
@@ -773,7 +789,7 @@ app.post('/api/posts/:id/comment', auth, async (req, res) => {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty comment' });
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
     p.comments.push({ from: req.user.username, text: req.body.text.trim().slice(0, 500) });
-    await p.save(); res.json(serializePost(p, req.user.username));
+    await p.save(); io.to('feed').emit('feed'); res.json(serializePost(p, req.user.username));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/posts/:id', auth, async (req, res) => {

@@ -1350,7 +1350,7 @@ function bootOS() {
   applyDeviceMode();
   renderDesktop();
   renderStartApps();
-  checkServer().then(() => { startUnreadPolling(); loadSchoolState(); });
+  checkServer().then(() => { startUnreadPolling(); loadSchoolState(); connectAppSocket(); });
   startHeartbeat();
   startScreenWatchShare();
   remStartPolling();
@@ -3502,7 +3502,7 @@ function initMessages() {
     return;
   }
   msgLoadConversations();
-  msgPollTimer = setInterval(() => { if (windows['messages']) { if (!msgPickingNew) msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); } }, 4000);
+  connectAppSocket(); // real-time DMs (replaces the old 4s poll)
 }
 async function msgLoadConversations() {
   const convos = await apiFetch('/api/conversations');
@@ -3563,6 +3563,7 @@ async function msgLoadThread(user, keepScroll) {
     return `<div class="msg-bubble ${mine ? 'me' : 'them'}">${del}${escapeHtml(m.text)}<span class="msg-time">${t}</span></div>`;
   }).join('');
   if (!keepScroll || atBottom) thread.scrollTop = thread.scrollHeight;
+  refreshUnreadBadge(); // reading a thread marks it read — update the badge (no poll anymore)
 }
 async function msgDelete(id) {
   const res = await apiFetch('/api/messages/' + id, { method: 'DELETE' });
@@ -3581,22 +3582,43 @@ async function msgSend() {
 }
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-function startUnreadPolling() {
-  clearInterval(unreadPollTimer);
-  const poll = async () => {
-    if (!serverOnline) return;
-    const res = await apiFetch('/api/messages/unread');
-    const badge = document.getElementById('tb-app-messages');
-    const count = res.count || 0;
-    let dot = document.getElementById('taskbar-msg-badge');
-    if (count > 0 && badge) {
-      if (!dot) { dot = document.createElement('span'); dot.id = 'taskbar-msg-badge'; badge.style.position = 'relative'; badge.appendChild(dot); }
-      dot.textContent = count;
-    } else if (dot) { dot.remove(); }
-  };
-  poll();
-  unreadPollTimer = setInterval(poll, 6000);
+async function refreshUnreadBadge() {
+  if (!serverOnline) return;
+  const res = await apiFetch('/api/messages/unread');
+  const badge = document.getElementById('tb-app-messages');
+  const count = res.count || 0;
+  let dot = document.getElementById('taskbar-msg-badge');
+  if (count > 0 && badge) {
+    if (!dot) { dot = document.createElement('span'); dot.id = 'taskbar-msg-badge'; badge.style.position = 'relative'; badge.appendChild(dot); }
+    dot.textContent = count;
+  } else if (dot) { dot.remove(); }
 }
+function startUnreadPolling() { refreshUnreadBadge(); } // now event-driven via the app socket
+
+// ── Real-time app socket: replaces the message/chat/feed polling timers ───────
+let appSocket = null;
+async function connectAppSocket() {
+  if (!authToken || appSocket) return;
+  try { await loadSocketIO(); } catch (e) { return; }
+  if (!window.io) return;
+  appSocket = window.io(screenWatchSocketUrl(), { transports: ['websocket', 'polling'], auth: { token: authToken } });
+  appSocket.on('connect', () => {
+    appSocket.emit('feed:join'); // (server auto-joins; harmless)
+    if (windows['chat'] && chatChannel) appSocket.emit('chat:join', chatChannel);
+    // Catch up on anything missed while disconnected
+    refreshUnreadBadge();
+    if (windows['messages'] && !msgPickingNew) { msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); }
+    if (windows['chat']) chatLoad(true);
+    if (windows['social']) socialLoad();
+  });
+  appSocket.on('dm', () => {
+    if (windows['messages'] && !msgPickingNew) { msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); }
+    refreshUnreadBadge();
+  });
+  appSocket.on('chat', d => { if (windows['chat'] && (!d || d.channel === chatChannel)) chatLoad(true); });
+  appSocket.on('feed', () => { if (windows['social']) socialLoad(); });
+}
+function appSocketJoinChat(ch) { if (appSocket && appSocket.connected && ch) appSocket.emit('chat:join', ch); }
 
 // ── 2048 ─────────────────────────────────────────────────────────────────────
 let g2048 = null;
@@ -6662,7 +6684,7 @@ async function initChat() {
   if (!serverOnline) { document.getElementById('chat-thread').innerHTML = '<div style="color:rgba(255,255,255,.4);padding:20px">Max Chat needs a server connection.</div>'; return; }
   await chatLoadChannels();
   chatOpen(chatChannels[0] || 'general');
-  chatTimer = setInterval(() => { if (windows['chat']) chatLoad(true); }, 4000);
+  connectAppSocket(); // real-time channel messages (replaces the old 4s poll)
 }
 async function chatLoadChannels() {
   const list = await apiFetch('/api/channels');
@@ -6695,6 +6717,7 @@ function chatOpen(c) {
   document.getElementById('chat-head').textContent = '# ' + c;
   document.getElementById('chat-delchan').style.display = c === 'general' ? 'none' : 'block';
   document.getElementById('chat-input').placeholder = 'Message #' + c;
+  appSocketJoinChat(c); // subscribe to this channel's real-time updates
   chatLoad();
 }
 async function chatLoad(keepScroll) {
@@ -6799,7 +6822,7 @@ function socialPickBg(i) {
 function initSocial() {
   if (!serverOnline) { document.getElementById('social-feed').innerHTML = '<div style="color:rgba(255,255,255,.4);padding:30px;text-align:center">MaxSocial needs a server connection.</div>'; return; }
   socialBg = -1; socialLoad();
-  socialTimer = setInterval(() => { if (windows['social']) socialLoad(); }, 8000);
+  connectAppSocket(); // real-time feed (replaces the old 8s poll)
 }
 async function socialPost() {
   const ta = document.getElementById('social-text'); const text = ta.value.trim();
