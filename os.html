@@ -3483,7 +3483,7 @@ function renderStoreGrid() {
 }
 
 // ── MESSAGES ─────────────────────────────────────────────────────────────────
-let msgActiveUser = null, msgPollTimer = null, unreadPollTimer = null;
+let msgActiveUser = null, msgPollTimer = null, unreadPollTimer = null, msgPickingNew = false;
 
 function buildMessages() {
   return `<div class="msg-app">
@@ -3502,7 +3502,7 @@ function initMessages() {
     return;
   }
   msgLoadConversations();
-  msgPollTimer = setInterval(() => { if (windows['messages']) { msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); } }, 4000);
+  msgPollTimer = setInterval(() => { if (windows['messages']) { if (!msgPickingNew) msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); } }, 4000);
 }
 async function msgLoadConversations() {
   const convos = await apiFetch('/api/conversations');
@@ -3526,15 +3526,18 @@ async function msgNewChat() {
   }
   if (!users.length) { notify('💬', 'No other users', 'Invite a friend to register!'); return; }
   const list = document.getElementById('msg-userlist');
-  list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">${schoolState.restricted ? 'Your teacher' : 'All Users'}</div>` +
+  list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">${schoolState.restricted ? 'Your teacher' : 'All Users'} <span style="float:right;cursor:pointer;text-transform:none" onclick="msgCancelNew()">✕ back</span></div>` +
     users.map(u => `<div class="msg-user" onclick="msgOpenChat('${u.username}')">
       <div class="msg-avatar">${u.username[0].toUpperCase()}</div>
       <div class="msg-user-info"><div class="msg-user-name">${u.displayName || u.username}</div><div class="msg-user-last">@${u.username}</div></div>
     </div>`).join('');
+  msgPickingNew = true; // keep the contact picker open; don't let the poll wipe it
 }
+function msgCancelNew() { msgPickingNew = false; msgLoadConversations(); }
 function msgOpenChat(user) {
   // School mode: block opening a chat with anyone but the teacher
   if (schoolState.restricted && !schoolState.teachers.includes(user)) { notify('🏫', 'School mode', 'You can only message your teacher.'); return; }
+  msgPickingNew = false; // a contact was chosen — let the chat list resume updating
   msgActiveUser = user;
   const main = document.getElementById('msg-main');
   main.innerHTML = `
