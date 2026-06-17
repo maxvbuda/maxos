@@ -595,6 +595,19 @@
   .sch-flagt { color:rgba(255,255,255,.4); font-size:11px; }
   .sch-flagsnip { color:#ffb3ad; font-style:italic; font-size:12px; }
 
+  /* Secret Pad (one-time pad) */
+  .otp-app { display:flex; flex-direction:column; gap:8px; height:100%; padding:14px; overflow-y:auto; }
+  .otp-tabs { display:flex; gap:6px; }
+  .otp-tab { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); color:rgba(255,255,255,.6); border-radius:9px; padding:8px; font-size:13px; cursor:pointer; }
+  .otp-tab.active { background:rgba(100,180,255,.25); border-color:rgba(100,180,255,.45); color:#fff; }
+  .otp-lbl { color:rgba(255,255,255,.55); font-size:12px; margin-top:6px; display:block; }
+  .otp-area { width:100%; box-sizing:border-box; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13); color:#fff; border-radius:9px; padding:9px 11px; font-size:13px; resize:vertical; min-height:54px; }
+  .otp-area.mono { font-family:monospace; font-size:11px; word-break:break-all; color:#9fe; }
+  .otp-btn { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:10px; padding:10px; font-size:14px; cursor:pointer; font-weight:600; margin-top:4px; }
+  .otp-row { display:flex; gap:8px; }
+  .otp-mini { flex:1; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:8px; padding:6px; font-size:12px; cursor:pointer; }
+  .otp-note { color:rgba(255,255,255,.5); font-size:11px; margin-top:auto; line-height:1.5; }
+
   /* Colors */
   .colors-app { display:flex; flex-direction:column; height:100%; padding:18px; gap:14px; }
   .color-preview { height:120px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; transition:background .1s; }
@@ -1775,6 +1788,7 @@ const apps = {
   pomodoro: { title: 'Pomodoro',       short:'Pomodoro',   icon:'🍅', w:340, h:420, cat:'Productivity', desc:'Focus timer technique',     html: buildPomodoro },
   weather:  { title: 'Weather',        short:'Weather',    icon:'⛅', w:380, h:440, cat:'Utilities',  desc:'Forecast for any city',       html: buildWeather },
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
+  otp:      { title: 'Secret Pad',     short:'Secret Pad', icon:'🔐', w:460, h:560, cat:'Utilities',  desc:'Unbreakable one-time-pad cipher', html: buildOTP },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
   maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
   animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:820, h:600, cat:'Creativity', desc:'Frame animation with movable shapes, text & .pic images', html: buildAnimator },
@@ -5051,6 +5065,66 @@ async function schoolFlag(snippet) {
   notify('⚠️', 'Heads up', 'Your teacher has been notified about what you typed.');
 }
 
+// ── SECRET PAD — one-time-pad cipher (XOR with a random key) ──────────────────
+// OTP: ciphertext = message XOR key, where the key is truly random, as long as the
+// message, and used only once. Provably unbreakable — without the key the cipher
+// could decode to ANY message of that length, so it leaks nothing.
+function otpB64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+function otpFromB64(b64) { const s = atob(b64.trim()); const a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+function buildOTP() {
+  return `<div class="otp-app">
+    <div class="otp-tabs"><button class="otp-tab active" id="otp-tab-enc" onclick="otpTab('enc')">🔒 Encrypt</button><button class="otp-tab" id="otp-tab-dec" onclick="otpTab('dec')">🔓 Decrypt</button></div>
+    <div id="otp-enc">
+      <label class="otp-lbl">Secret message</label>
+      <textarea id="otp-msg" class="otp-area" placeholder="Type your secret…"></textarea>
+      <button class="otp-btn" onclick="otpEncrypt()">🔐 Encrypt</button>
+      <label class="otp-lbl">🔑 Key — share this secretly, use it only once!</label>
+      <textarea id="otp-key-out" class="otp-area mono" readonly placeholder="key appears here"></textarea>
+      <label class="otp-lbl">📨 Cipher — safe to send anywhere</label>
+      <textarea id="otp-cipher-out" class="otp-area mono" readonly placeholder="encrypted message appears here"></textarea>
+      <div class="otp-row"><button class="otp-mini" onclick="otpCopy('otp-key-out')">Copy key</button><button class="otp-mini" onclick="otpCopy('otp-cipher-out')">Copy cipher</button></div>
+    </div>
+    <div id="otp-dec" style="display:none">
+      <label class="otp-lbl">📨 Cipher</label>
+      <textarea id="otp-cipher-in" class="otp-area mono" placeholder="paste the encrypted message"></textarea>
+      <label class="otp-lbl">🔑 Key</label>
+      <textarea id="otp-key-in" class="otp-area mono" placeholder="paste the matching key"></textarea>
+      <button class="otp-btn" onclick="otpDecrypt()">🔓 Decrypt</button>
+      <label class="otp-lbl">Revealed message</label>
+      <textarea id="otp-msg-out" class="otp-area" readonly placeholder="decoded message appears here"></textarea>
+    </div>
+    <div class="otp-note">🔒 A one-time pad is mathematically <b>unbreakable</b> — if the key is random, as long as the message, and never reused. Use a fresh key every time!</div>
+  </div>`;
+}
+function initOTP() { otpTab('enc'); }
+function otpTab(t) {
+  document.getElementById('otp-enc').style.display = t === 'enc' ? 'block' : 'none';
+  document.getElementById('otp-dec').style.display = t === 'dec' ? 'block' : 'none';
+  document.getElementById('otp-tab-enc').classList.toggle('active', t === 'enc');
+  document.getElementById('otp-tab-dec').classList.toggle('active', t === 'dec');
+}
+function otpEncrypt() {
+  const msg = document.getElementById('otp-msg').value;
+  if (!msg) { notify('🔐', 'Nothing to encrypt', 'Type a message first'); return; }
+  const data = new TextEncoder().encode(msg);
+  const key = new Uint8Array(data.length); crypto.getRandomValues(key);
+  const cipher = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) cipher[i] = data[i] ^ key[i];
+  document.getElementById('otp-key-out').value = otpB64(key);
+  document.getElementById('otp-cipher-out').value = otpB64(cipher);
+}
+function otpDecrypt() {
+  try {
+    const cipher = otpFromB64(document.getElementById('otp-cipher-in').value);
+    const key = otpFromB64(document.getElementById('otp-key-in').value);
+    if (cipher.length !== key.length) { notify('🔓', "Key doesn't match", 'The key must be the same length as the cipher'); return; }
+    const out = new Uint8Array(cipher.length);
+    for (let i = 0; i < cipher.length; i++) out[i] = cipher[i] ^ key[i];
+    document.getElementById('otp-msg-out').value = new TextDecoder().decode(out);
+  } catch (e) { notify('🔓', 'Could not decrypt', 'Check the cipher and key are pasted correctly'); }
+}
+function otpCopy(id) { const v = document.getElementById(id).value; if (!v) return; navigator.clipboard?.writeText(v); notify('📋', 'Copied', 'Paste it where you need it'); }
+
 // ── COLOR PICKER ─────────────────────────────────────────────────────────────
 let colorRGB = { r: 100, g: 180, b: 255 };
 function buildColors() {
@@ -6860,7 +6934,7 @@ const appInitHooks = {
   calendar: initCalendar, music: initMusic, appstore: initStore, messages: initMessages,
   g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
-  dice: () => {}, colors: initColors, maxcoin: initMaxcoin,
+  dice: () => {}, colors: initColors, maxcoin: initMaxcoin, otp: initOTP,
   animator: initAnimator, video: initVideo,
   camera: initCamera, reminders: initReminders, jumpworld: initJump, mines: initMines,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
