@@ -233,6 +233,21 @@ async function getSchoolState(username) {
 const serializeShared = (d, isOwner) => ({ id: d.id, type: d.type, title: d.title, content: d.content, author: d.authorName, views: d.views, visibility: d.visibility || 'public', ...(isOwner ? { allow: d.allow || [] } : {}) });
 const normUsers = a => Array.isArray(a) ? [...new Set(a.map(u => String(u).trim().toLowerCase().replace(/^@/, '')).filter(Boolean))] : [];
 
+// ── MaxSocial anti-spam / moderation ──────────────────────────────────────────
+const POST_BAD = /\b(f+u+c+k|sh[i1!]t|b[i1]tch|assh[o0]le|bastard|cunt|wh[o0]re|fag|n[i1]gg(a|er)|retard|porn|nsfw)\b/i;
+const POST_LINK = /(https?:\/\/|www\.[a-z0-9]|[a-z0-9-]+\.(com|net|org|xyz|io|ru|info)\b)/i;
+const POST_SPAMMY = /(.)\1{9,}/; // 10+ of the same char in a row
+const lastPostByUser = new Map(); // username -> last text (block instant duplicates)
+function moderatePost(text, username) {
+  const t = (text || '').trim();
+  if (!t) return 'Say something!';
+  if (POST_BAD.test(t)) return 'Please keep it friendly — that post was blocked.';
+  if (POST_LINK.test(t)) return "Links aren't allowed in posts.";
+  if (POST_SPAMMY.test(t)) return 'That looks like spam.';
+  if (lastPostByUser.get(username) === t) return 'You just posted that — try something new.';
+  return null;
+}
+
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
 async function uniqueSlug(base) { let id = base, n = 1; while (await AppModel.findOne({ id })) id = base + (++n); return id; }
@@ -770,8 +785,12 @@ app.get('/api/posts', auth, async (req, res) => {
 });
 app.post('/api/posts', auth, async (req, res) => {
   try {
-    if (!req.body.text?.trim()) return res.status(400).json({ error: 'Say something!' });
-    const p = await Post.create({ author: req.user.username, text: req.body.text.trim().slice(0, 1000), bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    if (!rateLimit('post:' + req.user.username, 6, 60 * 1000)) return res.status(429).json({ error: "You're posting too fast — take a breather." });
+    const bad = moderatePost(req.body.text, req.user.username);
+    if (bad) return res.status(400).json({ error: bad });
+    const text = req.body.text.trim().slice(0, 1000);
+    const p = await Post.create({ author: req.user.username, text, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    lastPostByUser.set(req.user.username, text);
     io.to('feed').emit('feed');
     res.json(serializePost(p, req.user.username));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -787,6 +806,10 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
 app.post('/api/posts/:id/comment', auth, async (req, res) => {
   try {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty comment' });
+    if (!rateLimit('cmt:' + req.user.username, 12, 60 * 1000)) return res.status(429).json({ error: "You're commenting too fast." });
+    const t = req.body.text.trim();
+    if (POST_BAD.test(t)) return res.status(400).json({ error: 'Please keep it friendly.' });
+    if (POST_LINK.test(t)) return res.status(400).json({ error: "Links aren't allowed." });
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
     p.comments.push({ from: req.user.username, text: req.body.text.trim().slice(0, 500) });
     await p.save(); io.to('feed').emit('feed'); res.json(serializePost(p, req.user.username));
