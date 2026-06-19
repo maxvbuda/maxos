@@ -3512,7 +3512,7 @@ async function msgLoadConversations() {
   list.innerHTML = convos.map(c => `
     <div class="msg-user${c.user === msgActiveUser ? ' active' : ''}" onclick="msgOpenChat('${c.user}')">
       <div class="msg-avatar">${c.user[0].toUpperCase()}</div>
-      <div class="msg-user-info"><div class="msg-user-name">${c.user}</div><div class="msg-user-last">${c.lastText}</div></div>
+      <div class="msg-user-info"><div class="msg-user-name">${escapeHtml(c.user)}</div><div class="msg-user-last">${escapeHtml(c.lastText || '')}</div></div>
       ${c.unread ? `<div class="msg-badge">${c.unread}</div>` : ''}
     </div>`).join('');
 }
@@ -3529,7 +3529,7 @@ async function msgNewChat() {
   list.innerHTML = `<div style="padding:8px 14px;color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px">${schoolState.restricted ? 'Your teacher' : 'All Users'} <span style="float:right;cursor:pointer;text-transform:none" onclick="msgCancelNew()">✕ back</span></div>` +
     users.map(u => `<div class="msg-user" onclick="msgOpenChat('${u.username}')">
       <div class="msg-avatar">${u.username[0].toUpperCase()}</div>
-      <div class="msg-user-info"><div class="msg-user-name">${u.displayName || u.username}</div><div class="msg-user-last">@${u.username}</div></div>
+      <div class="msg-user-info"><div class="msg-user-name">${escapeHtml(u.displayName || u.username)}</div><div class="msg-user-last">@${escapeHtml(u.username)}</div></div>
     </div>`).join('');
   msgPickingNew = true; // keep the contact picker open; don't let the poll wipe it
 }
@@ -6728,7 +6728,7 @@ async function chatLoad(keepScroll) {
   thread.innerHTML = msgs.length ? msgs.map(m => {
     const mine = m.from === currentUser.username;
     const t = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `<div class="chat-msg"><div class="chat-ava">${m.from[0].toUpperCase()}</div><div><div class="chat-meta"><b>${m.from}</b> <span>${t}</span></div><div class="chat-text">${escapeHtml(m.text)}</div></div></div>`;
+    return `<div class="chat-msg"><div class="chat-ava">${m.from[0].toUpperCase()}</div><div><div class="chat-meta"><b>${escapeHtml(m.from)}</b> <span>${t}</span></div><div class="chat-text">${escapeHtml(m.text)}</div></div></div>`;
   }).join('') : '<div style="color:rgba(255,255,255,.35);padding:20px;text-align:center">No messages yet in #' + chatChannel + ' — say hi! 👋</div>';
   if (!keepScroll || atBottom) thread.scrollTop = thread.scrollHeight;
 }
@@ -6841,7 +6841,7 @@ async function socialLoad() {
     const colored = p.bg >= 0;
     const canDel = p.author === currentUser.username || currentUser.admin;
     return `<div class="post">
-      <div class="post-head"><div class="post-ava">${p.author[0].toUpperCase()}</div><div><div class="post-author">${p.author}</div><div class="post-time">${t}</div></div>
+      <div class="post-head"><div class="post-ava">${p.author[0].toUpperCase()}</div><div><div class="post-author">${escapeHtml(p.author)}</div><div class="post-time">${t}</div></div>
         ${canDel ? `<span class="post-del" onclick="socialDelete('${p.id}')" title="Delete">🗑</span>` : ''}</div>
       <div class="post-body${colored ? ' colored' : ''}" ${colored ? `style="background:${SOCIAL_BG[p.bg + 1]}"` : ''}>${escapeHtml(p.text)}</div>
       <div class="post-actions">
@@ -6849,7 +6849,7 @@ async function socialLoad() {
         <span class="post-btn" onclick="document.getElementById('cmt-${p.id}').classList.toggle('open')">💬 ${p.comments.length || ''}</span>
       </div>
       <div class="post-comments${p.comments.length ? ' open' : ''}" id="cmt-${p.id}">
-        ${p.comments.map(c => `<div class="post-cmt"><b>${c.from}</b> ${escapeHtml(c.text)}</div>`).join('')}
+        ${p.comments.map(c => `<div class="post-cmt"><b>${escapeHtml(c.from)}</b> ${escapeHtml(c.text)}</div>`).join('')}
         <div class="post-cmt-add"><input placeholder="Write a comment…" onkeydown="if(event.key==='Enter')socialComment('${p.id}',this)"></div>
       </div>
     </div>`;
