@@ -211,6 +211,15 @@ const FileVersion = mongoose.model('FileVersion', VersionSchema);
 const Shared = mongoose.model('Shared', SharedSchema);
 const Response = mongoose.model('Response', ResponseSchema);
 const Klass = mongoose.model('Class', ClassSchema);
+const ReportSchema = new mongoose.Schema({
+  postId:   { type: String, required: true },
+  author:   { type: String, default: '' },   // who wrote the reported post
+  text:     { type: String, default: '' },    // snapshot of the post text
+  reporter: { type: String, required: true },  // who reported it
+  reason:   { type: String, default: '' },
+  handled:  { type: Boolean, default: false }, // cleared when an admin acts on it
+}, { timestamps: true });
+const Report = mongoose.model('Report', ReportSchema);
 
 const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
@@ -819,8 +828,32 @@ app.delete('/api/posts/:id', auth, async (req, res) => {
   try {
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
     if (p.author !== req.user.username && !req.user.admin) return res.status(403).json({ error: 'Not your post' });
-    await p.deleteOne(); res.json({ ok: true });
+    await p.deleteOne();
+    await Report.updateMany({ postId: req.params.id }, { handled: true }); // clear any reports
+    io.to('feed').emit('feed');
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Kids report a post → it goes to the superadmin (admins). One open report per kid per post.
+app.post('/api/posts/:id/report', auth, async (req, res) => {
+  try {
+    const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Post not found' });
+    const dup = await Report.findOne({ postId: req.params.id, reporter: req.user.username, handled: false });
+    if (dup) return res.json({ ok: true, already: true });
+    await Report.create({ postId: req.params.id, author: p.author, text: (p.text || '').slice(0, 280), reporter: req.user.username, reason: String(req.body.reason || '').slice(0, 100) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Admin: list open reports + dismiss
+app.get('/api/admin/reports', auth, adminOnly, async (req, res) => {
+  try {
+    const list = await Report.find({ handled: false }).sort({ createdAt: -1 }).limit(100);
+    res.json(list.map(r => ({ id: r._id.toString(), postId: r.postId, author: r.author, text: r.text, reporter: r.reporter, reason: r.reason, at: r.createdAt })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/reports/:id/dismiss', auth, adminOnly, async (req, res) => {
+  try { await Report.updateOne({ _id: req.params.id }, { handled: true }); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Custom App Store (community apps in MongoDB) ──────────────────────────────

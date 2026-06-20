@@ -734,6 +734,10 @@
   .admin-badge.susp { background:rgba(255,95,87,.3); color:#ff9a94; }
   .admin-badge.teach { background:rgba(40,200,64,.3); color:#9ff0a8; }
   .admin-badge.req { background:rgba(255,159,10,.3); color:#ffce8a; }
+  .admin-reports-head { color:#ffb648; font-size:12px; font-weight:700; padding:10px 16px 4px; text-transform:uppercase; letter-spacing:1px; }
+  .admin-report { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 12px 8px; padding:10px 12px; background:rgba(255,159,10,.1); border:1px solid rgba(255,159,10,.25); border-radius:10px; }
+  .admin-report-body { flex:1; min-width:160px; color:#fff; font-size:13px; }
+  .admin-report-text { color:#ffd9a8; font-style:italic; font-size:12px; margin-top:3px; }
   .admin-watch { margin:10px; margin-top:0; border:1px solid rgba(255,255,255,.09); border-radius:12px; background:rgba(0,0,0,.22); overflow:hidden; }
   .admin-watch-head { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); color:#fff; font-size:13px; }
   .admin-watch-stage { min-height:190px; display:flex; align-items:center; justify-content:center; background:#080813; color:rgba(255,255,255,.45); font-size:12px; text-align:center; padding:12px; }
@@ -802,6 +806,9 @@
   .post-author { color:#fff; font-weight:600; font-size:14px; } .post-time { color:rgba(255,255,255,.4); font-size:11px; }
   .post-del { margin-left:auto; cursor:pointer; color:rgba(255,255,255,.3); font-size:13px; }
   .post-del:hover { color:#ff5f57; }
+  .post-report { margin-left:auto; color:rgba(255,255,255,.4); }
+  .post-report:hover { color:#ffb648; }
+  .social-tip { margin:0 16px 8px; padding:8px 12px; background:rgba(255,159,10,.12); border:1px solid rgba(255,159,10,.25); border-radius:10px; color:rgba(255,255,255,.7); font-size:12px; }
   .post-body { padding:4px 14px 12px; color:rgba(255,255,255,.9); font-size:15px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
   .post-body.colored { padding:36px 18px; margin:0; color:#fff; font-size:22px; font-weight:600; text-align:center; line-height:1.4; }
   .post-actions { display:flex; gap:18px; padding:8px 16px; border-top:1px solid rgba(255,255,255,.06); }
@@ -6808,6 +6815,7 @@ function buildSocial() {
       <div class="social-bgrow">${SOCIAL_BG.map((g, i) => `<div class="social-swatch${i === 0 ? ' plain' : ''}" style="${g ? 'background:' + g : ''}" onclick="socialPickBg(${i - 1})" title="${i === 0 ? 'Plain' : 'Color'}">${i === 0 ? 'Aa' : ''}</div>`).join('')}
         <button class="social-post" onclick="socialPost()">Post</button></div>
     </div>
+    <div class="social-tip">🚩 See a mean, scary, or spammy post (like random gibberish or links)? Tap <b>Report</b> on it — it goes straight to an admin.</div>
     <div class="social-feed" id="social-feed"><div style="color:rgba(255,255,255,.4);padding:30px;text-align:center">Loading feed…</div></div>
   </div>`;
 }
@@ -6847,6 +6855,7 @@ async function socialLoad() {
       <div class="post-actions">
         <span class="post-btn${p.liked ? ' liked' : ''}" onclick="socialLike('${p.id}')">${p.liked ? '❤️' : '🤍'} ${p.likes || ''}</span>
         <span class="post-btn" onclick="document.getElementById('cmt-${p.id}').classList.toggle('open')">💬 ${p.comments.length || ''}</span>
+        ${p.author === currentUser.username ? '' : `<span class="post-btn post-report" onclick="socialReport('${p.id}')" title="Report to an admin">🚩 Report</span>`}
       </div>
       <div class="post-comments${p.comments.length ? ' open' : ''}" id="cmt-${p.id}">
         ${p.comments.map(c => `<div class="post-cmt"><b>${escapeHtml(c.from)}</b> ${escapeHtml(c.text)}</div>`).join('')}
@@ -6865,6 +6874,12 @@ async function socialComment(id, input) {
   const r = await apiFetch('/api/posts/' + id + '/comment', { method: 'POST', body: JSON.stringify({ text }) });
   if (!r.error) socialLoad();
 }
+async function socialReport(id) {
+  if (!confirm('Report this post to an admin? Use this for mean, scary, or spammy posts (like random gibberish or links).')) return;
+  const r = await apiFetch('/api/posts/' + id + '/report', { method: 'POST', body: JSON.stringify({}) });
+  if (r.error) { notify('🚩', 'Could not report', r.error); return; }
+  notify('🚩', r.already ? 'Already reported' : 'Reported', 'Thanks! An admin will take a look. 💛');
+}
 async function socialDelete(id) {
   if (!confirm('Delete this post?')) return;
   const r = await apiFetch('/api/posts/' + id, { method: 'DELETE' });
@@ -6877,8 +6892,31 @@ function buildAdmin() {
   return `<div class="admin">
     <div class="admin-head"><span style="font-size:22px">🛡️</span><div><div style="color:#fff;font-weight:600">Admin Panel</div><div style="color:rgba(255,255,255,.45);font-size:12px">Manage MaxOS accounts</div></div>
       <button class="gbtn" style="margin-left:auto" onclick="adminLoad()">↻ Refresh</button></div>
+    <div id="admin-reports"></div>
     <div class="admin-list" id="admin-list"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
   </div>`;
+}
+async function adminLoadReports() {
+  const box = document.getElementById('admin-reports'); if (!box) return;
+  const list = await apiFetch('/api/admin/reports');
+  if (!Array.isArray(list) || !list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="admin-reports-head">🚩 Reported posts (${list.length})</div>` + list.map(r => `
+    <div class="admin-report">
+      <div class="admin-report-body"><b>@${escapeHtml(r.author || '?')}</b> <span style="color:rgba(255,255,255,.4)">— reported by @${escapeHtml(r.reporter)}</span>
+        <div class="admin-report-text">“${escapeHtml(r.text || '(post deleted)')}”</div></div>
+      <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDeleteReportedPost('${r.postId}','${r.id}')">🗑 Delete post</button>
+      <button class="gbtn" style="padding:5px 10px" onclick="adminDismissReport('${r.id}')">✖ Dismiss</button>
+    </div>`).join('');
+}
+async function adminDeleteReportedPost(postId, reportId) {
+  const r = await apiFetch('/api/posts/' + postId, { method: 'DELETE' });
+  if (r.error) { notify('🛡️', 'Error', r.error); return; }
+  notify('🗑️', 'Post removed', 'The reported post was deleted');
+  adminLoadReports();
+}
+async function adminDismissReport(id) {
+  const r = await apiFetch('/api/admin/reports/' + id + '/dismiss', { method: 'POST' });
+  if (!r.error) adminLoadReports();
 }
 function buildAdminWatch() {
   return `<div class="admin-watch" style="margin:0;height:100%;display:flex;flex-direction:column">
@@ -6890,7 +6928,7 @@ function buildAdminWatch() {
     <div class="admin-watch-meta" id="admin-watch-meta">idle</div>
   </div>`;
 }
-function initAdmin() { adminLoad(); adminWatchRefreshUI(); }
+function initAdmin() { adminLoad(); adminLoadReports(); adminWatchRefreshUI(); }
 function initAdminWatch() { adminWatchRefreshUI(); adminWatchTickMeta(); }
 function adminWatchRefreshUI(msg) {
   const stage = document.getElementById('admin-watch-stage');
@@ -6928,6 +6966,7 @@ function adminReceiveWatchEnded(packet) {
   adminStopWatching('@' + escapeHtml(packet.username) + ' watch ended.');
 }
 async function adminLoad() {
+  adminLoadReports();
   const el = document.getElementById('admin-list'); if (!el) return;
   const users = await apiFetch('/api/admin/users');
   if (users.error) { el.innerHTML = `<div style="color:#ff8a84;padding:20px">${users.error}</div>`; return; }
