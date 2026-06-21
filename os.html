@@ -1968,6 +1968,7 @@ function openApp(id) {
   focusWindow(id);
   addTaskbarBtn(id);
   if (id === 'terminal') initTerminal();
+  if (id === 'minecraft' && deviceMode !== 'ipad') maximizeWindow(id); // games open full-desktop
   if (id === 'files') setTimeout(() => fmLoad(fmCwd), 50);
   if (apps[id] && apps[id].custom) setTimeout(() => customRender(id), 80);
   else if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
