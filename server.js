@@ -68,6 +68,11 @@ function sendOS(res) {
 }
 app.get('/', (req, res) => sendOS(res));
 
+// VoxelCraft ("Minecraft" app) — served from MaxOS so opening the game only wakes
+// this one server. Its multiplayer backend (minecraft-mockup.onrender.com) is only
+// contacted if the player chooses multiplayer; offline play needs nothing else.
+app.get('/voxelcraft.html', (req, res) => res.sendFile(path.join(__dirname, 'voxelcraft.html')));
+
 // ── Offline mode: a service worker that caches the app shell ──────────────────
 // Network-first for the page so online users always get the latest build, but it
 // falls back to the last cached shell when there's no connection.
