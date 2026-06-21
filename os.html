@@ -1657,7 +1657,15 @@ const windows = {};
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 // Offline mode: cache the app shell so MaxOS loads even with no connection
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  // When a new service worker takes control (e.g. after a deploy), reload once so
+  // the page runs the freshly-served shell instead of a stale cached one.
+  let swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloaded) return; swReloaded = true; location.reload();
+  });
+  navigator.serviceWorker.register('/sw.js').then(reg => reg.update()).catch(() => {});
+}
 initAuth();
 
 // ── Clock ────────────────────────────────────────────────────────────────────

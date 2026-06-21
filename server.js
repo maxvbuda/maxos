@@ -76,9 +76,13 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v1';
+const CACHE = 'maxos-shell-v2';
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', e => e.waitUntil(
+  caches.keys()
+    .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    .then(() => self.clients.claim())
+));
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
