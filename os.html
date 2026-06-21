@@ -1968,7 +1968,7 @@ function openApp(id) {
   focusWindow(id);
   addTaskbarBtn(id);
   if (id === 'terminal') initTerminal();
-  if (id === 'minecraft' && deviceMode !== 'ipad') maximizeWindow(id); // games open full-desktop
+  if (id === 'minecraft') { if (deviceMode !== 'ipad') maximizeWindow(id); requestOSFullscreen(); } // full-desktop + real browser fullscreen
   if (id === 'files') setTimeout(() => fmLoad(fmCwd), 50);
   if (apps[id] && apps[id].custom) setTimeout(() => customRender(id), 80);
   else if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
@@ -2009,6 +2009,7 @@ function closeWindow(id) {
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
   if (id === 'adminwatch') adminStopWatching('Watch window closed.');
+  if (id === 'minecraft') exitOSFullscreen(); // leave browser fullscreen when the game closes
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -2039,6 +2040,16 @@ function maximizeWindow(id) {
     maximized[id] = { left: w.style.left, top: w.style.top, width: w.style.width, height: w.style.height };
     Object.assign(w.style, { left: '0', top: '0', width: '100vw', height: `calc(100vh - 48px)` });
   }
+}
+
+// Real browser fullscreen — only works when called from a user gesture (a click),
+// so we trigger it on app open. Promise is .catch'd in case the browser blocks it.
+function requestOSFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen().catch(() => {});
+}
+function exitOSFullscreen() {
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
 }
 
 function addTaskbarBtn(id) {
