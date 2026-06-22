@@ -68,11 +68,6 @@ function sendOS(res) {
 }
 app.get('/', (req, res) => sendOS(res));
 
-// VoxelCraft ("Minecraft" app) — served from MaxOS so opening the game only wakes
-// this one server. Its multiplayer backend (minecraft-mockup.onrender.com) is only
-// contacted if the player chooses multiplayer; offline play needs nothing else.
-app.get('/voxelcraft.html', (req, res) => res.sendFile(path.join(__dirname, 'voxelcraft.html')));
-
 // ── Offline mode: a service worker that caches the app shell ──────────────────
 // Network-first for the page so online users always get the latest build, but it
 // falls back to the last cached shell when there's no connection.
@@ -117,6 +112,8 @@ const UserSchema = new mongoose.Schema({
   admin:       { type: Boolean, default: false },
   adminRequest:   { type: Boolean, default: false }, // pending request to become admin (one at a time)
   teacherRequest: { type: Boolean, default: false }, // pending request to become teacher (one at a time)
+  // Server-authoritative Minecraft playtime (NOT writable via /api/me/data) — tamperproof weekly cap
+  mcPlay: { week: { type: String, default: '' }, used: { type: Number, default: 0 }, lastBeat: { type: Number, default: 0 } },
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -496,6 +493,50 @@ app.put('/api/me/data/:key', auth, async (req, res) => {
     // Mixed paths need an explicit $set on the dotted key
     await User.updateOne({ _id: req.user.id }, { $set: { ['appData.' + req.params.key]: req.body.value } });
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Minecraft weekly play limit — server-authoritative & tamperproof ─────────────
+// Time is tracked here with the server's own clock; the client cannot write or reset
+// it. 15 minutes per ISO week; superadmins are exempt.
+const MC_WEEK_LIMIT = 15 * 60;       // seconds
+const MC_MAX_GAP = 20;               // cap seconds credited per heartbeat (handles tab throttling / gaps)
+function mcWeekKey(d = new Date()) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // nearest Thursday
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t - firstThu) / 864e5 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  return t.getUTCFullYear() + '-W' + week;
+}
+// Read state, rolling over to a fresh week if needed (does not persist on its own)
+function mcReadWeek(u) {
+  const wk = mcWeekKey();
+  const p = u.mcPlay || {};
+  return (p.week === wk) ? { week: wk, used: p.used || 0, lastBeat: p.lastBeat || 0 }
+                         : { week: wk, used: 0, lastBeat: 0 };
+}
+// Status only — never increments. Used to gate opening the app.
+app.get('/api/minecraft/status', auth, async (req, res) => {
+  try {
+    if (ADMIN_USERS.includes(req.user.username)) return res.json({ unlimited: true, remaining: MC_WEEK_LIMIT, limit: MC_WEEK_LIMIT });
+    const u = await User.findById(req.user.id).select('mcPlay');
+    const p = mcReadWeek(u);
+    res.json({ remaining: Math.max(0, MC_WEEK_LIMIT - p.used), limit: MC_WEEK_LIMIT });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Heartbeat — credits real elapsed time (server clock, capped) and enforces the cap.
+app.post('/api/minecraft/heartbeat', auth, async (req, res) => {
+  try {
+    if (ADMIN_USERS.includes(req.user.username)) return res.json({ ok: true, unlimited: true, remaining: MC_WEEK_LIMIT });
+    const u = await User.findById(req.user.id).select('mcPlay');
+    const p = mcReadWeek(u);
+    const now = Date.now();
+    // Credit time only when this is a continuation of an active session (recent prior beat)
+    if (p.lastBeat && now - p.lastBeat > 0) p.used += Math.min(MC_MAX_GAP, Math.round((now - p.lastBeat) / 1000));
+    p.lastBeat = now;
+    await User.updateOne({ _id: req.user.id }, { $set: { mcPlay: p } });
+    const remaining = Math.max(0, MC_WEEK_LIMIT - p.used);
+    res.json({ ok: remaining > 0, remaining, limit: MC_WEEK_LIMIT });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
