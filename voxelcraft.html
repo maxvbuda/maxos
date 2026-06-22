@@ -1280,7 +1280,7 @@ document.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
 });
 document.addEventListener('keyup',e=>{keys[e.code]=false;});
-document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===renderer.domElement;if(started&&!anyUI())document.getElementById('pause').style.display=locked?'none':'flex';});
+document.addEventListener('pointerlockchange',()=>{locked=document.pointerLockElement===renderer.domElement;if(locked&&!started){document.exitPointerLock();return;}/* cursor stays visible on the login/menu — only hide it once the game is running */if(started&&!anyUI())document.getElementById('pause').style.display=locked?'none':'flex';});
 document.addEventListener('mousemove',e=>{if(!locked)return;plr.yaw-=e.movementX*.0017;plr.pitch-=e.movementY*.0017;plr.pitch=Math.max(-Math.PI/2+.01,Math.min(Math.PI/2-.01,plr.pitch));});
 
 renderer.domElement.addEventListener('mousedown',e=>{
@@ -1410,10 +1410,13 @@ function update(dt){
 }
 
 // ── Day/Night Cycle ───────────────────────────────────────────────────────────
-const DAY_DURATION=120;
+const DAY_SECONDS=780, NIGHT_SECONDS=120; // daytime 13 min + night 2 min = 15 min full cycle
 const _tc=(h)=>new THREE.Color(h);
 function updateSky(dt){
-  timeOfDay=(timeOfDay+dt/DAY_DURATION)%1;
+  // Advance time non-uniformly so the sun is UP for DAY_SECONDS and DOWN for NIGHT_SECONDS.
+  // Each half of the orbit spans 0.5 of timeOfDay; pick the rate from the current half.
+  const _curSunH=Math.sin(timeOfDay*Math.PI*2-Math.PI/2);
+  timeOfDay=(timeOfDay+dt*(_curSunH>0?0.5/DAY_SECONDS:0.5/NIGHT_SECONDS))%1;
   const ang=timeOfDay*Math.PI*2;
   const sunH=Math.sin(ang-Math.PI/2); // 1=noon, -1=midnight
   const dayF=Math.max(0,sunH);
