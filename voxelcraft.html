@@ -420,6 +420,8 @@ sun.castShadow=true;sun.shadow.mapSize.width=2048;sun.shadow.mapSize.height=2048
 sun.shadow.camera.near=1;sun.shadow.camera.far=300;
 sun.shadow.camera.left=-80;sun.shadow.camera.right=80;sun.shadow.camera.top=80;sun.shadow.camera.bottom=-80;
 sun.shadow.bias=-0.0005;sun.target.updateMatrixWorld();scene.add(sun);
+// A small light the player carries so they can see a bit in the dark — fades in at night.
+const carryLight=new THREE.PointLight(0xffe0b0,0,11,2);scene.add(carryLight);
 const hlMesh=new THREE.Mesh(new THREE.BoxGeometry(1.005,1.005,1.005),new THREE.MeshBasicMaterial({color:0,wireframe:true,transparent:true,opacity:.45}));
 hlMesh.visible=false;scene.add(hlMesh);
 
@@ -1420,6 +1422,9 @@ function updateSky(dt){
   const ang=timeOfDay*Math.PI*2;
   const sunH=Math.sin(ang-Math.PI/2); // 1=noon, -1=midnight
   const dayF=Math.max(0,sunH);
+  // Carried light: follows the player at eye level, brightens as it gets dark, off by day
+  carryLight.position.set(plr.pos.x,plr.pos.y+1.4,plr.pos.z);
+  carryLight.intensity=Math.max(0,1-dayF*1.6)*2.2;
   const dusk=Math.max(0,1-Math.abs(sunH)*5); // glow near horizon
   // Sun position orbits player
   const R=110;
