@@ -531,8 +531,11 @@ app.post('/api/minecraft/heartbeat', auth, async (req, res) => {
     const u = await User.findById(req.user.id).select('mcPlay');
     const p = mcReadWeek(u);
     const now = Date.now();
-    // Credit time only when this is a continuation of an active session (recent prior beat)
-    if (p.lastBeat && now - p.lastBeat > 0) p.used += Math.min(MC_MAX_GAP, Math.round((now - p.lastBeat) / 1000));
+    // Credit only continuous play: a gap within MC_MAX_GAP means beats are still
+    // flowing (~every 10s). A larger gap = new session / was away → credit nothing,
+    // so opening the game doesn't cost time for the break since last play.
+    const gap = p.lastBeat ? Math.round((now - p.lastBeat) / 1000) : 0;
+    if (gap > 0 && gap <= MC_MAX_GAP) p.used += gap;
     p.lastBeat = now;
     await User.updateOne({ _id: req.user.id }, { $set: { mcPlay: p } });
     const remaining = Math.max(0, MC_WEEK_LIMIT - p.used);
