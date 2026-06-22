@@ -6918,7 +6918,7 @@ async function socialLoad() {
   feed.innerHTML = posts.map(p => {
     const t = new Date(p.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const colored = p.bg >= 0;
-    const canDel = p.author === currentUser.username || currentUser.admin;
+    const canDel = p.author === currentUser.username || currentUser.superadmin;
     return `<div class="post">
       <div class="post-head"><div class="post-ava">${p.author[0].toUpperCase()}</div><div><div class="post-author">${escapeHtml(p.author)}</div><div class="post-time">${t}</div></div>
         ${canDel ? `<span class="post-del" onclick="socialDelete('${p.id}')" title="Delete">🗑</span>` : ''}</div>
@@ -6969,6 +6969,7 @@ function buildAdmin() {
 }
 async function adminLoadReports() {
   const box = document.getElementById('admin-reports'); if (!box) return;
+  if (!currentUser?.superadmin) { box.innerHTML = ''; return; } // reports are superadmin-only
   const list = await apiFetch('/api/admin/reports');
   if (!Array.isArray(list) || !list.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<div class="admin-reports-head">🚩 Reported posts (${list.length})</div>` + list.map(r => `
@@ -7049,14 +7050,14 @@ async function adminLoad() {
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
       u.superadmin ? '<span style="color:rgba(255,255,255,.35);font-size:12px">🔒 protected</span>' :
-      `${u.teacherRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleTeacher('${u.username}')">✅ Grant teacher</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','teacher')">✖ Deny</button>` : ''}
+      `${currentUser.superadmin ? `${u.teacherRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleTeacher('${u.username}')">✅ Grant teacher</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','teacher')">✖ Deny</button>` : ''}
        ${u.adminRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleAdmin('${u.username}')">✅ Grant admin</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','admin')">✖ Deny</button>` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleAdmin('${u.username}')">${u.admin ? '🛡️ Remove admin' : '🛡️ Make admin'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
-       ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}
+       ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
-       <button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>`}
+       ${currentUser.superadmin ? `<button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>` : ''}`}
   </div>`).join('') || '<div style="color:rgba(255,255,255,.4);padding:20px">No users.</div>';
   if (adminWatchUser && !users.some(u => u.username === adminWatchUser && u.suspicious)) {
     adminStopWatching('@' + escapeHtml(adminWatchUser) + ' is no longer marked suspicious.');

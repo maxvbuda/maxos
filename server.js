@@ -306,6 +306,12 @@ function adminOnly(req, res, next) {
   if (!req.user.admin) return res.status(403).json({ error: 'Admins only' });
   next();
 }
+// Regular admins can only view the user list and suspend. Everything more powerful
+// (appointing teachers/admins, flagging, screen-watch, deleting, reports) is superadmin-only.
+function superadminOnly(req, res, next) {
+  if (!ADMIN_USERS.includes(req.user.username)) return res.status(403).json({ error: 'Superadmin only' });
+  next();
+}
 // Like auth, but never rejects — sets req.user only when a valid, active token is present
 async function optionalAuth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -551,7 +557,7 @@ app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Superadmin appoints (or removes) a teacher; also clears any pending teacher request
-app.post('/api/admin/users/:username/teacher', auth, adminOnly, async (req, res) => {
+app.post('/api/admin/users/:username/teacher', auth, superadminOnly, async (req, res) => {
   try {
     const u = await User.findOne({ username: req.params.username.toLowerCase() });
     if (!u) return res.status(404).json({ error: 'User not found' });
@@ -560,7 +566,7 @@ app.post('/api/admin/users/:username/teacher', auth, adminOnly, async (req, res)
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Superadmin makes (or removes) an admin; also clears any pending admin request
-app.post('/api/admin/users/:username/admin', auth, adminOnly, async (req, res) => {
+app.post('/api/admin/users/:username/admin', auth, superadminOnly, async (req, res) => {
   try {
     const name = req.params.username.toLowerCase();
     if (ADMIN_USERS.includes(name)) return res.status(400).json({ error: 'That account is a permanent superadmin' });
@@ -572,7 +578,7 @@ app.post('/api/admin/users/:username/admin', auth, adminOnly, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Deny a pending role request without granting it
-app.post('/api/admin/users/:username/deny/:role', auth, adminOnly, async (req, res) => {
+app.post('/api/admin/users/:username/deny/:role', auth, superadminOnly, async (req, res) => {
   try {
     const role = req.params.role;
     if (role !== 'admin' && role !== 'teacher') return res.status(400).json({ error: 'Bad role' });
@@ -592,7 +598,7 @@ app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res)
     res.json({ ok: true, suspended: u.suspended });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/admin/users/:username/suspicious', auth, adminOnly, async (req, res) => {
+app.post('/api/admin/users/:username/suspicious', auth, superadminOnly, async (req, res) => {
   try {
     const u = await User.findOne({ username: req.params.username.toLowerCase() });
     if (!u) return res.status(404).json({ error: 'User not found' });
@@ -606,7 +612,7 @@ app.post('/api/admin/users/:username/suspicious', auth, adminOnly, async (req, r
     res.json({ ok: true, suspicious: u.suspicious });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/users/:username/screen', auth, adminOnly, async (req, res) => {
+app.get('/api/admin/users/:username/screen', auth, superadminOnly, async (req, res) => {
   try {
     const u = await User.findOne({ username: req.params.username.toLowerCase() }).select('username displayName suspicious');
     if (!u) return res.status(404).json({ error: 'User not found' });
@@ -623,7 +629,7 @@ app.get('/api/admin/users/:username/screen', auth, adminOnly, async (req, res) =
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/admin/users/:username', auth, adminOnly, async (req, res) => {
+app.delete('/api/admin/users/:username', auth, superadminOnly, async (req, res) => {
   try {
     const uname = req.params.username.toLowerCase();
     if (uname === req.user.username) return res.status(400).json({ error: 'You cannot delete yourself' });
@@ -719,15 +725,15 @@ app.get('/api/messages/unread', auth, async (req, res) => {
 app.get('/api/me/school', auth, async (req, res) => {
   try {
     const state = await getSchoolState(req.user.username);
-    // Only appointed teachers (or admins) may create classes
-    state.canCreateClass = !!(req.user.teacher || req.user.admin);
+    // Only teachers appointed by the superadmin may create classes — admin alone is not enough
+    state.canCreateClass = !!req.user.teacher;
     res.json(state);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Create a class — appointed teachers (or admins) only
+// Create a class — only teachers appointed by the superadmin
 app.post('/api/classes', auth, async (req, res) => {
   try {
-    if (!req.user.teacher && !req.user.admin) return res.status(403).json({ error: 'Only a teacher can create a class. Ask an admin to make you a teacher.' });
+    if (!req.user.teacher) return res.status(403).json({ error: 'Only a teacher can create a class. Ask the superadmin to make you a teacher.' });
     const name = (req.body.name || '').trim() || 'My Class';
     let code; do { code = Math.random().toString(36).slice(2, 7).toUpperCase(); } while (await Klass.findOne({ code }));
     const k = await Klass.create({ name, code, teacher: req.user.username, students: [], allowedApps: [] });
@@ -880,7 +886,7 @@ app.post('/api/posts/:id/comment', auth, async (req, res) => {
 app.delete('/api/posts/:id', auth, async (req, res) => {
   try {
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
-    if (p.author !== req.user.username && !req.user.admin) return res.status(403).json({ error: 'Not your post' });
+    if (p.author !== req.user.username && !ADMIN_USERS.includes(req.user.username)) return res.status(403).json({ error: 'Not your post' });
     await p.deleteOne();
     await Report.updateMany({ postId: req.params.id }, { handled: true }); // clear any reports
     io.to('feed').emit('feed');
@@ -898,13 +904,13 @@ app.post('/api/posts/:id/report', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Admin: list open reports + dismiss
-app.get('/api/admin/reports', auth, adminOnly, async (req, res) => {
+app.get('/api/admin/reports', auth, superadminOnly, async (req, res) => {
   try {
     const list = await Report.find({ handled: false }).sort({ createdAt: -1 }).limit(100);
     res.json(list.map(r => ({ id: r._id.toString(), postId: r.postId, author: r.author, text: r.text, reporter: r.reporter, reason: r.reason, at: r.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/admin/reports/:id/dismiss', auth, adminOnly, async (req, res) => {
+app.post('/api/admin/reports/:id/dismiss', auth, superadminOnly, async (req, res) => {
   try { await Report.updateOne({ _id: req.params.id }, { handled: true }); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
