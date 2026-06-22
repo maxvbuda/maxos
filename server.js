@@ -5,6 +5,7 @@ const cors     = require('cors');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const path     = require('path');
+const fs       = require('fs');
 const http     = require('http');
 const crypto   = require('crypto');
 const { Server: SocketIOServer } = require('socket.io');
@@ -58,15 +59,29 @@ const latestScreenFrames = new Map(); // username -> { username, at, frame }
 const io = new SocketIOServer(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
 // ── Serve frontend ────────────────────────────────────────────────────────────
-// Always send the latest os.html — never let the browser (esp. iOS Safari) cache
-// a stale single-page app shell.
+// The build step (build.js, run on prestart) splits os.html into dist/{index.html,
+// app.js, styles.css} with the JS obfuscated — that's what we serve, so "View Source"
+// only shows the tiny index.html. If the build hasn't run (dist missing), fall back
+// to the single-file os.html so the site stays up no matter what.
+const DIST = path.join(__dirname, 'dist');
+const noStore = (res) => { res.set('Cache-Control', 'no-cache, no-store, must-revalidate'); res.set('Pragma', 'no-cache'); res.set('Expires', '0'); };
 function sendOS(res) {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  res.sendFile(path.join(__dirname, 'os.html'));
+  noStore(res);
+  const built = path.join(DIST, 'index.html');
+  res.sendFile(fs.existsSync(built) ? built : path.join(__dirname, 'os.html'));
 }
 app.get('/', (req, res) => sendOS(res));
+// Split assets (only exist when the build has run). no-store so a deploy is picked up.
+app.get('/app.js', (req, res) => {
+  const f = path.join(DIST, 'app.js');
+  if (!fs.existsSync(f)) return res.status(404).end();
+  noStore(res); res.type('application/javascript'); res.sendFile(f);
+});
+app.get('/styles.css', (req, res) => {
+  const f = path.join(DIST, 'styles.css');
+  if (!fs.existsSync(f)) return res.status(404).end();
+  noStore(res); res.type('text/css'); res.sendFile(f);
+});
 
 // ── Offline mode: a service worker that caches the app shell ──────────────────
 // Network-first for the page so online users always get the latest build, but it
@@ -76,7 +91,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v2';
+const CACHE = 'maxos-shell-v3';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -90,11 +105,14 @@ self.addEventListener('fetch', e => {
   if (url.origin !== location.origin) return;        // leave cross-origin alone
   if (url.pathname.startsWith('/api/')) return;       // never cache the API
   const isShell = req.mode === 'navigate' || req.destination === 'document' || url.pathname === '/' || url.pathname === '/os.html';
-  if (!isShell) return;
+  // The split build also needs app.js + styles.css cached so the shell still works offline.
+  const isAsset = url.pathname === '/app.js' || url.pathname === '/styles.css';
+  if (!isShell && !isAsset) return;
+  const key = isShell ? '/' : url.pathname; // navigations all share the '/' shell entry
   e.respondWith(
     fetch(req)
-      .then(resp => { const copy = resp.clone(); caches.open(CACHE).then(c => c.put('/', copy)); return resp; })
-      .catch(() => caches.open(CACHE).then(c => c.match('/')).then(r => r || new Response('<h1>MaxOS is offline</h1><p>Open it once online to cache it.</p>', { headers: { 'Content-Type': 'text/html' } })))
+      .then(resp => { const copy = resp.clone(); caches.open(CACHE).then(c => c.put(key, copy)); return resp; })
+      .catch(() => caches.open(CACHE).then(c => c.match(key)).then(r => r || (isShell ? new Response('<h1>MaxOS is offline</h1><p>Open it once online to cache it.</p>', { headers: { 'Content-Type': 'text/html' } }) : undefined)))
   );
 });`);
 });
