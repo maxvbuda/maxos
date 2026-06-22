@@ -1937,7 +1937,8 @@ function openApp(id) {
   if (!schoolAllows(id)) { notify('🏫', 'Locked by your teacher', (apps[id].title || 'That app') + ' isn’t assigned right now.'); return; }
   if (windows[id]) { focusWindow(id); return; }
   if (id === 'minecraft' && mcBlockedFromOpening()) {
-    notify('⛏️', 'Weekly limit reached', 'You’ve used your 15 minutes of Minecraft this week. It resets Monday.');
+    notify('⛏️', 'Weekly limit reached', 'You’ve used your Minecraft time this week. It resets Monday.');
+    mcAskMoreTime();
     return;
   }
 
@@ -2063,16 +2064,25 @@ function exitOSFullscreen() {
 let mcPlayTimer = null;
 let mcRemainingCache = null;   // seconds left this week per the server (null = unknown)
 let mcUnlimited = false;       // superadmin
+let mcRequested = false;       // a "more time" request is already pending
 function mcIsSuper() { return !!currentUser?.superadmin || currentUser?.username === 'max'; }
 async function mcLoadStatus() {
   try {
     const r = await apiFetch('/api/minecraft/status');
-    if (r && !r.error) { mcUnlimited = !!r.unlimited; mcRemainingCache = r.remaining; }
+    if (r && !r.error) { mcUnlimited = !!r.unlimited; mcRemainingCache = r.remaining; mcRequested = !!r.requested; }
   } catch { /* unknown — fail open; the heartbeat still enforces */ }
 }
 // Only block when we KNOW the server says 0 left (otherwise let the heartbeat decide)
 function mcBlockedFromOpening() {
   return !mcIsSuper() && !mcUnlimited && mcRemainingCache !== null && mcRemainingCache <= 0;
+}
+// Out of time → offer to ask the superadmin for more.
+async function mcAskMoreTime() {
+  if (mcRequested) { notify('⛏️', 'Request pending', 'You already asked for more time — waiting on the superadmin.'); return; }
+  if (!confirm('You’ve used your Minecraft time for this week.\n\nAsk the superadmin for more time?')) return;
+  const r = await apiFetch('/api/minecraft/request-more', { method: 'POST', body: '{}' });
+  if (r && !r.error) { mcRequested = true; notify('⛏️', 'Request sent', 'Asked the superadmin for more time. 🤞'); }
+  else notify('⛏️', 'Couldn’t send', (r && r.error) || 'Try again later.');
 }
 function mcStartTracking() {
   if (mcIsSuper()) return; // exempt — never tracked
@@ -2082,8 +2092,9 @@ function mcStartTracking() {
     if (!r || r.error) return; // network hiccup — try again next tick
     mcUnlimited = !!r.unlimited; mcRemainingCache = r.remaining;
     if (!r.unlimited && r.ok === false) {
-      notify('⛏️', 'Time’s up!', 'You’ve used your 15 minutes of Minecraft this week. It resets Monday.');
+      notify('⛏️', 'Time’s up!', 'You’ve used your Minecraft time this week. It resets Monday.');
       closeWindow('minecraft');
+      mcAskMoreTime();
     }
   };
   beat();                              // charge/check immediately on open
@@ -7045,13 +7056,14 @@ async function adminLoad() {
   el.innerHTML = users.map(u => `<div class="admin-user${u.suspended ? ' susp' : ''}">
     <div class="admin-avatar">${u.username[0].toUpperCase()}</div>
     <div style="flex:1;min-width:0">
-      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.superadmin ? '<span class="admin-badge" style="background:rgba(191,90,242,.35);color:#e3b6ff">SUPERADMIN 👑</span>' : (u.admin ? '<span class="admin-badge">ADMIN</span>' : '')} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
+      <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.superadmin ? '<span class="admin-badge" style="background:rgba(191,90,242,.35);color:#e3b6ff">SUPERADMIN 👑</span>' : (u.admin ? '<span class="admin-badge">ADMIN</span>' : '')} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.mcTimeRequest ? '<span class="admin-badge req">⛏ WANTS MC TIME</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
       u.superadmin ? '<span style="color:rgba(255,255,255,.35);font-size:12px">🔒 protected</span>' :
       `${currentUser.superadmin ? `${u.teacherRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleTeacher('${u.username}')">✅ Grant teacher</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','teacher')">✖ Deny</button>` : ''}
        ${u.adminRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminToggleAdmin('${u.username}')">✅ Grant admin</button><button class="gbtn" style="padding:5px 10px" onclick="adminDenyRequest('${u.username}','admin')">✖ Deny</button>` : ''}
+       ${u.mcTimeRequest ? `<button class="gbtn" style="padding:5px 10px;background:rgba(40,200,64,.25)" onclick="adminGrantTime('${u.username}')">⛏ Grant +15 min</button>` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleAdmin('${u.username}')">${u.admin ? '🛡️ Remove admin' : '🛡️ Make admin'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
@@ -7079,6 +7091,12 @@ async function adminDenyRequest(username, role) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/deny/' + role, { method: 'POST' });
   if (r.error) { notify('🛡️', 'Error', r.error); return; }
   notify('✖', 'Denied', '@' + username + "'s " + role + ' request');
+  adminLoad();
+}
+async function adminGrantTime(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/grant-time', { method: 'POST', body: JSON.stringify({ minutes: 15 }) });
+  if (r.error) { notify('⛏️', 'Error', r.error); return; }
+  notify('⛏️', 'More time granted', '@' + username + ' got +' + (r.addedMinutes || 15) + ' min of Minecraft this week.');
   adminLoad();
 }
 async function adminToggleSuspicious(username) {

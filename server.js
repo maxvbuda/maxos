@@ -130,8 +130,10 @@ const UserSchema = new mongoose.Schema({
   admin:       { type: Boolean, default: false },
   adminRequest:   { type: Boolean, default: false }, // pending request to become admin (one at a time)
   teacherRequest: { type: Boolean, default: false }, // pending request to become teacher (one at a time)
-  // Server-authoritative Minecraft playtime (NOT writable via /api/me/data) — tamperproof weekly cap
-  mcPlay: { week: { type: String, default: '' }, used: { type: Number, default: 0 }, lastBeat: { type: Number, default: 0 } },
+  // Server-authoritative Minecraft playtime (NOT writable via /api/me/data) — tamperproof weekly cap.
+  // bonus = extra seconds granted by the superadmin for the current week (on top of the base limit).
+  mcPlay: { week: { type: String, default: '' }, used: { type: Number, default: 0 }, lastBeat: { type: Number, default: 0 }, bonus: { type: Number, default: 0 } },
+  mcTimeRequest: { type: Boolean, default: false }, // pending "more Minecraft time" request to the superadmin
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -532,20 +534,23 @@ function mcWeekKey(d = new Date()) {
   const week = 1 + Math.round(((t - firstThu) / 864e5 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
   return t.getUTCFullYear() + '-W' + week;
 }
-// Read state, rolling over to a fresh week if needed (does not persist on its own)
+// Read state, rolling over to a fresh week if needed (does not persist on its own).
+// A new week resets used AND any superadmin-granted bonus.
 function mcReadWeek(u) {
   const wk = mcWeekKey();
   const p = u.mcPlay || {};
-  return (p.week === wk) ? { week: wk, used: p.used || 0, lastBeat: p.lastBeat || 0 }
-                         : { week: wk, used: 0, lastBeat: 0 };
+  return (p.week === wk) ? { week: wk, used: p.used || 0, lastBeat: p.lastBeat || 0, bonus: p.bonus || 0 }
+                         : { week: wk, used: 0, lastBeat: 0, bonus: 0 };
 }
+const mcLimitFor = (p) => MC_WEEK_LIMIT + (p.bonus || 0); // base + granted bonus
 // Status only — never increments. Used to gate opening the app.
 app.get('/api/minecraft/status', auth, async (req, res) => {
   try {
     if (ADMIN_USERS.includes(req.user.username)) return res.json({ unlimited: true, remaining: MC_WEEK_LIMIT, limit: MC_WEEK_LIMIT });
-    const u = await User.findById(req.user.id).select('mcPlay');
+    const u = await User.findById(req.user.id).select('mcPlay mcTimeRequest');
     const p = mcReadWeek(u);
-    res.json({ remaining: Math.max(0, MC_WEEK_LIMIT - p.used), limit: MC_WEEK_LIMIT });
+    const lim = mcLimitFor(p);
+    res.json({ remaining: Math.max(0, lim - p.used), limit: lim, requested: !!u.mcTimeRequest });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Heartbeat — credits real elapsed time (server clock, capped) and enforces the cap.
@@ -562,16 +567,25 @@ app.post('/api/minecraft/heartbeat', auth, async (req, res) => {
     if (gap > 0 && gap <= MC_MAX_GAP) p.used += gap;
     p.lastBeat = now;
     await User.updateOne({ _id: req.user.id }, { $set: { mcPlay: p } });
-    const remaining = Math.max(0, MC_WEEK_LIMIT - p.used);
-    res.json({ ok: remaining > 0, remaining, limit: MC_WEEK_LIMIT });
+    const lim = mcLimitFor(p);
+    const remaining = Math.max(0, lim - p.used);
+    res.json({ ok: remaining > 0, remaining, limit: lim });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// A kid out of time asks the superadmin for more (one pending request at a time).
+app.post('/api/minecraft/request-more', auth, async (req, res) => {
+  try {
+    if (ADMIN_USERS.includes(req.user.username)) return res.json({ ok: true }); // superadmin never needs to ask
+    await User.updateOne({ _id: req.user.id }, { $set: { mcTimeRequest: true } });
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest createdAt').sort({ createdAt: 1 });
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt })));
+    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt').sort({ createdAt: 1 });
+    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, mcTimeRequest: u.mcTimeRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Superadmin appoints (or removes) a teacher; also clears any pending teacher request
@@ -614,6 +628,18 @@ app.post('/api/admin/users/:username/suspend', auth, adminOnly, async (req, res)
     if (ADMIN_USERS.includes(u.username)) return res.status(403).json({ error: 'The superadmin cannot be suspended' });
     u.suspended = !u.suspended; await u.save();
     res.json({ ok: true, suspended: u.suspended });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Superadmin grants more Minecraft time for the current week (default +15 min) and clears the request.
+app.post('/api/admin/users/:username/grant-time', auth, superadminOnly, async (req, res) => {
+  try {
+    const u = await User.findOne({ username: req.params.username.toLowerCase() });
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    const mins = Math.min(120, Math.max(1, parseInt(req.body.minutes, 10) || 15));
+    const p = mcReadWeek(u); // rolls to current week (resets stale used/bonus first)
+    p.bonus = (p.bonus || 0) + mins * 60;
+    await User.updateOne({ _id: u._id }, { $set: { mcPlay: p, mcTimeRequest: false } });
+    res.json({ ok: true, addedMinutes: mins });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/admin/users/:username/suspicious', auth, superadminOnly, async (req, res) => {
