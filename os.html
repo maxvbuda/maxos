@@ -1115,7 +1115,7 @@ async function authSubmit() {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
     authToken = data.token;
-    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious };
+    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious, superadmin: !!data.superadmin };
     if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
     localStorage.setItem('maxos_token', authToken);
     localStorage.setItem('maxos_user', JSON.stringify(currentUser));
@@ -1162,7 +1162,7 @@ function startHeartbeat() {
       else if (r.ok) {
         const d = await r.json();
         const wasSuspicious = !!currentUser?.suspicious;
-        currentUser = { ...(currentUser || {}), username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious };
+        currentUser = { ...(currentUser || {}), username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious, superadmin: !!d.superadmin };
         localStorage.setItem('maxos_user', JSON.stringify(currentUser));
         if (wasSuspicious !== !!d.suspicious) {
           if (d.suspicious) startScreenWatchShare();
@@ -1323,7 +1323,7 @@ async function checkExistingSession() {
     const r = await fetch(`${API}/api/auth/me`, { headers: authHeaders() });
     if (r.ok) {
       const d = await r.json();
-      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious };
+      currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious, superadmin: !!d.superadmin };
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
       localStorage.setItem('maxos_user', JSON.stringify(currentUser));
       return true;
@@ -1361,6 +1361,7 @@ function bootOS() {
   startHeartbeat();
   startScreenWatchShare();
   remStartPolling();
+  mcLoadPlay(); // async — load this week's Minecraft playtime for the limit check
   loadCustomApps(); // async — pulls community apps from MongoDB, re-renders when done
   // fade out boot screen + welcome
   setTimeout(() => {
@@ -1935,6 +1936,10 @@ function openApp(id) {
   if (apps[id].adminOnly && !currentUser?.admin) { notify('🛡️', 'Admins only', 'You do not have access to that.'); return; }
   if (!schoolAllows(id)) { notify('🏫', 'Locked by your teacher', (apps[id].title || 'That app') + ' isn’t assigned right now.'); return; }
   if (windows[id]) { focusWindow(id); return; }
+  if (id === 'minecraft' && !mcIsSuper() && mcRemaining() <= 0) {
+    notify('⛏️', 'Weekly limit reached', 'You’ve used your 15 minutes of Minecraft this week. It resets Monday.');
+    return;
+  }
 
   const app = apps[id];
   const win = document.createElement('div');
@@ -1968,7 +1973,7 @@ function openApp(id) {
   focusWindow(id);
   addTaskbarBtn(id);
   if (id === 'terminal') initTerminal();
-  if (id === 'minecraft') { if (deviceMode !== 'ipad') maximizeWindow(id); requestOSFullscreen(); } // full-desktop + real browser fullscreen
+  if (id === 'minecraft') { if (deviceMode !== 'ipad') maximizeWindow(id); requestOSFullscreen(); mcStartTracking(); } // full-desktop + browser fullscreen + weekly-limit timer
   if (id === 'files') setTimeout(() => fmLoad(fmCwd), 50);
   if (apps[id] && apps[id].custom) setTimeout(() => customRender(id), 80);
   else if (appInitHooks[id]) setTimeout(() => appInitHooks[id](), 80);
@@ -2009,7 +2014,7 @@ function closeWindow(id) {
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
   if (id === 'adminwatch') adminStopWatching('Watch window closed.');
-  if (id === 'minecraft') exitOSFullscreen(); // leave browser fullscreen when the game closes
+  if (id === 'minecraft') { exitOSFullscreen(); mcStopTracking(); } // leave fullscreen + save playtime
   w.el.classList.add('closing');
   const tb = document.getElementById('tb-app-' + id);
   if (tb) tb.remove();
@@ -2050,6 +2055,47 @@ function requestOSFullscreen() {
 }
 function exitOSFullscreen() {
   if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+
+// ── Minecraft weekly play limit — 15 min/week per user; superadmin exempt (testing) ──
+const MC_WEEK_LIMIT = 15 * 60; // seconds
+let mcPlay = { week: '', used: 0 };
+let mcPlayTimer = null, mcSaveAccum = 0;
+function mcWeekKey(d = new Date()) {
+  // ISO week key (year + week number) so the cap resets each Monday
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // nearest Thursday
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t - firstThu) / 864e5 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  return t.getUTCFullYear() + '-W' + week;
+}
+function mcIsSuper() { return !!currentUser?.superadmin || currentUser?.username === 'max'; }
+async function mcLoadPlay() {
+  const wk = mcWeekKey();
+  try {
+    const res = await apiFetch('/api/me/data/minecraftPlay');
+    const v = res && !res.error ? res.value : null;
+    mcPlay = (v && v.week === wk) ? { week: wk, used: +v.used || 0 } : { week: wk, used: 0 };
+  } catch { mcPlay = { week: wk, used: 0 }; }
+}
+function mcSavePlay() { apiFetch('/api/me/data/minecraftPlay', { method: 'PUT', body: JSON.stringify({ value: mcPlay }) }); }
+function mcSyncWeek() { const wk = mcWeekKey(); if (mcPlay.week !== wk) mcPlay = { week: wk, used: 0 }; }
+function mcRemaining() { mcSyncWeek(); return MC_WEEK_LIMIT - mcPlay.used; }
+function mcStartTracking() {
+  if (mcIsSuper()) return; // testing — no cap, no counting
+  mcStopTracking();
+  mcPlayTimer = setInterval(() => {
+    mcSyncWeek();
+    mcPlay.used++; mcSaveAccum++;
+    if (mcSaveAccum >= 15) { mcSaveAccum = 0; mcSavePlay(); } // persist every 15s
+    if (mcPlay.used >= MC_WEEK_LIMIT) {
+      notify('⛏️', 'Time’s up!', 'You’ve used your 15 minutes of Minecraft this week. It resets Monday.');
+      closeWindow('minecraft');
+    }
+  }, 1000);
+}
+function mcStopTracking() {
+  if (mcPlayTimer) { clearInterval(mcPlayTimer); mcPlayTimer = null; mcSavePlay(); }
 }
 
 function addTaskbarBtn(id) {

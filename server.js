@@ -440,7 +440,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -456,14 +456,14 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
   const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed');
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed });
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username) });
 });
 
 // Request to become a teacher or admin — one pending request per role (anti-spam)
