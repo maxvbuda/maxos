@@ -56,7 +56,8 @@ const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s
 const TESTER_USERS = ['andy', ...(process.env.TESTER_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
 const isTester = (name) => TESTER_USERS.includes((name || '').toLowerCase());
 // Resend API key for tester problem reports — set this in the environment, never in code.
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+// Env var name: RESEND_API (RESEND_API_KEY also accepted as a fallback).
+const RESEND_API_KEY = process.env.RESEND_API || process.env.RESEND_API_KEY || '';
 const FEEDBACK_TO = process.env.FEEDBACK_TO || 'maxvbuda@gmail.com';
 const SCREENWATCH_ROOM = username => `screenwatch:${username}`;
 const SCREENWATCH_STALE_MS = 15000;
