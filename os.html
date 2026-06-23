@@ -303,6 +303,17 @@
   .cal-chip { font-size:11px; color:#fff; padding:1px 6px; border-radius:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; line-height:1.5; }
   .cal-chip b { font-weight:600; opacity:.85; margin-right:3px; }
   .cal-more { font-size:10px; color:rgba(255,255,255,.5); padding-left:5px; }
+  /* Calendar — single-day view (hourly timeline) */
+  #cal-dayview { flex:1; overflow-y:auto; display:none; min-height:0; }
+  #cal-dayview.show { display:block; }
+  .cal-allday-strip { display:flex; flex-wrap:wrap; gap:4px; padding:8px 12px 8px 60px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .cal-timeline { position:relative; margin-left:54px; border-left:1px solid rgba(255,255,255,.08); }
+  .cal-hour { position:absolute; left:0; right:0; height:0; border-top:1px solid rgba(255,255,255,.07); }
+  .cal-hour-lbl { position:absolute; left:-52px; top:-7px; font-size:10px; color:rgba(255,255,255,.4); width:46px; text-align:right; }
+  .cal-slot { position:absolute; left:0; right:0; cursor:pointer; }
+  .cal-slot:hover { background:rgba(255,255,255,.03); }
+  .cal-event { position:absolute; left:6px; right:8px; min-height:22px; padding:3px 9px; border-radius:6px; color:#fff; font-size:12px; cursor:pointer; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.45); z-index:2; }
+  .cal-event b { font-weight:600; opacity:.9; }
   .cal-modal { position:absolute; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:20; }
   .cal-modal.show { display:flex; }
   .cal-modal-card { background:#1a1a2e; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px; width:300px; max-width:90%; display:flex; flex-direction:column; gap:12px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
@@ -3303,14 +3314,16 @@ function initSysmon() {
 function buildCalendar() {
   return `<div class="cal-wrap">
     <div class="cal-top">
-      <button class="cal-nav" onclick="calNav(-1)">‹</button>
-      <button class="cal-nav" onclick="calNav(1)">›</button>
+      <button class="cal-btn" id="cal-back" style="display:none" onclick="calBackToMonth()">‹ Month</button>
+      <button class="cal-nav" onclick="calPrev()">‹</button>
+      <button class="cal-nav" onclick="calNext()">›</button>
       <h3 id="cal-title"></h3>
       <button class="cal-btn" onclick="calToday()">Today</button>
       <button class="cal-btn primary" onclick="calOpenNew()">+ Event</button>
     </div>
-    <div class="cal-dow-row">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}</div>
+    <div class="cal-dow-row" id="cal-dow-row">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}</div>
     <div class="cal-grid" id="cal-grid"></div>
+    <div id="cal-dayview"></div>
     <div class="cal-modal" id="cal-modal" onclick="if(event.target===this)calCloseModal()">
       <div class="cal-modal-card">
         <input type="text" id="cal-f-title" placeholder="Add title" autocomplete="off">
@@ -3332,9 +3345,17 @@ function buildCalendar() {
 let calDate = new Date();
 let calEvents = [];                 // [{ id, date:'YYYY-MM-DD', time:'HH:MM'|'', title, color }]
 let calEditId = null, calFormColor = '#4a7aff';
+let calView = 'month';              // 'month' | 'day'
+let calDayKey = '';                 // the day shown in day view ('YYYY-MM-DD')
 const CAL_COLORS = ['#4a7aff', '#e0524f', '#34a853', '#f5b400', '#bf5af2', '#16a3a3'];
 const calKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-const calToday = () => { calDate = new Date(); renderCalendar(); };
+const calTodayKey = () => { const d = new Date(); return calKey(d.getFullYear(), d.getMonth(), d.getDate()); };
+function calToday() { if (calView === 'day') calDayKey = calTodayKey(); else calDate = new Date(); renderCalendar(); }
+function calPrev() { calView === 'day' ? calDayNav(-1) : calNav(-1); }
+function calNext() { calView === 'day' ? calDayNav(1) : calNav(1); }
+function calOpenDay(key) { calView = 'day'; calDayKey = key; renderCalendar(); }
+function calBackToMonth() { calView = 'month'; renderCalendar(); }
+function calDayNav(dir) { const [y, m, d] = calDayKey.split('-').map(Number); const dt = new Date(y, m - 1, d + dir); calDayKey = calKey(dt.getFullYear(), dt.getMonth(), dt.getDate()); renderCalendar(); }
 
 async function initCalendar() {
   const r = await apiFetch('/api/me/data/calendar');
@@ -3344,29 +3365,65 @@ async function initCalendar() {
 function calSaveData() { apiFetch('/api/me/data/calendar', { method: 'PUT', body: JSON.stringify({ value: calEvents }) }); }
 function calNav(dir) { calDate.setMonth(calDate.getMonth() + dir); renderCalendar(); }
 
+// Dispatcher: show month grid or single-day view depending on calView.
 function renderCalendar() {
+  if (!document.getElementById('cal-title')) return;
+  const month = calView !== 'day';
+  const dow = document.getElementById('cal-dow-row'), grid = document.getElementById('cal-grid'),
+        dayv = document.getElementById('cal-dayview'), back = document.getElementById('cal-back');
+  if (dow) dow.style.display = month ? '' : 'none';
+  if (grid) grid.style.display = month ? '' : 'none';
+  if (dayv) dayv.classList.toggle('show', !month);
+  if (back) back.style.display = month ? 'none' : '';
+  month ? renderMonth() : renderDayView();
+}
+function renderMonth() {
   const title = document.getElementById('cal-title'), grid = document.getElementById('cal-grid');
   if (!title || !grid) return;
   const y = calDate.getFullYear(), m = calDate.getMonth();
   title.textContent = new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-  const first = new Date(y, m, 1).getDay(), total = new Date(y, m + 1, 0).getDate();
-  const todayKey = calKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-  // 6 weeks of cells starting from the Sunday before the 1st
-  const start = new Date(y, m, 1 - first);
+  const first = new Date(y, m, 1).getDay();
+  const today = calTodayKey();
+  const start = new Date(y, m, 1 - first); // Sunday before the 1st
   let html = '';
   for (let i = 0; i < 42; i++) {
     const dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
     const key = calKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
     const other = dt.getMonth() !== m;
-    const evs = calEvents.filter(e => e.date === key)
-      .sort((a, b) => (a.time || '0').localeCompare(b.time || '0'));
+    const evs = calEvents.filter(e => e.date === key).sort((a, b) => (a.time || '0').localeCompare(b.time || '0'));
     const chips = evs.slice(0, 3).map(e =>
       `<div class="cal-chip" style="background:${e.color || '#4a7aff'}" onclick="event.stopPropagation();calOpenEdit('${e.id}')">${e.time ? `<b>${e.time}</b>` : ''}${escapeHtml(e.title)}</div>`).join('');
     const more = evs.length > 3 ? `<div class="cal-more">+${evs.length - 3} more</div>` : '';
-    html += `<div class="cal-cell${other ? ' other' : ''}${key === todayKey ? ' today' : ''}" onclick="calOpenNew('${key}')">
+    html += `<div class="cal-cell${other ? ' other' : ''}${key === today ? ' today' : ''}" onclick="calOpenDay('${key}')">
       <div class="cal-daynum">${dt.getDate()}</div>${chips}${more}</div>`;
   }
   grid.innerHTML = html;
+}
+// Single-day view: an hourly timeline (tap an hour to add, tap an event to edit).
+function renderDayView() {
+  const title = document.getElementById('cal-title'), box = document.getElementById('cal-dayview');
+  if (!title || !box) return;
+  const [y, m, d] = calDayKey.split('-').map(Number);
+  title.textContent = new Date(y, m - 1, d).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
+  const evs = calEvents.filter(e => e.date === calDayKey);
+  const allday = evs.filter(e => !e.time);
+  const timed = evs.filter(e => e.time);
+  const HOUR = 48;
+  let hours = '', slots = '';
+  for (let h = 0; h < 24; h++) {
+    const lbl = h === 0 ? '12 AM' : h < 12 ? h + ' AM' : h === 12 ? '12 PM' : (h - 12) + ' PM';
+    hours += `<div class="cal-hour" style="top:${h * HOUR}px"><span class="cal-hour-lbl">${lbl}</span></div>`;
+    slots += `<div class="cal-slot" style="top:${h * HOUR}px;height:${HOUR}px" onclick="calOpenNew('${calDayKey}','${String(h).padStart(2, '0')}:00')"></div>`;
+  }
+  const blocks = timed.map(e => {
+    const [hh, mm] = e.time.split(':').map(Number);
+    const top = (hh + (mm || 0) / 60) * HOUR;
+    return `<div class="cal-event" style="top:${top}px;background:${e.color || '#4a7aff'}" onclick="event.stopPropagation();calOpenEdit('${e.id}')"><b>${e.time}</b> ${escapeHtml(e.title)}</div>`;
+  }).join('');
+  box.innerHTML =
+    (allday.length ? `<div class="cal-allday-strip">${allday.map(e => `<div class="cal-chip" style="background:${e.color || '#4a7aff'}" onclick="calOpenEdit('${e.id}')">${escapeHtml(e.title)}</div>`).join('')}</div>` : '')
+    + `<div class="cal-timeline" style="height:${24 * HOUR}px">${hours}${slots}${blocks}</div>`;
+  box.scrollTop = 7 * HOUR; // start around 7 AM
 }
 
 function calRenderColors() {
@@ -3379,11 +3436,13 @@ function calToggleAllDay(cb) { document.getElementById('cal-f-time').disabled = 
 
 function calOpenModal() { calRenderColors(); document.getElementById('cal-modal').classList.add('show'); setTimeout(() => document.getElementById('cal-f-title').focus(), 50); }
 function calCloseModal() { document.getElementById('cal-modal').classList.remove('show'); }
-function calOpenNew(dateKey) {
+function calOpenNew(dateKey, time) {
   calEditId = null; calFormColor = '#4a7aff';
+  // Default the date to the day being viewed when in day view
+  const fallback = (calView === 'day' && calDayKey) ? calDayKey : calTodayKey();
   document.getElementById('cal-f-title').value = '';
-  document.getElementById('cal-f-date').value = dateKey || calKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-  document.getElementById('cal-f-time').value = ''; document.getElementById('cal-f-time').disabled = false;
+  document.getElementById('cal-f-date').value = dateKey || fallback;
+  document.getElementById('cal-f-time').value = time || ''; document.getElementById('cal-f-time').disabled = false;
   document.getElementById('cal-f-allday').checked = false;
   document.getElementById('cal-f-delete').style.display = 'none';
   calOpenModal();
