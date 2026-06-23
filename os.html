@@ -3328,8 +3328,8 @@ function buildCalendar() {
       <div class="cal-modal-card">
         <input type="text" id="cal-f-title" placeholder="Add title" autocomplete="off">
         <div class="cal-f-row"><label>Date</label><input type="date" id="cal-f-date"></div>
-        <div class="cal-f-row"><label>Time</label><input type="time" id="cal-f-time">
-          <label class="cal-allday"><input type="checkbox" id="cal-f-allday" onchange="calToggleAllDay(this)"> All day</label></div>
+        <div class="cal-f-row"><label>Time</label><input type="time" id="cal-f-time"><span style="color:rgba(255,255,255,.5)">to</span><input type="time" id="cal-f-end"></div>
+        <div class="cal-f-row"><label></label><label class="cal-allday" style="margin-left:0"><input type="checkbox" id="cal-f-allday" onchange="calToggleAllDay(this)"> All day</label></div>
         <div class="cal-f-colors" id="cal-f-colors"></div>
         <div class="cal-f-actions">
           <button class="cal-btn" id="cal-f-delete" style="background:rgba(255,95,87,.25);display:none" onclick="calDeleteEvent()">Delete</button>
@@ -3417,8 +3417,13 @@ function renderDayView() {
   }
   const blocks = timed.map(e => {
     const [hh, mm] = e.time.split(':').map(Number);
-    const top = (hh + (mm || 0) / 60) * HOUR;
-    return `<div class="cal-event" style="top:${top}px;background:${e.color || '#4a7aff'}" onclick="event.stopPropagation();calOpenEdit('${e.id}')"><b>${e.time}</b> ${escapeHtml(e.title)}</div>`;
+    const startMin = hh * 60 + (mm || 0);
+    let endMin = startMin + 60; // default 1h when no end set
+    if (e.end) { const [eh, em] = e.end.split(':').map(Number); endMin = eh * 60 + (em || 0); }
+    const top = startMin / 60 * HOUR;
+    const height = Math.max(20, (endMin - startMin) / 60 * HOUR - 2);
+    const range = e.end ? `${e.time}–${e.end}` : e.time;
+    return `<div class="cal-event" style="top:${top}px;height:${height}px;background:${e.color || '#4a7aff'}" onclick="event.stopPropagation();calOpenEdit('${e.id}')"><b>${range}</b> ${escapeHtml(e.title)}</div>`;
   }).join('');
   box.innerHTML =
     (allday.length ? `<div class="cal-allday-strip">${allday.map(e => `<div class="cal-chip" style="background:${e.color || '#4a7aff'}" onclick="calOpenEdit('${e.id}')">${escapeHtml(e.title)}</div>`).join('')}</div>` : '')
@@ -3432,7 +3437,12 @@ function calRenderColors() {
     `<div class="cal-swatch${c === calFormColor ? ' sel' : ''}" style="background:${c}" onclick="calPickColor('${c}')"></div>`).join('');
 }
 function calPickColor(c) { calFormColor = c; calRenderColors(); }
-function calToggleAllDay(cb) { document.getElementById('cal-f-time').disabled = cb.checked; if (cb.checked) document.getElementById('cal-f-time').value = ''; }
+function calToggleAllDay(cb) {
+  const t = document.getElementById('cal-f-time'), end = document.getElementById('cal-f-end');
+  t.disabled = end.disabled = cb.checked;
+  if (cb.checked) { t.value = ''; end.value = ''; }
+}
+const calAddHour = (t) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${String((h + 1) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`; };
 
 function calOpenModal() { calRenderColors(); document.getElementById('cal-modal').classList.add('show'); setTimeout(() => document.getElementById('cal-f-title').focus(), 50); }
 function calCloseModal() { document.getElementById('cal-modal').classList.remove('show'); }
@@ -3443,6 +3453,7 @@ function calOpenNew(dateKey, time) {
   document.getElementById('cal-f-title').value = '';
   document.getElementById('cal-f-date').value = dateKey || fallback;
   document.getElementById('cal-f-time').value = time || ''; document.getElementById('cal-f-time').disabled = false;
+  document.getElementById('cal-f-end').value = time ? calAddHour(time) : ''; document.getElementById('cal-f-end').disabled = false;
   document.getElementById('cal-f-allday').checked = false;
   document.getElementById('cal-f-delete').style.display = 'none';
   calOpenModal();
@@ -3453,6 +3464,7 @@ function calOpenEdit(id) {
   document.getElementById('cal-f-title').value = e.title;
   document.getElementById('cal-f-date').value = e.date;
   document.getElementById('cal-f-time').value = e.time || ''; document.getElementById('cal-f-time').disabled = !e.time;
+  document.getElementById('cal-f-end').value = e.end || ''; document.getElementById('cal-f-end').disabled = !e.time;
   document.getElementById('cal-f-allday').checked = !e.time;
   document.getElementById('cal-f-delete').style.display = '';
   calOpenModal();
@@ -3460,14 +3472,18 @@ function calOpenEdit(id) {
 function calSaveEvent() {
   const title = document.getElementById('cal-f-title').value.trim();
   const date = document.getElementById('cal-f-date').value;
-  const time = document.getElementById('cal-f-allday').checked ? '' : document.getElementById('cal-f-time').value;
+  const allday = document.getElementById('cal-f-allday').checked;
+  const time = allday ? '' : document.getElementById('cal-f-time').value;
+  let end = allday ? '' : document.getElementById('cal-f-end').value;
   if (!title) { notify('📅', 'Calendar', 'Give your event a title.'); return; }
   if (!date) { notify('📅', 'Calendar', 'Pick a date.'); return; }
+  if (end && !time) { notify('📅', 'Calendar', 'Set a start time too.'); return; }
+  if (time && end && end <= time) { notify('📅', 'Calendar', 'End time must be after the start.'); return; }
   if (calEditId) {
     const e = calEvents.find(x => x.id === calEditId);
-    if (e) Object.assign(e, { title, date, time, color: calFormColor });
+    if (e) Object.assign(e, { title, date, time, end, color: calFormColor });
   } else {
-    calEvents.push({ id: 'e' + Date.now() + Math.random().toString(36).slice(2, 6), date, time, title, color: calFormColor });
+    calEvents.push({ id: 'e' + Date.now() + Math.random().toString(36).slice(2, 6), date, time, end, title, color: calFormColor });
   }
   calSaveData(); renderCalendar(); calCloseModal();
 }
