@@ -51,6 +51,13 @@ const server = http.createServer(app);
 const JWT_SECRET = process.env.JWT_SECRET || 'maxos-super-secret-key-2024';
 // Always-admin usernames: 'max' (owner) plus anything in the ADMIN_USERS env var
 const ADMIN_USERS = ['max', ...(process.env.ADMIN_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
+// Tester usernames: 'andy' plus anything in the TESTER_USERS env var. Testers get a
+// bottom feedback panel and a "test mode" toggle that grants unlimited Minecraft time.
+const TESTER_USERS = ['andy', ...(process.env.TESTER_USERS || '').split(',')].map(s => s.trim().toLowerCase()).filter(Boolean);
+const isTester = (name) => TESTER_USERS.includes((name || '').toLowerCase());
+// Resend API key for tester problem reports — set this in the environment, never in code.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const FEEDBACK_TO = process.env.FEEDBACK_TO || 'maxvbuda@gmail.com';
 const SCREENWATCH_ROOM = username => `screenwatch:${username}`;
 const SCREENWATCH_STALE_MS = 15000;
 const SCREENWATCH_MAX_FRAME_LEN = 2_000_000;
@@ -134,6 +141,7 @@ const UserSchema = new mongoose.Schema({
   // bonus = extra seconds granted by the superadmin for the current week (on top of the base limit).
   mcPlay: { week: { type: String, default: '' }, used: { type: Number, default: 0 }, lastBeat: { type: Number, default: 0 }, bonus: { type: Number, default: 0 } },
   mcTimeRequest: { type: Boolean, default: false }, // pending "more Minecraft time" request to the superadmin
+  testMode: { type: Boolean, default: false }, // testers only: unlimited Minecraft time while on
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -463,7 +471,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username) });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -479,14 +487,14 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username) });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed');
+  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode');
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username) });
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode });
 });
 
 // Request to become a teacher or admin — one pending request per role (anti-spam)
@@ -543,11 +551,13 @@ function mcReadWeek(u) {
                          : { week: wk, used: 0, lastBeat: 0, bonus: 0 };
 }
 const mcLimitFor = (p) => MC_WEEK_LIMIT + (p.bonus || 0); // base + granted bonus
+// Unlimited time for superadmins, and for testers while test mode is on.
+const mcExempt = (username, u) => ADMIN_USERS.includes(username) || (isTester(username) && !!(u && u.testMode));
 // Status only — never increments. Used to gate opening the app.
 app.get('/api/minecraft/status', auth, async (req, res) => {
   try {
-    if (ADMIN_USERS.includes(req.user.username)) return res.json({ unlimited: true, remaining: MC_WEEK_LIMIT, limit: MC_WEEK_LIMIT });
-    const u = await User.findById(req.user.id).select('mcPlay mcTimeRequest');
+    const u = await User.findById(req.user.id).select('mcPlay mcTimeRequest testMode');
+    if (mcExempt(req.user.username, u)) return res.json({ unlimited: true, remaining: MC_WEEK_LIMIT, limit: MC_WEEK_LIMIT });
     const p = mcReadWeek(u);
     const lim = mcLimitFor(p);
     res.json({ remaining: Math.max(0, lim - p.used), limit: lim, requested: !!u.mcTimeRequest });
@@ -556,8 +566,8 @@ app.get('/api/minecraft/status', auth, async (req, res) => {
 // Heartbeat — credits real elapsed time (server clock, capped) and enforces the cap.
 app.post('/api/minecraft/heartbeat', auth, async (req, res) => {
   try {
-    if (ADMIN_USERS.includes(req.user.username)) return res.json({ ok: true, unlimited: true, remaining: MC_WEEK_LIMIT });
-    const u = await User.findById(req.user.id).select('mcPlay');
+    const u = await User.findById(req.user.id).select('mcPlay testMode');
+    if (mcExempt(req.user.username, u)) return res.json({ ok: true, unlimited: true, remaining: MC_WEEK_LIMIT });
     const p = mcReadWeek(u);
     const now = Date.now();
     // Credit only continuous play: a gap within MC_MAX_GAP means beats are still
@@ -577,6 +587,42 @@ app.post('/api/minecraft/request-more', auth, async (req, res) => {
   try {
     if (ADMIN_USERS.includes(req.user.username)) return res.json({ ok: true }); // superadmin never needs to ask
     await User.updateOne({ _id: req.user.id }, { $set: { mcTimeRequest: true } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Tester tools ────────────────────────────────────────────────────────────────
+function testerOnly(req, res, next) {
+  if (!isTester(req.user.username)) return res.status(403).json({ error: 'Testers only' });
+  next();
+}
+// Toggle test mode (unlimited Minecraft time while on).
+app.post('/api/tester/testmode', auth, testerOnly, async (req, res) => {
+  try {
+    const u = await User.findById(req.user.id).select('testMode');
+    u.testMode = !u.testMode; await u.save();
+    res.json({ ok: true, testMode: u.testMode });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// File a problem report → emailed to the owner via Resend. Testers only (keeps the
+// email endpoint from being abused as a spam relay).
+app.post('/api/feedback', auth, testerOnly, async (req, res) => {
+  try {
+    const text = (req.body.text || '').toString().trim().slice(0, 4000);
+    if (!text) return res.status(400).json({ error: 'Describe the problem first.' });
+    if (!RESEND_API_KEY) return res.status(500).json({ error: 'Email is not configured (RESEND_API_KEY not set).' });
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'MaxOS Tester <onboarding@resend.dev>',
+        to: [FEEDBACK_TO],
+        reply_to: FEEDBACK_TO,
+        subject: `MaxOS problem report from @${req.user.username}`,
+        text: `Reported by: @${req.user.username} (${req.user.displayName || ''})\nWhen: ${new Date().toISOString()}\n\n${text}`,
+      }),
+    });
+    if (!r.ok) { const body = await r.text().catch(() => ''); return res.status(502).json({ error: 'Email failed to send.', detail: body.slice(0, 300) }); }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
