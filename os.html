@@ -316,11 +316,11 @@
   .cal-event b { font-weight:600; opacity:.9; }
   .cal-modal { position:absolute; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:20; }
   .cal-modal.show { display:flex; }
-  .cal-modal-card { background:#1a1a2e; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px; width:300px; max-width:90%; display:flex; flex-direction:column; gap:12px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .cal-modal-card { background:#1a1a2e; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px; width:340px; max-width:90%; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
   .cal-modal-card input[type=text] { background:rgba(255,255,255,.07); border:none; border-bottom:2px solid #4a7aff; color:#fff; font-size:16px; padding:8px 4px; outline:none; }
   .cal-f-row { display:flex; align-items:center; gap:8px; color:rgba(255,255,255,.7); font-size:13px; }
-  .cal-f-row label { min-width:42px; }
-  .cal-f-row input[type=date], .cal-f-row input[type=time] { background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:7px; color:#fff; padding:5px 8px; font-family:inherit; outline:none; color-scheme:dark; }
+  .cal-f-row label { min-width:40px; flex-shrink:0; }
+  .cal-f-row input[type=date], .cal-f-row input[type=time] { flex:1; min-width:0; box-sizing:border-box; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:7px; color:#fff; padding:5px 8px; font-family:inherit; font-size:13px; outline:none; color-scheme:dark; }
   .cal-allday { display:flex; align-items:center; gap:5px; cursor:pointer; margin-left:auto; }
   .cal-f-colors { display:flex; gap:8px; }
   .cal-swatch { width:24px; height:24px; border-radius:50%; cursor:pointer; border:2px solid transparent; }
