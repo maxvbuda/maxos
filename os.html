@@ -2055,6 +2055,12 @@ function minimizeWindow(id) {
 }
 
 let maximized = {};
+// Space reserved at the bottom for a maximized window: the taskbar, plus the tester
+// panel when it's showing — so a maximized window (e.g. Minecraft) sits above it.
+function maxReservedBottom() {
+  const tp = document.getElementById('tester-panel');
+  return (tp && tp.classList.contains('show')) ? (50 + tp.offsetHeight) : 48;
+}
 function maximizeWindow(id) {
   const w = windows[id].el;
   if (maximized[id]) {
@@ -2062,7 +2068,7 @@ function maximizeWindow(id) {
     delete maximized[id];
   } else {
     maximized[id] = { left: w.style.left, top: w.style.top, width: w.style.width, height: w.style.height };
-    Object.assign(w.style, { left: '0', top: '0', width: '100vw', height: `calc(100vh - 48px)` });
+    Object.assign(w.style, { left: '0', top: '0', width: '100vw', height: `calc(100vh - ${maxReservedBottom()}px)` });
   }
 }
 
