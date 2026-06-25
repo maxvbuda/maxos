@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6d5efc"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#64c4ff"/>
+      <stop offset="1" stop-color="#1f6fff"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <text x="256" y="258" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif"
-        font-size="240" font-weight="800" fill="#ffffff" text-anchor="middle"
-        dominant-baseline="central" letter-spacing="-12">M</text>
+  <rect width="64" height="64" rx="14" fill="#081226"/>
+  <rect x="10" y="12" width="44" height="32" rx="6" fill="none" stroke="url(#g)" stroke-width="3.5"/>
+  <path d="M20 38 V22 L32 32 L44 22 V38" fill="none" stroke="url(#g)" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="28" y="46" width="8" height="5" fill="url(#g)"/>
+  <rect x="22" y="51" width="20" height="3" rx="1.5" fill="url(#g)"/>
 </svg>
