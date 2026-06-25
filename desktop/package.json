@@ -32,20 +32,24 @@
       "target": [
         { "target": "dmg", "arch": ["universal"] }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "MaxOS-mac.${ext}"
     },
     "win": {
       "target": [
+        { "target": "nsis", "arch": ["x64"] },
         { "target": "zip", "arch": ["x64"] }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "artifactName": "MaxOS-windows.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "MaxOS"
+      "shortcutName": "MaxOS",
+      "artifactName": "MaxOS-Setup.${ext}"
     }
   }
 }

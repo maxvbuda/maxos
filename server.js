@@ -97,8 +97,9 @@ app.get('/styles.css', (req, res) => {
 // release asset, so the URL never changes when the app version is bumped.
 const DL_RELEASE = 'https://github.com/maxvbuda/maxos/releases/latest/download';
 const DOWNLOADS = {
-  mac:     `${DL_RELEASE}/MaxOS-mac.dmg`,       // universal: Apple Silicon + Intel
-  windows: `${DL_RELEASE}/MaxOS-windows.zip`,   // x64, unzip and run MaxOS.exe
+  mac:           `${DL_RELEASE}/MaxOS-mac.dmg`,       // universal: Apple Silicon + Intel
+  windows:       `${DL_RELEASE}/MaxOS-Setup.exe`,     // NSIS installer (built by CI on a Windows runner)
+  'windows-zip': `${DL_RELEASE}/MaxOS-windows.zip`,   // portable: unzip and run MaxOS.exe
 };
 app.get('/download/:platform', (req, res) => {
   const url = DOWNLOADS[String(req.params.platform).toLowerCase()];

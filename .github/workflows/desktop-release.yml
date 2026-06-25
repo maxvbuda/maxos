@@ -1,0 +1,67 @@
+name: Build desktop apps
+
+# Builds the MaxOS desktop installers on real macOS + Windows runners and uploads
+# them to a GitHub Release. The Windows job produces a proper NSIS .exe installer
+# (no Wine needed — it's a real Windows machine), which can't be built on macOS.
+#
+# Triggers:
+#   • automatically when a Release is published
+#   • manually via the Actions tab ("Run workflow") — pick the release tag to attach to
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build and attach assets to (e.g. v1.0.0)"
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write   # needed to upload assets onto the release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+            build: npm run dist:mac
+            # universal .dmg (Apple Silicon + Intel)
+            assets: desktop/release/MaxOS-mac.dmg
+          - os: windows-latest
+            name: Windows
+            build: npm run dist:win
+            # NSIS installer + portable zip
+            assets: desktop/release/MaxOS-Setup.exe desktop/release/MaxOS-windows.zip
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build installers
+        working-directory: desktop
+        run: ${{ matrix.build }}
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release upload "${{ steps.tag.outputs.tag }}" ${{ matrix.assets }} --clobber --repo "${{ github.repository }}"
