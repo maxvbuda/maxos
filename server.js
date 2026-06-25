@@ -107,6 +107,63 @@ app.get('/download/:platform', (req, res) => {
   res.redirect(302, url);
 });
 
+// ── Demo video (/demo) ────────────────────────────────────────────────────────
+// A standalone landing page that plays a recorded guided tour of MaxOS. The video
+// is recorded by the "Record demo video" GitHub workflow and committed to /media.
+app.get(['/demo.mp4', '/demo.webm'], (req, res) => {
+  const f = path.join(__dirname, 'media', path.basename(req.path));
+  if (!fs.existsSync(f)) return res.status(404).end();
+  res.sendFile(f); // sendFile handles Range requests so the video can seek/stream
+});
+const DEMO_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaxOS — Demo</title>
+<meta name="description" content="Watch a quick tour of MaxOS, a full desktop that runs in your browser.">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+         background:linear-gradient(135deg,#0d0d1a,#1a1a2e 55%,#0f3460); color:#eaf0ff;
+         display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 18px; gap:22px; }
+  .logo { width:72px; height:72px; border-radius:18px; box-shadow:0 10px 40px rgba(30,80,180,.45); }
+  h1 { margin:0; font-size:30px; font-weight:800; letter-spacing:-.5px; text-align:center; }
+  p.tag { margin:0; color:rgba(234,240,255,.62); font-size:15px; text-align:center; max-width:560px; line-height:1.5; }
+  .player { width:min(960px,100%); border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,.1);
+            box-shadow:0 24px 80px rgba(0,0,0,.55); background:#000; }
+  video { display:block; width:100%; height:auto; }
+  .cta { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:4px; }
+  .btn { padding:12px 22px; border-radius:12px; font-size:14.5px; font-weight:600; text-decoration:none; transition:opacity .15s,transform .1s,background .15s; }
+  .btn:active { transform:scale(.98); }
+  .btn-primary { background:linear-gradient(135deg,#64b4ff,#bf5af2); color:#fff; }
+  .btn-primary:hover { opacity:.9; }
+  .btn-ghost { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.16); color:#dce7ff; }
+  .btn-ghost:hover { background:rgba(100,180,255,.14); border-color:rgba(100,180,255,.4); }
+  footer { color:rgba(255,255,255,.3); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+  <img class="logo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2364c4ff'/%3E%3Cstop offset='1' stop-color='%231f6fff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%23081226'/%3E%3Crect x='10' y='12' width='44' height='32' rx='6' fill='none' stroke='url(%23g)' stroke-width='3.5'/%3E%3Cpath d='M20 38 V22 L32 32 L44 22 V38' fill='none' stroke='url(%23g)' stroke-width='5' stroke-linejoin='round' stroke-linecap='round'/%3E%3Crect x='28' y='46' width='8' height='5' fill='url(%23g)'/%3E%3Crect x='22' y='51' width='20' height='3' rx='1.5' fill='url(%23g)'/%3E%3C/svg%3E" alt="MaxOS">
+  <h1>MaxOS in action</h1>
+  <p class="tag">A full desktop — files, apps, games and more — running entirely in your browser. Here's a quick tour.</p>
+  <div class="player">
+    <video controls autoplay muted loop playsinline preload="metadata">
+      <source src="/demo.mp4" type="video/mp4">
+      <source src="/demo.webm" type="video/webm">
+      Your browser can't play this video. <a href="/demo.mp4">Download it</a>.
+    </video>
+  </div>
+  <div class="cta">
+    <a class="btn btn-primary" href="/">Open MaxOS</a>
+    <a class="btn btn-ghost" href="/download/mac">Download the app</a>
+  </div>
+  <footer>MaxOS — your personal web desktop</footer>
+</body>
+</html>`;
+app.get('/demo', (req, res) => { noStore(res); res.type('html').send(DEMO_HTML); });
+
 // ── Offline mode: a service worker that caches the app shell ──────────────────
 // Network-first for the page so online users always get the latest build, but it
 // falls back to the last cached shell when there's no connection.
