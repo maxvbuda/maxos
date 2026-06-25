@@ -25,6 +25,13 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
+      - name: Warm the live site (Render can cold-start)
+        run: |
+          for i in 1 2 3; do
+            curl -sS -m 120 -o /dev/null "https://maxos-1oe3.onrender.com" && break
+            echo "warm-up attempt $i failed, retrying…"; sleep 5
+          done
+
       - name: Record the tour
         working-directory: tools/demo-recorder
         env:
@@ -43,7 +50,7 @@ jobs:
           src=$(ls video/*.webm | head -1)
           echo "Source video: $src"
           ffmpeg -y -i "$src" -movflags +faststart -pix_fmt yuv420p \
-            -vf "scale=1280:-2" -c:v libx264 -crf 24 -an video/demo.mp4
+            -vf "scale=1440:-2" -c:v libx264 -crf 23 -an video/demo.mp4
           cp "$src" video/demo.webm
           ls -la video/
 
