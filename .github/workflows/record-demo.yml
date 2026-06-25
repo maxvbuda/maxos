@@ -34,6 +34,9 @@ jobs:
           OUT_DIR: video
         run: node record.mjs
 
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+
       - name: Convert to mp4 (broad browser support)
         working-directory: tools/demo-recorder
         run: |
