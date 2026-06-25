@@ -1,0 +1,60 @@
+name: Windows smoke test
+
+# Launches the MaxOS desktop app on a real Windows runner and screenshots it,
+# so we can confirm it actually runs on Windows without anyone installing a thing.
+# Manual-only. The screenshot is uploaded as a build artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Warm the live site (Render can cold-start)
+        shell: pwsh
+        run: |
+          try { Invoke-WebRequest -UseBasicParsing -Uri "https://maxos-1oe3.onrender.com" -TimeoutSec 120 | Out-Null }
+          catch { Write-Host "warm-up request failed (continuing): $_" }
+
+      - name: Launch app and capture screenshot
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          # Start the Electron app (loads the live MaxOS site in a native window).
+          $proc = Start-Process -FilePath "node_modules\.bin\electron.cmd" -ArgumentList "." -PassThru
+          # Give it time to boot + load the page over the network.
+          Start-Sleep -Seconds 35
+          # Grab the whole primary screen.
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $b   = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g   = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $bmp.Save("$PWD\artifacts\windows-app.png")
+          Write-Host "Saved screenshot ($($b.Width)x$($b.Height))."
+          # Clean up the app processes (runner is ephemeral anyway).
+          try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+          Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-app-screenshot
+          path: desktop/artifacts/windows-app.png
+          if-no-files-found: error
