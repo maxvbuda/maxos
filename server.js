@@ -91,6 +91,21 @@ app.get('/styles.css', (req, res) => {
   noStore(res); res.type('text/css'); res.sendFile(f);
 });
 
+// ── Desktop app downloads ─────────────────────────────────────────────────────
+// The installers live on GitHub Releases (no size limit, no repo bloat). These
+// routes keep the download links on our own domain and redirect to the latest
+// release asset, so the URL never changes when the app version is bumped.
+const DL_RELEASE = 'https://github.com/maxvbuda/maxos/releases/latest/download';
+const DOWNLOADS = {
+  mac:     `${DL_RELEASE}/MaxOS-mac.dmg`,       // universal: Apple Silicon + Intel
+  windows: `${DL_RELEASE}/MaxOS-windows.zip`,   // x64, unzip and run MaxOS.exe
+};
+app.get('/download/:platform', (req, res) => {
+  const url = DOWNLOADS[String(req.params.platform).toLowerCase()];
+  if (!url) return res.status(404).send('Unknown platform. Try /download/mac or /download/windows');
+  res.redirect(302, url);
+});
+
 // ── Offline mode: a service worker that caches the app shell ──────────────────
 // Network-first for the page so online users always get the latest build, but it
 // falls back to the last cached shell when there's no connection.
@@ -99,7 +114,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v3';
+const CACHE = 'maxos-shell-v4';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()

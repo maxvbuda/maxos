@@ -31,6 +31,13 @@
   .login-btn:active { transform:scale(.98); }
   .login-error { color:#ff5f57; font-size:13px; text-align:center; min-height:18px; }
   .login-footer { color:rgba(255,255,255,.3); font-size:12px; text-align:center; }
+  #dl-app { margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,.08); text-align:center; }
+  .dl-app-btn { display:inline-flex; align-items:center; gap:7px; padding:10px 18px; border-radius:11px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); color:#dce7ff; font-size:13.5px; font-weight:600; text-decoration:none; transition:background .15s,border-color .15s,transform .1s; }
+  .dl-app-btn:hover { background:rgba(100,180,255,.14); border-color:rgba(100,180,255,.4); }
+  .dl-app-btn:active { transform:scale(.98); }
+  .dl-app-alt { margin-top:8px; font-size:11.5px; color:rgba(255,255,255,.32); }
+  .dl-app-alt a { color:rgba(180,205,255,.7); text-decoration:none; }
+  .dl-app-alt a:hover { text-decoration:underline; }
   .login-device-select { display:flex; gap:12px; margin:8px 0; }
   .device-btn { flex:1; padding:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:rgba(255,255,255,.6); font-size:13px; font-weight:500; cursor:pointer; transition:all .15s; }
   .device-btn:hover { background:rgba(255,255,255,.12); }
@@ -984,6 +991,14 @@
     <button class="login-btn" id="auth-btn" type="submit">Sign In</button>
     </form>
     <div class="login-footer">MaxOS — Your personal web desktop</div>
+    <!-- Download-the-app CTA: shown only in a real browser. Hidden when running
+         inside the MaxOS desktop app itself (no point offering the app to the app). -->
+    <div id="dl-app" style="display:none">
+      <a class="dl-app-btn" id="dl-app-btn" href="/download/mac">⬇︎ Download the app</a>
+      <div class="dl-app-alt">
+        Also for <a href="/download/mac" id="dl-alt-mac">macOS</a> · <a href="/download/windows" id="dl-alt-win">Windows</a>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1718,6 +1733,24 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').then(reg => reg.update()).catch(() => {});
 }
 initAuth();
+
+// ── "Download the app" CTA on the login screen ───────────────────────────────
+// Only shown in a real browser. When MaxOS is running inside its own desktop app,
+// the user agent contains "Electron" — so we hide it (don't offer the app to the app).
+function initDownloadCTA() {
+  const box = document.getElementById('dl-app');
+  if (!box) return;
+  if (/Electron/i.test(navigator.userAgent)) { box.style.display = 'none'; return; }
+  const ua = navigator.userAgent;
+  const isWin = /Windows/i.test(ua);
+  const isMac = /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua);
+  const btn = document.getElementById('dl-app-btn');
+  if (isWin)      { btn.href = '/download/windows'; btn.textContent = '⬇︎ Download for Windows'; }
+  else if (isMac) { btn.href = '/download/mac';     btn.textContent = '⬇︎ Download for Mac'; }
+  else            { btn.href = '/download/mac';     btn.textContent = '⬇︎ Download the app'; }
+  box.style.display = '';
+}
+initDownloadCTA();
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
