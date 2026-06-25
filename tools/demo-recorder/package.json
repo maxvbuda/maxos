@@ -1,0 +1,10 @@
+{
+  "name": "maxos-demo-recorder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Records a guided-tour video of MaxOS using Playwright (run in CI).",
+  "dependencies": {
+    "playwright": "^1.47.0"
+  }
+}

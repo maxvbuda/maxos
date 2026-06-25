@@ -1,0 +1,53 @@
+name: Record demo video
+
+# Records a guided-tour video of MaxOS on a cloud machine and uploads it as an
+# artifact. Manual-only. Needs two repo secrets for the demo login:
+#   DEMO_USER, DEMO_PASS  (Settings → Secrets and variables → Actions)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright + Chromium
+        working-directory: tools/demo-recorder
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Record the tour
+        working-directory: tools/demo-recorder
+        env:
+          MAXOS_URL: https://maxos-1oe3.onrender.com
+          DEMO_USER: ${{ secrets.DEMO_USER }}
+          DEMO_PASS: ${{ secrets.DEMO_PASS }}
+          OUT_DIR: video
+        run: node record.mjs
+
+      - name: Convert to mp4 (broad browser support)
+        working-directory: tools/demo-recorder
+        run: |
+          src=$(ls video/*.webm | head -1)
+          echo "Source video: $src"
+          ffmpeg -y -i "$src" -movflags +faststart -pix_fmt yuv420p \
+            -vf "scale=1280:-2" -c:v libx264 -crf 24 -an video/demo.mp4
+          cp "$src" video/demo.webm
+          ls -la video/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-video
+          path: |
+            tools/demo-recorder/video/demo.mp4
+            tools/demo-recorder/video/demo.webm
+          if-no-files-found: error
