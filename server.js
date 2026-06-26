@@ -59,6 +59,13 @@ const isTester = (name) => TESTER_USERS.includes((name || '').toLowerCase());
 // Env var name: RESEND_API (RESEND_API_KEY also accepted as a fallback).
 const RESEND_API_KEY = process.env.RESEND_API || process.env.RESEND_API_KEY || '';
 const FEEDBACK_TO = process.env.FEEDBACK_TO || 'maxvbuda@gmail.com';
+// Email verification for NEW signups before they can post. OFF by default — only
+// enable once a sending DOMAIN is verified in Resend (onboarding@resend.dev can't
+// deliver to arbitrary users). Existing accounts are grandfathered (mustVerifyEmail
+// stays false). Set REQUIRE_EMAIL_VERIFY=1 in the environment to turn it on.
+const REQUIRE_EMAIL_VERIFY = process.env.REQUIRE_EMAIL_VERIFY === '1';
+const BASE_URL = (process.env.BASE_URL || 'https://maxos-1oe3.onrender.com').replace(/\/+$/, '');
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const SCREENWATCH_ROOM = username => `screenwatch:${username}`;
 const SCREENWATCH_STALE_MS = 15000;
 const SCREENWATCH_MAX_FRAME_LEN = 2_000_000;
@@ -172,7 +179,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v5';
+const CACHE = 'maxos-shell-v6';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -209,6 +216,9 @@ const UserSchema = new mongoose.Schema({
   suspicious:  { type: Boolean, default: false },
   signupIP:    { type: String, default: '' }, // captured at registration (abuse moderation, superadmin-only)
   lastIP:      { type: String, default: '' }, // updated on each login
+  email:           { type: String, default: '' },
+  emailVerified:   { type: Boolean, default: false },
+  mustVerifyEmail: { type: Boolean, default: false }, // true only for accounts created while email verification is required (existing accounts grandfathered)
   teacher:     { type: Boolean, default: false }, // appointed by an admin; only teachers can create classes
   admin:       { type: Boolean, default: false },
   adminRequest:   { type: Boolean, default: false }, // pending request to become admin (one at a time)
@@ -563,9 +573,64 @@ app.get('/api/auth/challenge', (req, res) => {
   res.json({ salt, exp, sig: powSig(salt, exp), difficulty: POW_DIFFICULTY });
 });
 
+// Send a verification email with a stateless signed link. Best-effort: returns
+// false (never throws) if email isn't configured or Resend rejects it.
+async function sendVerifyEmail(user) {
+  if (!RESEND_API_KEY || !user.email) return false;
+  const token = jwt.sign({ purpose: 'verify-email', uid: user._id.toString() }, JWT_SECRET, { expiresIn: '3d' });
+  const link = `${BASE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+  const name = String(user.displayName || user.username).replace(/[<>]/g, '');
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'MaxOS <onboarding@resend.dev>',
+        to: [user.email],
+        subject: 'Verify your MaxOS email',
+        html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:480px">
+          <h2>Welcome to MaxOS, ${name}!</h2>
+          <p>Confirm your email to start posting on MaxSocial.</p>
+          <p><a href="${link}" style="display:inline-block;padding:11px 20px;background:#3b82f6;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Verify my email</a></p>
+          <p style="color:#888;font-size:12px">Or paste this link into your browser:<br>${link}</p>
+          <p style="color:#aaa;font-size:12px">This link expires in 3 days.</p>
+        </div>`,
+      }),
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
+// Public config the login screen needs (e.g. whether to collect an email at signup).
+app.get('/api/config', (req, res) => res.json({ emailRequired: REQUIRE_EMAIL_VERIFY }));
+
+// Verify-email landing page (opened from the email link in a browser).
+app.get('/api/auth/verify-email', async (req, res) => {
+  const page = (icon, title, msg) => `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:-apple-system,Segoe UI,sans-serif;background:linear-gradient(135deg,#0d0d1a,#1a1a2e,#0f3460);color:#eaf0ff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;text-align:center"><div><div style="font-size:54px">${icon}</div><h2 style="margin:8px 0">${title}</h2><p style="color:#9aa6c0">${msg}</p><a href="/" style="display:inline-block;margin-top:16px;padding:11px 22px;background:linear-gradient(135deg,#64b4ff,#bf5af2);color:#fff;border-radius:11px;text-decoration:none;font-weight:600">Open MaxOS</a></div></body>`;
+  try {
+    const payload = jwt.verify(String(req.query.token || ''), JWT_SECRET);
+    if (payload.purpose !== 'verify-email') throw new Error('bad purpose');
+    await User.updateOne({ _id: payload.uid }, { emailVerified: true });
+    res.type('html').send(page('✅', 'Email verified!', 'You can now post on MaxSocial.'));
+  } catch {
+    res.status(400).type('html').send(page('⚠️', 'Link expired or invalid', 'Sign in to MaxOS and resend the verification email.'));
+  }
+});
+
+// Resend the verification email to the signed-in user.
+app.post('/api/auth/resend-verification', auth, async (req, res) => {
+  try {
+    if (!rateLimit('resend:' + req.user.username, 4, 10 * 60 * 1000)) return res.status(429).json({ error: 'Please wait a bit before requesting another email.' });
+    const u = await User.findById(req.user.id);
+    if (!u || u.emailVerified || !u.email) return res.json({ ok: true });
+    const sent = await sendVerifyEmail(u);
+    res.json({ ok: true, sent });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password, displayName, hp, pow } = req.body;
+    const { username, password, displayName, hp, pow, email } = req.body;
     // ── Bot guards ──
     // 1) Honeypot: a hidden form field real users never fill. Bots auto-fill it.
     if (hp) return res.status(400).json({ error: 'Signup blocked' });
@@ -579,15 +644,22 @@ app.post('/api/auth/register', async (req, res) => {
     // 3) Basic username sanity — letters/numbers/_/- only, 3–24 chars
     if (!/^[a-z0-9_-]{3,24}$/i.test(username)) return res.status(400).json({ error: 'Username must be 3–24 letters, numbers, _ or -' });
     if (password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    // Email verification gate (when enabled): require a valid email for new accounts.
+    let cleanEmail = '';
+    if (REQUIRE_EMAIL_VERIFY) {
+      cleanEmail = String(email || '').trim().toLowerCase();
+      if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'A valid email is required to sign up.' });
+    }
     const exists = await User.findOne({ username: username.toLowerCase() });
     if (exists) return res.status(409).json({ error: 'Username already taken' });
     const hashed = await bcrypt.hash(password, 10);
     // First registered user (or a baked-in / ADMIN_USERS name) becomes an admin
     const isAdmin = (await User.countDocuments()) === 0 || ADMIN_USERS.includes(username.toLowerCase());
-    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: req.ip, lastIP: req.ip });
+    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: req.ip, lastIP: req.ip, email: cleanEmail, mustVerifyEmail: REQUIRE_EMAIL_VERIFY });
     await seedUser(user._id, user.username);
+    if (REQUIRE_EMAIL_VERIFY) sendVerifyEmail(user).catch(() => {}); // best-effort; account still created
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -604,14 +676,14 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode');
+  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode emailVerified mustVerifyEmail');
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode });
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail });
 });
 
 // Request to become a teacher or admin — one pending request per role (anti-spam)
@@ -1073,7 +1145,10 @@ app.post('/api/posts', auth, async (req, res) => {
     // These are NOT spam strikes — a legit new user shouldn't get auto-suspended.
     const isStaff = ADMIN_USERS.includes(username) || req.user.admin;
     if (!isStaff) {
-      const me = await User.findById(req.user.id).select('createdAt').lean();
+      const me = await User.findById(req.user.id).select('createdAt emailVerified mustVerifyEmail').lean();
+      if (REQUIRE_EMAIL_VERIFY && me && me.mustVerifyEmail && !me.emailVerified) {
+        return res.status(403).json({ error: 'Please verify your email before posting — check your inbox (or resend it from your profile).' });
+      }
       const ageMs = me ? Date.now() - new Date(me.createdAt).getTime() : Infinity;
       if (ageMs < 10 * 60 * 1000) {
         const mins = Math.ceil((10 * 60 * 1000 - ageMs) / 60000);

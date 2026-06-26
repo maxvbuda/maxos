@@ -975,6 +975,7 @@
     <form onsubmit="authSubmit();return false" style="display:contents">
     <input class="login-input" id="auth-username" type="text" placeholder="Username" autocomplete="username">
     <input class="login-input" id="auth-display" type="text" placeholder="Display name" autocomplete="off" style="display:none">
+    <input class="login-input" id="auth-email" type="email" placeholder="Email" autocomplete="email" style="display:none">
     <input class="login-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password">
     <!-- Honeypot: hidden from humans; bots that auto-fill every field get blocked -->
     <input id="auth-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
@@ -1093,6 +1094,9 @@ function switchAuthTab(mode, btn) {
   btn.classList.add('active');
   document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign In' : 'Create Account';
   document.getElementById('auth-display').style.display = mode === 'register' ? 'block' : 'none';
+  // Email is collected at signup only when the server requires verification
+  const emailEl = document.getElementById('auth-email');
+  if (emailEl) emailEl.style.display = (mode === 'register' && window.__emailRequired) ? 'block' : 'none';
   // Bot guard: only require the human-check when creating an account
   const human = document.getElementById('auth-human');
   if (human) { human.style.display = mode === 'register' ? 'block' : 'none'; if (mode === 'register') newHumanCheck(); }
@@ -1153,6 +1157,7 @@ async function authSubmit() {
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value;
   const displayName = document.getElementById('auth-display').value.trim();
+  const email = document.getElementById('auth-email')?.value.trim() || '';
   const errEl = document.getElementById('auth-error');
   const btn = document.getElementById('auth-btn');
   if (!username || !password) { errEl.textContent = 'Please fill in all fields'; return; }
@@ -1160,6 +1165,7 @@ async function authSubmit() {
   if (authMode === 'register') {
     const ans = parseInt(document.getElementById('auth-human-a')?.value, 10);
     if (ans !== humanA + humanB) { errEl.textContent = 'Please answer the human-check correctly.'; newHumanCheck(); return; }
+    if (window.__emailRequired && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email address.'; return; }
   }
   const hp = document.getElementById('auth-hp')?.value || '';
   btn.textContent = '...'; btn.disabled = true;
@@ -1174,21 +1180,32 @@ async function authSubmit() {
     const res = await fetch(`${API}/api/auth/${authMode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, displayName, hp, pow }),
+      body: JSON.stringify({ username, password, displayName, email, hp, pow }),
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
     authToken = data.token;
-    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious, superadmin: !!data.superadmin, tester: !!data.tester, testMode: !!data.testMode };
+    currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious, superadmin: !!data.superadmin, tester: !!data.tester, testMode: !!data.testMode, emailVerified: !!data.emailVerified, mustVerifyEmail: !!data.mustVerifyEmail };
     if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
     localStorage.setItem('maxos_token', authToken);
     localStorage.setItem('maxos_user', JSON.stringify(currentUser));
     localStorage.setItem('maxos_device', deviceMode);
     document.getElementById('login-screen').style.display = 'none';
     bootOS();
+    if (currentUser.mustVerifyEmail && !currentUser.emailVerified) {
+      setTimeout(() => notify('📧', 'Verify your email', 'Check your inbox to start posting on MaxSocial. <a onclick="resendVerifyEmail()" style="color:#8ab4ff;cursor:pointer;text-decoration:underline">Resend</a>', 9000), 1400);
+    }
   } catch (e) {
     errEl.textContent = 'Cannot reach server'; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false;
   }
+}
+
+// Re-send the email-verification link to the signed-in user.
+async function resendVerifyEmail() {
+  try {
+    await apiFetch('/api/auth/resend-verification', { method: 'POST' });
+    notify('📧', 'Email sent', 'We sent the verification link again — check your inbox.');
+  } catch { notify('⚠️', 'Could not send', 'Try again in a moment.'); }
 }
 
 function logout() {
@@ -1751,6 +1768,16 @@ function initDownloadCTA() {
   box.style.display = '';
 }
 initDownloadCTA();
+
+// Learn from the server whether signup must collect an email (verification gate).
+window.__emailRequired = false;
+fetch(`${API}/api/config`).then(r => r.json()).then(c => {
+  window.__emailRequired = !!c.emailRequired;
+  if (authMode === 'register') {
+    const e = document.getElementById('auth-email');
+    if (e) e.style.display = window.__emailRequired ? 'block' : 'none';
+  }
+}).catch(() => {});
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
