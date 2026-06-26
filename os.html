@@ -7316,6 +7316,7 @@ async function adminLoad() {
     <div style="flex:1;min-width:0">
       <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.superadmin ? '<span class="admin-badge" style="background:rgba(191,90,242,.35);color:#e3b6ff">SUPERADMIN 👑</span>' : (u.admin ? '<span class="admin-badge">ADMIN</span>' : '')} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.mcTimeRequest ? '<span class="admin-badge req">⛏ WANTS MC TIME</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
+      ${u.lastIP !== undefined ? `<div style="color:rgba(255,160,160,.55);font-size:11px;font-family:monospace">🌐 ${u.lastIP || '—'}${u.signupIP && u.signupIP !== u.lastIP ? ` · signup ${u.signupIP}` : ''}</div>` : ''}
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
       u.superadmin ? '<span style="color:rgba(255,255,255,.35);font-size:12px">🔒 protected</span>' :

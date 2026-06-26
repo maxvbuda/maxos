@@ -172,7 +172,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v4';
+const CACHE = 'maxos-shell-v5';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -207,6 +207,8 @@ const UserSchema = new mongoose.Schema({
   appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (MaxCoin wallet, etc.)
   suspended:   { type: Boolean, default: false },
   suspicious:  { type: Boolean, default: false },
+  signupIP:    { type: String, default: '' }, // captured at registration (abuse moderation, superadmin-only)
+  lastIP:      { type: String, default: '' }, // updated on each login
   teacher:     { type: Boolean, default: false }, // appointed by an admin; only teachers can create classes
   admin:       { type: Boolean, default: false },
   adminRequest:   { type: Boolean, default: false }, // pending request to become admin (one at a time)
@@ -246,6 +248,7 @@ ChatSchema.index({ channel: 1, createdAt: 1 });
 const PostSchema = new mongoose.Schema({
   author:   { type: String, required: true },
   text:     { type: String, required: true },
+  authorIP: { type: String, default: '' },       // captured at post time (abuse moderation, superadmin-only)
   bg:       { type: Number, default: -1 },       // colored-status background index (-1 = plain)
   likes:    { type: [String], default: [] },     // usernames who liked
   comments: { type: [{ from: String, text: String, at: { type: Date, default: Date.now } }], default: [] },
@@ -581,7 +584,7 @@ app.post('/api/auth/register', async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     // First registered user (or a baked-in / ADMIN_USERS name) becomes an admin
     const isAdmin = (await User.countDocuments()) === 0 || ADMIN_USERS.includes(username.toLowerCase());
-    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin });
+    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: req.ip, lastIP: req.ip });
     await seedUser(user._id, user.username);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode });
@@ -597,6 +600,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (user.suspended) return res.status(403).json({ error: 'This account has been suspended' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
+    if (user.lastIP !== req.ip) { user.lastIP = req.ip; await user.save().catch(() => {}); }
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
@@ -743,8 +747,14 @@ app.post('/api/feedback', auth, testerOnly, async (req, res) => {
 // ── Admin routes ──────────────────────────────────────────────────────────────
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
-    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt').sort({ createdAt: 1 });
-    res.json(users.map(u => ({ username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, mcTimeRequest: u.mcTimeRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt })));
+    const showIP = ADMIN_USERS.includes(req.user.username); // IPs are superadmin-only
+    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt signupIP lastIP').sort({ createdAt: 1 });
+    res.json(users.map(u => ({
+      username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious,
+      admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest,
+      mcTimeRequest: u.mcTimeRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt,
+      ...(showIP ? { signupIP: u.signupIP || '', lastIP: u.lastIP || '' } : {}),
+    })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Superadmin appoints (or removes) a teacher; also clears any pending teacher request
@@ -1069,7 +1079,7 @@ app.post('/api/posts', auth, async (req, res) => {
     const dup = await duplicatePostMsg(req.body.text, username);
     if (dup) return reject(dup);
     const text = req.body.text.trim().slice(0, 1000);
-    const p = await Post.create({ author: username, text, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    const p = await Post.create({ author: username, text, authorIP: req.ip, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
     lastPostByUser.set(username, text);
     clearSpamStrikes(username); // a good post wipes the slate
     io.to('feed').emit('feed');
