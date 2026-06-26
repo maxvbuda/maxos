@@ -35,6 +35,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
+      webviewTag: true, // lets the in-app Browser use <webview> to load real websites
     },
   });
 
