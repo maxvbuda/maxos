@@ -1068,6 +1068,23 @@ app.post('/api/posts', auth, async (req, res) => {
   try {
     const username = req.user.username;
     if (!rateLimit('post:' + username, 6, 60 * 1000)) return res.status(429).json({ error: "You're posting too fast — take a breather." });
+    // New-account gates (staff exempt): block posting for the first 10 minutes,
+    // then cap posts in the first day. Stops drive-by bots that sign up and flood.
+    // These are NOT spam strikes — a legit new user shouldn't get auto-suspended.
+    const isStaff = ADMIN_USERS.includes(username) || req.user.admin;
+    if (!isStaff) {
+      const me = await User.findById(req.user.id).select('createdAt').lean();
+      const ageMs = me ? Date.now() - new Date(me.createdAt).getTime() : Infinity;
+      if (ageMs < 10 * 60 * 1000) {
+        const mins = Math.ceil((10 * 60 * 1000 - ageMs) / 60000);
+        return res.status(403).json({ error: `New accounts can post after 10 minutes — about ${mins} more to go.` });
+      }
+      if (ageMs < 24 * 60 * 60 * 1000) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const cnt = await Post.countDocuments({ author: username, createdAt: { $gte: since } });
+        if (cnt >= 15) return res.status(429).json({ error: 'New accounts are limited to 15 posts a day for now — back tomorrow!' });
+      }
+    }
     // Reject helper: records a spam strike and auto-suspends after too many in a row.
     const reject = async (msg, code = 400) => {
       const suspended = await recordSpamStrike(username);
