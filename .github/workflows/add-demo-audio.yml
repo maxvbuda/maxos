@@ -1,0 +1,47 @@
+name: Add demo audio
+
+# Generates an original royalty-free music bed and muxes it under the existing
+# committed demo video (media/demo.mp4 + .webm) — no re-recording, video stream
+# is copied as-is. Uploads the results as an artifact. Manual-only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate music bed
+        run: node tools/demo-recorder/make-music.mjs   # writes music.wav in the repo root
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+
+      - name: Mux audio into the videos (copy video, add audio, trim to video length)
+        run: |
+          mkdir -p out
+          ffmpeg -y -i media/demo.mp4 -i music.wav \
+            -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 160k -shortest \
+            -movflags +faststart out/demo.mp4
+          ffmpeg -y -i media/demo.webm -i music.wav \
+            -map 0:v:0 -map 1:a:0 -c:v copy -c:a libopus -b:a 128k -shortest \
+            out/demo.webm
+          echo "=== results ==="
+          ffprobe -v error -show_entries stream=codec_type,codec_name -of default=nw=1 out/demo.mp4
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-video-audio
+          path: |
+            out/demo.mp4
+            out/demo.webm
+          if-no-files-found: error
