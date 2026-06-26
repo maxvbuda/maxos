@@ -232,7 +232,21 @@
   .browser-bar button { background: rgba(100,180,255,.3); border: none; color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
   .browser-bar button:hover { background: rgba(100,180,255,.45); }
   .browser-portal { flex:1; overflow-y:auto; padding:0 24px 24px; background:linear-gradient(180deg,rgba(100,180,255,.06),transparent 240px); }
-  .eb-webview { flex:1; width:100%; border:0; background:#fff; }
+  .eb-views { flex:1; display:flex; position:relative; }
+  .eb-views webview, .eb-wv { flex:1; width:100%; border:0; background:#fff; }
+  .eb-tabs { display:flex; gap:4px; padding:6px 8px 0; background:rgba(255,255,255,.04); overflow-x:auto; }
+  .eb-tab { display:flex; align-items:center; gap:7px; max-width:170px; padding:6px 10px; border-radius:9px 9px 0 0; background:rgba(255,255,255,.06); color:rgba(255,255,255,.6); font-size:12px; cursor:pointer; white-space:nowrap; flex:0 0 auto; }
+  .eb-tab.active { background:rgba(255,255,255,.15); color:#fff; }
+  .eb-tab span:first-child { overflow:hidden; text-overflow:ellipsis; }
+  .eb-tab-x { opacity:.45; font-size:11px; } .eb-tab-x:hover { opacity:1; }
+  .eb-tab-new { padding:6px 11px; border-radius:9px; background:rgba(255,255,255,.06); color:#fff; cursor:pointer; flex:0 0 auto; }
+  .eb-tab-new:hover { background:rgba(255,255,255,.14); }
+  .eb-bookmarks { display:flex; gap:6px; flex-wrap:wrap; padding:7px 10px; background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+  .eb-bm { display:flex; align-items:center; gap:6px; max-width:170px; padding:4px 9px; border-radius:7px; background:rgba(100,180,255,.16); color:#dce7ff; font-size:12px; cursor:pointer; }
+  .eb-bm:hover { background:rgba(100,180,255,.28); }
+  .eb-bm span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .eb-bm-x { opacity:.45; } .eb-bm-x:hover { opacity:1; }
+  .eb-empty-bm { color:rgba(255,255,255,.35); font-size:12px; padding:2px 4px; }
   .portal-hero { text-align:center; padding:30px 0 20px; }
   .portal-logo { font-size:54px; }
   .portal-hero h1 { color:#fff; font-size:28px; font-weight:700; margin-top:6px; letter-spacing:.5px; }
@@ -2893,8 +2907,14 @@ function buildBrowser() {
   </div>`;
 }
 const EB_HOME = 'https://duckduckgo.com/';
+let ebTabs = [];      // [{ id, title, url, wv }]
+let ebActive = null;  // active tab id
+let ebTabSeq = 0;
+let ebBookmarks = [];
+
 function buildWebBrowser() {
   return `<div class="mini-browser">
+    <div class="eb-tabs" id="eb-tabs"></div>
     <div class="browser-bar">
       <button onclick="ebBack()" title="Back">‹</button>
       <button onclick="ebForward()" title="Forward">›</button>
@@ -2902,11 +2922,14 @@ function buildWebBrowser() {
       <button onclick="ebHome()" title="Home">🏠</button>
       <input id="browser-url" placeholder="Search or enter a website" style="flex:1" onkeydown="if(event.key==='Enter')ebGo()">
       <button onclick="ebGo()">Go</button>
+      <button onclick="ebBookmark()" title="Bookmark this page">☆</button>
+      <button onclick="ebToggleBookmarks()" title="Show bookmarks">📑</button>
     </div>
-    <webview id="eb-view" class="eb-webview" src="${EB_HOME}"></webview>
+    <div class="eb-bookmarks" id="eb-bookmarks" hidden></div>
+    <div class="eb-views" id="eb-views"></div>
   </div>`;
 }
-function ebView() { return document.getElementById('eb-view'); }
+
 // Turn an address-bar entry into a URL: full URL → as-is; bare domain → https://;
 // anything else → a web search.
 function ebNormalize(v) {
@@ -2916,19 +2939,88 @@ function ebNormalize(v) {
   if (/^[^\s]+\.[^\s]{2,}(\/.*)?$/.test(v)) return 'https://' + v;
   return 'https://duckduckgo.com/?q=' + encodeURIComponent(v);
 }
-function ebGo()      { const wv = ebView(); if (wv) wv.src = ebNormalize(document.getElementById('browser-url').value); }
-function ebHome()    { const wv = ebView(); if (wv) wv.src = EB_HOME; }
-function ebReload()  { const wv = ebView(); if (wv && wv.reload) wv.reload(); }
-function ebBack()    { const wv = ebView(); if (wv && wv.canGoBack && wv.canGoBack()) wv.goBack(); }
-function ebForward() { const wv = ebView(); if (wv && wv.canGoForward && wv.canGoForward()) wv.goForward(); }
+function ebSafeUrl(wv) { try { return wv && wv.getURL ? wv.getURL() : ''; } catch { return ''; } }
+function ebActiveTab() { return ebTabs.find(t => t.id === ebActive) || null; }
+function ebActiveWv() { const t = ebActiveTab(); return t ? t.wv : null; }
+
+function ebNewTab(url) {
+  const id = ++ebTabSeq;
+  const wv = document.createElement('webview');
+  wv.className = 'eb-wv';
+  wv.setAttribute('src', url || EB_HOME);
+  const tab = { id, title: 'New Tab', url: url || EB_HOME, wv };
+  wv.addEventListener('did-navigate', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
+  wv.addEventListener('did-navigate-in-page', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
+  wv.addEventListener('page-title-updated', (e) => { tab.title = e.title || tab.title; ebRenderTabs(); });
+  document.getElementById('eb-views').appendChild(wv);
+  ebTabs.push(tab);
+  ebActivate(id);
+}
+function ebActivate(id) {
+  ebActive = id;
+  ebTabs.forEach(t => { t.wv.style.display = t.id === id ? 'flex' : 'none'; });
+  ebSyncBar();
+  ebRenderTabs();
+}
+function ebCloseTab(id, ev) {
+  if (ev) ev.stopPropagation();
+  const idx = ebTabs.findIndex(t => t.id === id);
+  if (idx < 0) return;
+  ebTabs[idx].wv.remove();
+  ebTabs.splice(idx, 1);
+  if (!ebTabs.length) { ebNewTab(EB_HOME); return; }
+  if (ebActive === id) ebActivate(ebTabs[Math.max(0, idx - 1)].id);
+  else ebRenderTabs();
+}
+function ebSyncBar() {
+  const u = document.getElementById('browser-url');
+  const t = ebActiveTab();
+  if (u && t) u.value = ebSafeUrl(t.wv) || t.url || '';
+}
+function ebRenderTabs() {
+  const bar = document.getElementById('eb-tabs');
+  if (!bar) return;
+  bar.innerHTML = ebTabs.map(t =>
+    `<div class="eb-tab${t.id === ebActive ? ' active' : ''}" onclick="ebActivate(${t.id})">
+       <span>${escapeHtml(t.title || 'New Tab')}</span>
+       <span class="eb-tab-x" onclick="ebCloseTab(${t.id},event)">✕</span>
+     </div>`).join('') +
+    `<div class="eb-tab-new" onclick="ebNewTab()" title="New tab">＋</div>`;
+}
+
+function ebGo()      { const wv = ebActiveWv(); if (wv) wv.src = ebNormalize(document.getElementById('browser-url').value); }
+function ebHome()    { const wv = ebActiveWv(); if (wv) wv.src = EB_HOME; }
+function ebReload()  { const wv = ebActiveWv(); if (wv && wv.reload) wv.reload(); }
+function ebBack()    { const wv = ebActiveWv(); if (wv && wv.canGoBack && wv.canGoBack()) wv.goBack(); }
+function ebForward() { const wv = ebActiveWv(); if (wv && wv.canGoForward && wv.canGoForward()) wv.goForward(); }
+
+// ── Bookmarks (per-user, stored locally) ─────────────────────────────────────
+function ebBmKey() { return 'maxos_bm_' + (currentUser?.username || 'guest'); }
+function ebLoadBookmarks() { try { ebBookmarks = JSON.parse(localStorage.getItem(ebBmKey()) || '[]'); } catch { ebBookmarks = []; } }
+function ebSaveBookmarks() { try { localStorage.setItem(ebBmKey(), JSON.stringify(ebBookmarks)); } catch {} }
+function ebBookmark() {
+  const t = ebActiveTab(); if (!t) return;
+  const url = ebSafeUrl(t.wv) || t.url; if (!url) return;
+  if (ebBookmarks.some(b => b.url === url)) ebBookmarks = ebBookmarks.filter(b => b.url !== url); // toggle off
+  else ebBookmarks.push({ url, title: t.title || url });
+  ebSaveBookmarks(); ebRenderBookmarks();
+  const bar = document.getElementById('eb-bookmarks'); if (bar) bar.hidden = false;
+}
+function ebRenderBookmarks() {
+  const bar = document.getElementById('eb-bookmarks'); if (!bar) return;
+  bar.innerHTML = ebBookmarks.length
+    ? ebBookmarks.map((b, i) => `<div class="eb-bm" onclick="ebOpenBookmark(${i})" title="${escapeHtml(b.url)}">⭐ <span>${escapeHtml(b.title || b.url)}</span><span class="eb-bm-x" onclick="ebDelBookmark(${i},event)">✕</span></div>`).join('')
+    : `<div class="eb-empty-bm">No bookmarks yet — open a page and tap ☆ to save it.</div>`;
+}
+function ebOpenBookmark(i) { const b = ebBookmarks[i]; if (b) ebNewTab(b.url); }
+function ebDelBookmark(i, ev) { if (ev) ev.stopPropagation(); ebBookmarks.splice(i, 1); ebSaveBookmarks(); ebRenderBookmarks(); }
+function ebToggleBookmarks() { const bar = document.getElementById('eb-bookmarks'); if (bar) bar.hidden = !bar.hidden; }
+
 function initBrowser() {
   if (IS_ELECTRON) {
-    const wv = ebView();
-    if (wv) {
-      const sync = (e) => { const u = document.getElementById('browser-url'); if (u && e.url) u.value = e.url; };
-      wv.addEventListener('did-navigate', sync);
-      wv.addEventListener('did-navigate-in-page', sync);
-    }
+    ebTabs = []; ebActive = null; ebTabSeq = 0;
+    ebLoadBookmarks(); ebRenderBookmarks();
+    ebNewTab(EB_HOME);
     return;
   }
   browserHome();
