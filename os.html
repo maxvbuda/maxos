@@ -831,6 +831,9 @@
   /* MaxSocial */
   .social { display:flex; flex-direction:column; height:100%; }
   .social-head { display:flex; align-items:center; padding:14px 16px; color:#fff; font-weight:700; font-size:17px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .social-verify { margin:12px 16px 0; padding:10px 12px; background:rgba(255,176,80,.12); border:1px solid rgba(255,176,80,.32); border-radius:11px; color:#ffd9a8; font-size:13px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .social-verify button { margin-left:auto; padding:6px 13px; border-radius:8px; border:1px solid rgba(255,176,80,.45); background:rgba(255,176,80,.16); color:#fff; font-size:12px; font-weight:600; cursor:pointer; }
+  .social-verify button:hover { background:rgba(255,176,80,.3); }
   .social-compose { padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.08); }
   .social-compose textarea { width:100%; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:12px 14px; color:#fff; outline:none; font-family:inherit; font-size:15px; resize:none; min-height:46px; }
   .social-bgrow { display:flex; align-items:center; gap:6px; margin-top:10px; }
@@ -7177,6 +7180,7 @@ let socialBg = -1, socialTimer = null;
 function buildSocial() {
   return `<div class="social">
     <div class="social-head">✨ MaxSocial <button class="gbtn" style="margin-left:auto;padding:5px 12px" onclick="socialLoad()">↻</button></div>
+    ${(currentUser?.mustVerifyEmail && !currentUser?.emailVerified) ? `<div class="social-verify">📧 Verify your email to start posting. <button onclick="resendVerifyEmail()">Resend link</button></div>` : ''}
     <div class="social-compose">
       <textarea id="social-text" placeholder="What's on your mind, ${currentUser?.displayName || 'friend'}?" oninput="socialResize(this)"></textarea>
       <div class="social-bgrow">${SOCIAL_BG.map((g, i) => `<div class="social-swatch${i === 0 ? ' plain' : ''}" style="${g ? 'background:' + g : ''}" onclick="socialPickBg(${i - 1})" title="${i === 0 ? 'Plain' : 'Color'}">${i === 0 ? 'Aa' : ''}</div>`).join('')}
