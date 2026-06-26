@@ -30,15 +30,30 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        { "target": "dmg", "arch": ["universal"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "icon": "build/icon.png",
       "artifactName": "MaxOS-mac.${ext}"
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png",
       "artifactName": "MaxOS-windows.${ext}"
@@ -50,6 +65,7 @@
       "createDesktopShortcut": true,
       "shortcutName": "MaxOS",
       "artifactName": "MaxOS-Setup.${ext}"
-    }
+    },
+    "afterPack": "afterpack-sign.js"
   }
 }
