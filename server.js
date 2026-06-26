@@ -365,6 +365,45 @@ function moderatePost(text, username) {
   return null;
 }
 
+// Persistent duplicate detection (DB-backed, survives restarts). Blocks the same
+// text reposted by the same user (30 min) or copy-pasted by anyone (10 min) —
+// the pattern a spam bot uses. Feed volume is small, so scanning recent posts is cheap.
+const normText = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+async function duplicatePostMsg(text, username) {
+  const nt = normText(text);
+  if (nt.length < 6) return null; // too short to meaningfully dedupe
+  const since = new Date(Date.now() - 30 * 60 * 1000);
+  const recent = await Post.find({ createdAt: { $gte: since } })
+    .select('text author createdAt').sort({ createdAt: -1 }).limit(150).lean();
+  for (const p of recent) {
+    if (normText(p.text) !== nt) continue;
+    if (p.author === username) return 'You already posted that — try something new.';
+    if (Date.now() - new Date(p.createdAt).getTime() < 10 * 60 * 1000) return 'That post was just shared by someone else.';
+  }
+  return null;
+}
+
+// Auto-suspend repeat offenders: count consecutive blocked posts per account; a
+// human won't trip the filters 5× in a row, but a bot hammering the endpoint will.
+// Admins are never auto-suspended. Strikes reset on a successful post.
+const spamStrikes = new Map(); // username -> { n, t }
+const SPAM_SUSPEND_AT = 5;
+async function recordSpamStrike(username) {
+  if (ADMIN_USERS.includes(username)) return false;
+  const now = Date.now();
+  const s = spamStrikes.get(username);
+  const n = (s && now - s.t < 3 * 60 * 1000) ? s.n + 1 : 1; // strikes must be within 3 min of each other
+  spamStrikes.set(username, { n, t: now });
+  if (n >= SPAM_SUSPEND_AT) {
+    spamStrikes.delete(username);
+    await User.updateOne({ username }, { suspended: true }).catch(() => {});
+    console.warn(`[anti-spam] auto-suspended "${username}" after ${n} blocked posts in a row`);
+    return true;
+  }
+  return false;
+}
+const clearSpamStrikes = (username) => spamStrikes.delete(username);
+
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
 async function uniqueSlug(base) { let id = base, n = 1; while (await AppModel.findOne({ id })) id = base + (++n); return id; }
@@ -1017,14 +1056,24 @@ app.get('/api/posts', auth, async (req, res) => {
 });
 app.post('/api/posts', auth, async (req, res) => {
   try {
-    if (!rateLimit('post:' + req.user.username, 6, 60 * 1000)) return res.status(429).json({ error: "You're posting too fast — take a breather." });
-    const bad = moderatePost(req.body.text, req.user.username);
-    if (bad) return res.status(400).json({ error: bad });
+    const username = req.user.username;
+    if (!rateLimit('post:' + username, 6, 60 * 1000)) return res.status(429).json({ error: "You're posting too fast — take a breather." });
+    // Reject helper: records a spam strike and auto-suspends after too many in a row.
+    const reject = async (msg, code = 400) => {
+      const suspended = await recordSpamStrike(username);
+      if (suspended) return res.status(403).json({ error: 'Account suspended for repeated spam.' });
+      return res.status(code).json({ error: msg });
+    };
+    const bad = moderatePost(req.body.text, username);
+    if (bad) return reject(bad);
+    const dup = await duplicatePostMsg(req.body.text, username);
+    if (dup) return reject(dup);
     const text = req.body.text.trim().slice(0, 1000);
-    const p = await Post.create({ author: req.user.username, text, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
-    lastPostByUser.set(req.user.username, text);
+    const p = await Post.create({ author: username, text, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    lastPostByUser.set(username, text);
+    clearSpamStrikes(username); // a good post wipes the slate
     io.to('feed').emit('feed');
-    res.json(serializePost(p, req.user.username));
+    res.json(serializePost(p, username));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/posts/:id/like', auth, async (req, res) => {
