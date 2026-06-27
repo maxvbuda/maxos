@@ -179,7 +179,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v12';
+const CACHE = 'maxos-shell-v13';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -786,9 +786,14 @@ function testerOnly(req, res, next) {
   next();
 }
 // Toggle test mode (unlimited Minecraft time while on).
-app.post('/api/tester/testmode', auth, testerOnly, async (req, res) => {
+// Test mode (unlimited Minecraft time for a tester) can ONLY be flipped by a
+// superadmin — testers can't toggle their own.
+app.post('/api/admin/users/:username/testmode', auth, superadminOnly, async (req, res) => {
   try {
-    const u = await User.findById(req.user.id).select('testMode');
+    const name = String(req.params.username || '').toLowerCase();
+    if (!isTester(name)) return res.status(400).json({ error: 'That account is not a tester.' });
+    const u = await User.findOne({ username: name });
+    if (!u) return res.status(404).json({ error: 'User not found' });
     u.testMode = !u.testMode; await u.save();
     res.json({ ok: true, testMode: u.testMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -820,11 +825,12 @@ app.post('/api/feedback', auth, testerOnly, async (req, res) => {
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
     const showIP = ADMIN_USERS.includes(req.user.username); // IPs are superadmin-only
-    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt signupIP lastIP').sort({ createdAt: 1 });
+    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt signupIP lastIP testMode').sort({ createdAt: 1 });
     res.json(users.map(u => ({
       username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious,
       admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest,
       mcTimeRequest: u.mcTimeRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt,
+      tester: isTester(u.username), testMode: !!u.testMode,
       ...(showIP ? { signupIP: u.signupIP || '', lastIP: u.lastIP || '' } : {}),
     })));
   } catch (e) { res.status(500).json({ error: e.message }); }

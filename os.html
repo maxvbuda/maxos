@@ -1075,7 +1075,7 @@
 <!-- Tester panel (only shown for testers) -->
 <div id="tester-panel">
   <span class="tester-tag">🧪 TESTER</span>
-  <label class="tester-toggle"><input type="checkbox" id="tester-testmode" onchange="toggleTestMode(this)"> Test mode <span id="tester-testmode-state">(off)</span></label>
+  <span class="tester-toggle" title="Only a superadmin can turn this on or off">Test mode <span id="tester-testmode-state">(off)</span></span>
   <input id="tester-problem" type="text" placeholder="Found a problem? Describe it…" onkeydown="if(event.key==='Enter')submitFeedback()">
   <button class="tester-send" onclick="submitFeedback()">Send 📨</button>
 </div>
@@ -2282,19 +2282,9 @@ function initTesterPanel() {
   if (!panel) return;
   if (!currentUser?.tester) { panel.classList.remove('show'); return; }
   panel.classList.add('show');
-  const cb = document.getElementById('tester-testmode');
-  if (cb) cb.checked = !!currentUser.testMode;
+  // Read-only: only a superadmin can change it (from the Admin panel).
   const st = document.getElementById('tester-testmode-state');
-  if (st) st.textContent = currentUser.testMode ? '(ON — unlimited)' : '(off)';
-}
-async function toggleTestMode(cb) {
-  const r = await apiFetch('/api/tester/testmode', { method: 'POST', body: '{}' });
-  if (!r || r.error) { if (cb) cb.checked = !cb.checked; notify('🧪', 'Test mode', (r && r.error) || 'Failed'); return; }
-  currentUser.testMode = !!r.testMode;
-  const st = document.getElementById('tester-testmode-state');
-  if (st) st.textContent = currentUser.testMode ? '(ON — unlimited)' : '(off)';
-  notify('🧪', 'Test mode ' + (currentUser.testMode ? 'ON' : 'off'), currentUser.testMode ? 'You now have unlimited Minecraft time.' : 'Minecraft time limit is back on.');
-  mcLoadStatus(); // refresh remaining/unlimited from the server
+  if (st) st.textContent = currentUser.testMode ? '(ON — unlimited)' : '(off — set by admin)';
 }
 async function submitFeedback() {
   const inp = document.getElementById('tester-problem');
@@ -7547,6 +7537,7 @@ async function adminLoad() {
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleAdmin('${u.username}')">${u.admin ? '🛡️ Remove admin' : '🛡️ Make admin'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleTeacher('${u.username}')">${u.teacher ? '🎓 Unmake teacher' : '🎓 Make teacher'}</button>
        <button class="gbtn" style="padding:5px 10px" onclick="adminToggleSuspicious('${u.username}')">${u.suspicious ? '🟢 Clear' : '🚩 Suspicious'}</button>
+       ${u.tester ? `<button class="gbtn" style="padding:5px 10px;background:${u.testMode ? 'rgba(255,159,10,.3)' : 'rgba(255,255,255,.08)'}" onclick="adminToggleTestMode('${u.username}')">🧪 Test mode ${u.testMode ? 'ON' : 'off'}</button>` : ''}
        ${u.suspicious ? `<button class="gbtn" style="padding:5px 10px" onclick="adminStartWatching('${u.username}')">👁 Watch</button>` : ''}` : ''}
        <button class="gbtn" style="padding:5px 10px" onclick="adminSuspend('${u.username}')">${u.suspended ? '✅ Unsuspend' : '⏸ Suspend'}</button>
        ${currentUser.superadmin ? `<button class="gbtn" style="padding:5px 10px;background:rgba(255,95,87,.25)" onclick="adminDelete('${u.username}')">🗑 Delete</button>` : ''}`}
@@ -7577,6 +7568,12 @@ async function adminGrantTime(username) {
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/grant-time', { method: 'POST', body: JSON.stringify({ minutes: 15 }) });
   if (r.error) { notify('⛏️', 'Error', r.error); return; }
   notify('⛏️', 'More time granted', '@' + username + ' got +' + (r.addedMinutes || 15) + ' min of Minecraft this week.');
+  adminLoad();
+}
+async function adminToggleTestMode(username) {
+  const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username) + '/testmode', { method: 'POST' });
+  if (r.error) { notify('🧪', 'Test mode', r.error); return; }
+  notify('🧪', 'Test mode ' + (r.testMode ? 'ON' : 'off'), '@' + username + (r.testMode ? ' now has unlimited Minecraft time.' : ' is back to the normal limit.'));
   adminLoad();
 }
 async function adminToggleSuspicious(username) {
