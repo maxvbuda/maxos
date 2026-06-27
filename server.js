@@ -179,7 +179,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v13';
+const CACHE = 'maxos-shell-v14';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -795,6 +795,7 @@ app.post('/api/admin/users/:username/testmode', auth, superadminOnly, async (req
     const u = await User.findOne({ username: name });
     if (!u) return res.status(404).json({ error: 'User not found' });
     u.testMode = !u.testMode; await u.save();
+    io.to('user:' + name).emit('testmode', { testMode: u.testMode }); // push live to the tester
     res.json({ ok: true, testMode: u.testMode });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

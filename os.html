@@ -4174,6 +4174,16 @@ async function connectAppSocket() {
   });
   appSocket.on('chat', d => { if (windows['chat'] && (!d || d.channel === chatChannel)) chatLoad(true); });
   appSocket.on('feed', () => { if (windows['social']) socialLoad(); });
+  // Superadmin flipped this tester's test mode → update live, no refresh needed.
+  appSocket.on('testmode', d => {
+    if (!currentUser) return;
+    currentUser.testMode = !!(d && d.testMode);
+    const st = document.getElementById('tester-testmode-state');
+    if (st) st.textContent = currentUser.testMode ? '(ON — unlimited)' : '(off — set by admin)';
+    notify('🧪', 'Test mode ' + (currentUser.testMode ? 'ON' : 'off'),
+      currentUser.testMode ? 'A superadmin gave you unlimited Minecraft time.' : 'Your Minecraft time limit is back on.');
+    if (typeof mcLoadStatus === 'function') mcLoadStatus(); // refresh remaining/unlimited
+  });
 }
 function appSocketJoinChat(ch) { if (appSocket && appSocket.connected && ch) appSocket.emit('chat:join', ch); }
 
