@@ -2910,9 +2910,15 @@ function buildBrowser() {
 }
 // Search engines the in-app browser can use. The choice is a saved setting.
 const EB_ENGINES = {
-  duckduckgo: { name: 'DuckDuckGo', home: 'https://duckduckgo.com/',  search: 'https://duckduckgo.com/?q=' },
-  google:     { name: 'Google',     home: 'https://www.google.com/',  search: 'https://www.google.com/search?q=' },
-  bing:       { name: 'Bing',       home: 'https://www.bing.com/',     search: 'https://www.bing.com/search?q=' },
+  duckduckgo: { name: 'DuckDuckGo',     home: 'https://duckduckgo.com/',     search: 'https://duckduckgo.com/?q=' },
+  google:     { name: 'Google',         home: 'https://www.google.com/',     search: 'https://www.google.com/search?q=' },
+  bing:       { name: 'Bing',           home: 'https://www.bing.com/',        search: 'https://www.bing.com/search?q=' },
+  kiddle:     { name: 'Kiddle (kids)',  home: 'https://www.kiddle.co/',       search: 'https://www.kiddle.co/s.php?q=' },
+  ecosia:     { name: 'Ecosia',         home: 'https://www.ecosia.org/',      search: 'https://www.ecosia.org/search?q=' },
+  brave:      { name: 'Brave',          home: 'https://search.brave.com/',    search: 'https://search.brave.com/search?q=' },
+  startpage:  { name: 'Startpage',      home: 'https://www.startpage.com/',   search: 'https://www.startpage.com/sp/search?query=' },
+  yahoo:      { name: 'Yahoo',          home: 'https://search.yahoo.com/',    search: 'https://search.yahoo.com/search?p=' },
+  wikipedia:  { name: 'Wikipedia',      home: 'https://www.wikipedia.org/',   search: 'https://en.wikipedia.org/w/index.php?search=' },
 };
 function ebEngineKey() { const k = localStorage.getItem('maxos_search_engine'); return EB_ENGINES[k] ? k : 'duckduckgo'; }
 function ebEngine()    { return EB_ENGINES[ebEngineKey()]; }
