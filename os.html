@@ -2496,10 +2496,10 @@ async function editorSaveAs() {
 
 function editorDownload() {
   const html = `<!DOCTYPE html><meta charset="utf-8"><body style="font-family:system-ui,sans-serif;max-width:700px;margin:40px auto;padding:0 20px">${editorGetContent()}`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-  a.download = (editorCurrentPath ? editorCurrentPath.split('/').pop().replace(/\.\w+$/, '') : 'document') + '.html';
-  a.click();
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  const name = (editorCurrentPath ? editorCurrentPath.split('/').pop().replace(/\.\w+$/, '') : 'document') + '.html';
+  triggerDownload(url, name);
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
 }
 
 function clearEditor() {
@@ -3202,10 +3202,33 @@ function ptColor(c) {
   document.getElementById('pt-eraser')?.classList.remove('active');
 }
 function ptClear() { if(ptCtx) { ptCtx.fillStyle='#1a1a2e'; ptCtx.fillRect(0,0,ptCtx.canvas.width,ptCtx.canvas.height); } }
+// Robustly trigger a file download. The anchor MUST be in the DOM for .click()
+// to work in Electron and some browsers, and a Blob URL avoids data-URL size
+// limits that silently break large images.
+function triggerDownload(href, filename) {
+  const a = document.createElement('a');
+  a.href = href; a.download = filename; a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 200);
+}
+function downloadCanvas(canvas, filename, type = 'image/png') {
+  if (canvas.toBlob) {
+    canvas.toBlob(blob => {
+      if (!blob) { triggerDownload(canvas.toDataURL(type), filename); return; }
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }, type);
+  } else {
+    triggerDownload(canvas.toDataURL(type), filename);
+  }
+}
 function ptSave() {
   const c=document.getElementById('paint-canvas');
   if(!c) return;
-  const a=document.createElement('a'); a.download='painting.png'; a.href=c.toDataURL(); a.click();
+  downloadCanvas(c, 'painting.png');
+  notify('🎨', 'Saved', 'painting.png downloaded to your computer.');
 }
 function ptFill([x,y]) {
   const c=document.getElementById('paint-canvas'); if(!c) return;
@@ -5028,8 +5051,8 @@ async function anGif() {
   const bytes = gifEncode(frames, AN_W, AN_H, Math.max(2, Math.round(100 / (anFps || 8))));
   const blob = new Blob([bytes], { type: 'image/gif' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.download = 'animation.gif'; a.href = url; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  triggerDownload(url, 'animation.gif');
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
   notify('🎞️', 'Exported GIF', anFrames.length + ' frames @ ' + (anFps || 8) + ' fps');
 }
 
@@ -5317,10 +5340,9 @@ async function camSave() {
 }
 function camDownload() {
   if (!camShot) return;
-  const a = document.createElement('a');
-  a.download = (camPath ? camPath.split('/').pop().replace(/\.pic$/i, '') : 'photo_' + Date.now()) + '.png';
-  a.href = camShot;
-  a.click();
+  const name = (camPath ? camPath.split('/').pop().replace(/\.pic$/i, '') : 'photo_' + Date.now()) + '.png';
+  triggerDownload(camShot, name);
+  notify('📷', 'Saved', name + ' downloaded to your computer.');
 }
 function camStop() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } }
 

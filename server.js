@@ -179,7 +179,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v14';
+const CACHE = 'maxos-shell-v15';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
