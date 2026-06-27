@@ -13,7 +13,7 @@ const { Server: SocketIOServer } = require('socket.io');
 const app = express();
 app.set('trust proxy', 1); // Render runs behind a proxy — get the real client IP from X-Forwarded-For
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' })); // images (camera/paint/.pic) are base64 and far exceed the 100kb default
 
 // ── Simple in-memory rate limiter (per IP, sliding window) ────────────────────
 const rateHits = new Map(); // key -> [timestamps]
@@ -1444,9 +1444,11 @@ app.put('/api/write', auth, async (req, res) => {
     const { path, content, auto } = req.body;
     const file = await File.findOneAndUpdate({ userId: req.user.id, path, type: 'file' }, { content }, { new: true });
     if (!file) return res.status(404).json({ error: 'File not found' });
-    // Snapshot a version whenever the content actually changed
-    const last = await FileVersion.findOne({ userId: req.user.id, path }).sort({ createdAt: -1 });
-    if (!last || last.content !== content) {
+    // Snapshot a version whenever the content actually changed — but skip big binary
+    // images (.pic), where version history is pointless and would bloat the database.
+    const skipVersions = /\.pic$/i.test(path || '') || (content && content.length > 200000);
+    const last = skipVersions ? null : await FileVersion.findOne({ userId: req.user.id, path }).sort({ createdAt: -1 });
+    if (!skipVersions && (!last || last.content !== content)) {
       await FileVersion.create({ userId: req.user.id, path, content, auto: !!auto });
       const count = await FileVersion.countDocuments({ userId: req.user.id, path });
       if (count > 50) {
