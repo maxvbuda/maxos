@@ -247,6 +247,8 @@
   .eb-bm span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .eb-bm-x { opacity:.45; } .eb-bm-x:hover { opacity:1; }
   .eb-empty-bm { color:rgba(255,255,255,.35); font-size:12px; padding:2px 4px; }
+  .eb-engine { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#dce7ff; padding:5px 8px; font-size:12px; cursor:pointer; outline:none; }
+  .eb-engine option { background:#1a1a2e; color:#fff; }
   .portal-hero { text-align:center; padding:30px 0 20px; }
   .portal-logo { font-size:54px; }
   .portal-hero h1 { color:#fff; font-size:28px; font-weight:700; margin-top:6px; letter-spacing:.5px; }
@@ -2906,13 +2908,26 @@ function buildBrowser() {
     <div id="browser-content" class="browser-portal"></div>
   </div>`;
 }
-const EB_HOME = 'https://duckduckgo.com/';
+// Search engines the in-app browser can use. The choice is a saved setting.
+const EB_ENGINES = {
+  duckduckgo: { name: 'DuckDuckGo', home: 'https://duckduckgo.com/',  search: 'https://duckduckgo.com/?q=' },
+  google:     { name: 'Google',     home: 'https://www.google.com/',  search: 'https://www.google.com/search?q=' },
+  bing:       { name: 'Bing',       home: 'https://www.bing.com/',     search: 'https://www.bing.com/search?q=' },
+};
+function ebEngineKey() { const k = localStorage.getItem('maxos_search_engine'); return EB_ENGINES[k] ? k : 'duckduckgo'; }
+function ebEngine()    { return EB_ENGINES[ebEngineKey()]; }
+function ebHomeUrl()   { return ebEngine().home; }
+function ebChangeEngine(k) { if (EB_ENGINES[k]) localStorage.setItem('maxos_search_engine', k); }
+
 let ebTabs = [];      // [{ id, title, url, wv }]
 let ebActive = null;  // active tab id
 let ebTabSeq = 0;
 let ebBookmarks = [];
 
 function buildWebBrowser() {
+  const cur = ebEngineKey();
+  const engineOpts = Object.keys(EB_ENGINES)
+    .map(k => `<option value="${k}"${k === cur ? ' selected' : ''}>${EB_ENGINES[k].name}</option>`).join('');
   return `<div class="mini-browser">
     <div class="eb-tabs" id="eb-tabs"></div>
     <div class="browser-bar">
@@ -2924,6 +2939,7 @@ function buildWebBrowser() {
       <button onclick="ebGo()">Go</button>
       <button onclick="ebBookmark()" title="Bookmark this page">☆</button>
       <button onclick="ebToggleBookmarks()" title="Show bookmarks">📑</button>
+      <select id="eb-engine" class="eb-engine" title="Search engine" onchange="ebChangeEngine(this.value)">${engineOpts}</select>
     </div>
     <div class="eb-bookmarks" id="eb-bookmarks" hidden></div>
     <div class="eb-views" id="eb-views"></div>
@@ -2931,13 +2947,13 @@ function buildWebBrowser() {
 }
 
 // Turn an address-bar entry into a URL: full URL → as-is; bare domain → https://;
-// anything else → a web search.
+// anything else → a search with the chosen engine.
 function ebNormalize(v) {
   v = (v || '').trim();
-  if (!v) return EB_HOME;
+  if (!v) return ebHomeUrl();
   if (/^https?:\/\//i.test(v)) return v;
   if (/^[^\s]+\.[^\s]{2,}(\/.*)?$/.test(v)) return 'https://' + v;
-  return 'https://duckduckgo.com/?q=' + encodeURIComponent(v);
+  return ebEngine().search + encodeURIComponent(v);
 }
 function ebSafeUrl(wv) { try { return wv && wv.getURL ? wv.getURL() : ''; } catch { return ''; } }
 function ebActiveTab() { return ebTabs.find(t => t.id === ebActive) || null; }
@@ -2947,8 +2963,9 @@ function ebNewTab(url) {
   const id = ++ebTabSeq;
   const wv = document.createElement('webview');
   wv.className = 'eb-wv';
-  wv.setAttribute('src', url || EB_HOME);
-  const tab = { id, title: 'New Tab', url: url || EB_HOME, wv };
+  const start = url || ebHomeUrl();
+  wv.setAttribute('src', start);
+  const tab = { id, title: 'New Tab', url: start, wv };
   wv.addEventListener('did-navigate', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
   wv.addEventListener('did-navigate-in-page', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title || tab.title; ebRenderTabs(); });
@@ -2968,7 +2985,7 @@ function ebCloseTab(id, ev) {
   if (idx < 0) return;
   ebTabs[idx].wv.remove();
   ebTabs.splice(idx, 1);
-  if (!ebTabs.length) { ebNewTab(EB_HOME); return; }
+  if (!ebTabs.length) { ebNewTab(ebHomeUrl()); return; }
   if (ebActive === id) ebActivate(ebTabs[Math.max(0, idx - 1)].id);
   else ebRenderTabs();
 }
@@ -2989,7 +3006,7 @@ function ebRenderTabs() {
 }
 
 function ebGo()      { const wv = ebActiveWv(); if (wv) wv.src = ebNormalize(document.getElementById('browser-url').value); }
-function ebHome()    { const wv = ebActiveWv(); if (wv) wv.src = EB_HOME; }
+function ebHome()    { const wv = ebActiveWv(); if (wv) wv.src = ebHomeUrl(); }
 function ebReload()  { const wv = ebActiveWv(); if (wv && wv.reload) wv.reload(); }
 function ebBack()    { const wv = ebActiveWv(); if (wv && wv.canGoBack && wv.canGoBack()) wv.goBack(); }
 function ebForward() { const wv = ebActiveWv(); if (wv && wv.canGoForward && wv.canGoForward()) wv.goForward(); }
@@ -3020,7 +3037,7 @@ function initBrowser() {
   if (IS_ELECTRON) {
     ebTabs = []; ebActive = null; ebTabSeq = 0;
     ebLoadBookmarks(); ebRenderBookmarks();
-    ebNewTab(EB_HOME);
+    ebNewTab(ebHomeUrl());
     return;
   }
   browserHome();
