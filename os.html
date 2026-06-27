@@ -242,6 +242,7 @@
   .eb-tab-new { padding:6px 11px; border-radius:9px; background:rgba(255,255,255,.06); color:#fff; cursor:pointer; flex:0 0 auto; }
   .eb-tab-new:hover { background:rgba(255,255,255,.14); }
   .eb-bookmarks { display:flex; gap:6px; flex-wrap:wrap; padding:7px 10px; background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+  .eb-bookmarks[hidden] { display:none; } /* without this, display:flex overrides the hidden attribute and the toggle does nothing */
   .eb-bm { display:flex; align-items:center; gap:6px; max-width:170px; padding:4px 9px; border-radius:7px; background:rgba(100,180,255,.16); color:#dce7ff; font-size:12px; cursor:pointer; }
   .eb-bm:hover { background:rgba(100,180,255,.28); }
   .eb-bm span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
