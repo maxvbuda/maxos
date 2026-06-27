@@ -1442,8 +1442,17 @@ app.get('/api/cat', auth, async (req, res) => {
 app.put('/api/write', auth, async (req, res) => {
   try {
     const { path, content, auto } = req.body;
-    const file = await File.findOneAndUpdate({ userId: req.user.id, path, type: 'file' }, { content }, { new: true });
-    if (!file) return res.status(404).json({ error: 'File not found' });
+    const name = (path || '').split('/').pop();
+    if (!path || !name) return res.status(400).json({ error: 'Bad path' });
+    const parent = path.slice(0, path.lastIndexOf('/')) || '';
+    // Upsert: create the file if it doesn't exist yet, otherwise update it. (Saving a
+    // brand-new file — e.g. a camera photo — used to 404 here, and the client then
+    // silently wrote to its offline mirror instead of the server.)
+    const file = await File.findOneAndUpdate(
+      { userId: req.user.id, path, type: 'file' },
+      { content, $setOnInsert: { name, parent } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
     // Snapshot a version whenever the content actually changed — but skip big binary
     // images (.pic), where version history is pointless and would bloat the database.
     const skipVersions = /\.pic$/i.test(path || '') || (content && content.length > 200000);
