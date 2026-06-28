@@ -7485,7 +7485,10 @@ let adminWatchUser = null, adminWatchTimer = null, adminWatchAt = 0;
 function buildAdmin() {
   return `<div class="admin">
     <div class="admin-head"><span style="font-size:22px">🛡️</span><div><div style="color:#fff;font-weight:600">Admin Panel</div><div style="color:rgba(255,255,255,.45);font-size:12px">Manage MaxOS accounts</div></div>
-      <button class="gbtn" style="margin-left:auto" onclick="adminLoad()">↻ Refresh</button></div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        ${currentUser?.superadmin ? `<button class="gbtn" id="admin-recheck" onclick="adminRecheck(this)">🔄 Recheck</button>` : ''}
+        <button class="gbtn" onclick="adminLoad()">↻ Refresh</button>
+      </div></div>
     <div id="admin-reports"></div>
     <div class="admin-list" id="admin-list"><div style="color:rgba(255,255,255,.4);padding:20px">Loading…</div></div>
   </div>`;
@@ -7559,6 +7562,18 @@ function adminReceiveWatchFrame(packet) {
 function adminReceiveWatchEnded(packet) {
   if (!packet || !adminWatchUser || packet.username !== adminWatchUser) return;
   adminStopWatching('@' + escapeHtml(packet.username) + ' watch ended.');
+}
+// Superadmin "Recheck": re-verify the server connection, then reload users + reports.
+async function adminRecheck(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Rechecking…'; }
+  try {
+    await checkServer();            // refresh online/offline status
+    if (serverOnline && !_onlineInited) goOnline();
+    await adminLoad();              // reloads users (with fresh IPs) + reports
+    notify('🔄', 'Rechecked', serverOnline ? 'Account list refreshed from the server.' : 'Still offline — using cached data.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recheck'; }
+  }
 }
 async function adminLoad() {
   adminLoadReports();
