@@ -1542,6 +1542,17 @@ async function trapHandler(req, res) {
   await new Promise(r => setTimeout(r, 1200)); // stall the bot, but not enough to hurt us
   res.type('html').send(trapPage('Access check'));
 }
+app.get('/api/_ipdebug', (req, res) => {
+  res.json({
+    clientIp: clientIp(req),
+    reqIp: req.ip,
+    xff: req.headers['x-forwarded-for'] || null,
+    xRealIp: req.headers['x-real-ip'] || null,
+    cfConnecting: req.headers['cf-connecting-ip'] || null,
+    trueClient: req.headers['true-client-ip'] || null,
+    remote: req.socket?.remoteAddress || null,
+  });
+});
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\n' + TRAP_PATHS.map(p => 'Disallow: ' + p).join('\n') + '\nDisallow: /bot-trap/\n');
 });
