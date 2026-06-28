@@ -11,7 +11,14 @@ const crypto   = require('crypto');
 const { Server: SocketIOServer } = require('socket.io');
 
 const app = express();
-app.set('trust proxy', 1); // Render runs behind a proxy — get the real client IP from X-Forwarded-For
+app.set('trust proxy', true); // Render runs behind proxies
+// req.ip is often a 10.x internal load-balancer hop on Render, so derive the real
+// client IP from X-Forwarded-For — the first PUBLIC address in the chain.
+function clientIp(req) {
+  const xff = (req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const isPrivate = ip => /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1|fc|fd)/i.test(ip);
+  return xff.find(ip => !isPrivate(ip)) || xff[0] || req.socket?.remoteAddress || '';
+}
 app.use(cors());
 app.use(express.json({ limit: '25mb' })); // images (camera/paint/.pic) are base64 and far exceed the 100kb default
 
@@ -567,7 +574,7 @@ io.on('connection', socket => {
 // ── Auth routes ───────────────────────────────────────────────────────────────
 // Hand out a proof-of-work challenge for sign-up
 app.get('/api/auth/challenge', (req, res) => {
-  if (!rateLimit('chal:' + req.ip, 80, 10 * 60 * 1000)) return res.status(429).json({ error: 'Slow down' });
+  if (!rateLimit('chal:' + clientIp(req), 80, 10 * 60 * 1000)) return res.status(429).json({ error: 'Slow down' });
   const salt = crypto.randomBytes(8).toString('hex');
   const exp = Date.now() + POW_TTL;
   res.json({ salt, exp, sig: powSig(salt, exp), difficulty: POW_DIFFICULTY });
@@ -639,7 +646,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (!powValid(pow)) return res.status(400).json({ error: 'Verification failed — please reload and try again.' });
     // 3) Rate limit signups per IP — lenient so a whole classroom (shared IP) can
     //    register, but a runaway bot making hundreds gets stopped.
-    if (!rateLimit('reg:' + req.ip, 20, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many sign-ups from this network. Try again in a bit.' });
+    if (!rateLimit('reg:' + clientIp(req), 20, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many sign-ups from this network. Try again in a bit.' });
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     // 3) Basic username sanity — letters/numbers/_/- only, 3–24 chars
     if (!/^[a-z0-9_-]{3,24}$/i.test(username)) return res.status(400).json({ error: 'Username must be 3–24 letters, numbers, _ or -' });
@@ -655,7 +662,8 @@ app.post('/api/auth/register', async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     // First registered user (or a baked-in / ADMIN_USERS name) becomes an admin
     const isAdmin = (await User.countDocuments()) === 0 || ADMIN_USERS.includes(username.toLowerCase());
-    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: req.ip, lastIP: req.ip, email: cleanEmail, mustVerifyEmail: REQUIRE_EMAIL_VERIFY });
+    const ip = clientIp(req);
+    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: ip, lastIP: ip, email: cleanEmail, mustVerifyEmail: REQUIRE_EMAIL_VERIFY });
     await seedUser(user._id, user.username);
     if (REQUIRE_EMAIL_VERIFY) sendVerifyEmail(user).catch(() => {}); // best-effort; account still created
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
@@ -672,7 +680,8 @@ app.post('/api/auth/login', async (req, res) => {
     if (user.suspended) return res.status(403).json({ error: 'This account has been suspended' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
-    if (user.lastIP !== req.ip) { user.lastIP = req.ip; await user.save().catch(() => {}); }
+    const ip = clientIp(req);
+    if (user.lastIP !== ip) { user.lastIP = ip; await user.save().catch(() => {}); }
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
@@ -1178,7 +1187,7 @@ app.post('/api/posts', auth, async (req, res) => {
     const dup = await duplicatePostMsg(req.body.text, username);
     if (dup) return reject(dup);
     const text = req.body.text.trim().slice(0, 1000);
-    const p = await Post.create({ author: username, text, authorIP: req.ip, bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
+    const p = await Post.create({ author: username, text, authorIP: clientIp(req), bg: Number.isInteger(req.body.bg) ? req.body.bg : -1 });
     lastPostByUser.set(username, text);
     clearSpamStrikes(username); // a good post wipes the slate
     io.to('feed').emit('feed');
@@ -1521,7 +1530,7 @@ app.delete('/api/rm', auth, async (req, res) => {
 const TRAP_PATHS = ['/bot-trap', '/private', '/admin-secret', '/backup', '/wp-admin', '/wp-login.php', '/backup.zip', '/.env', '/api/private/users'];
 const trapSlug = () => crypto.randomBytes(6).toString('hex');
 function logTrap(req, label) {
-  console.warn('[' + (label || 'BOT-TRAP') + '] ' + JSON.stringify({ ip: req.ip, ua: (req.headers['user-agent'] || '').slice(0, 200), path: req.path }));
+  console.warn('[' + (label || 'BOT-TRAP') + '] ' + JSON.stringify({ ip: clientIp(req), ua: (req.headers['user-agent'] || '').slice(0, 200), path: req.path }));
 }
 function trapPage(title) {
   const links = Array.from({ length: 30 }, () => '/bot-trap/' + trapSlug());
@@ -1529,7 +1538,7 @@ function trapPage(title) {
 }
 async function trapHandler(req, res) {
   logTrap(req, req.path.startsWith('/bot-trap/') ? 'BOT-MAZE' : 'BOT-TRAP');
-  if (!rateLimit('trap:' + req.ip, 60, 60 * 1000)) return res.status(429).type('text/plain').send('Too many requests.');
+  if (!rateLimit('trap:' + clientIp(req), 60, 60 * 1000)) return res.status(429).type('text/plain').send('Too many requests.');
   await new Promise(r => setTimeout(r, 1200)); // stall the bot, but not enough to hurt us
   res.type('html').send(trapPage('Access check'));
 }
