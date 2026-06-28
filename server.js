@@ -179,7 +179,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v15';
+const CACHE = 'maxos-shell-v16';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -1513,6 +1513,31 @@ app.delete('/api/rm', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Bot tarpit ────────────────────────────────────────────────────────────────
+// Hidden honeypot links (in the page) plus robots.txt-disallowed paths lure bad
+// crawlers/scrapers into fake "trap" pages that log them, stall ~1.2s, and serve an
+// endless maze of fake links. Rate-limited so one bot can't melt our own server.
+const TRAP_PATHS = ['/bot-trap', '/private', '/admin-secret', '/backup', '/wp-admin', '/wp-login.php', '/backup.zip', '/.env', '/api/private/users'];
+const trapSlug = () => crypto.randomBytes(6).toString('hex');
+function logTrap(req, label) {
+  console.warn('[' + (label || 'BOT-TRAP') + '] ' + JSON.stringify({ ip: req.ip, ua: (req.headers['user-agent'] || '').slice(0, 200), path: req.path }));
+}
+function trapPage(title) {
+  const links = Array.from({ length: 30 }, () => '/bot-trap/' + trapSlug());
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><meta name="robots" content="noindex,nofollow"></head><body><h1>${title}</h1><p>Continue verification…</p>${links.map(l => `<a href="${l}">${l}</a>`).join('<br>')}</body></html>`;
+}
+async function trapHandler(req, res) {
+  logTrap(req, req.path.startsWith('/bot-trap/') ? 'BOT-MAZE' : 'BOT-TRAP');
+  if (!rateLimit('trap:' + req.ip, 60, 60 * 1000)) return res.status(429).type('text/plain').send('Too many requests.');
+  await new Promise(r => setTimeout(r, 1200)); // stall the bot, but not enough to hurt us
+  res.type('html').send(trapPage('Access check'));
+}
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send('User-agent: *\n' + TRAP_PATHS.map(p => 'Disallow: ' + p).join('\n') + '\nDisallow: /bot-trap/\n');
+});
+app.get(TRAP_PATHS, trapHandler);
+app.get('/bot-trap/:slug', trapHandler);
 
 // ── Deep links: every non-API path serves the OS (so /calc, /chess, etc. work) ──
 app.get('*', (req, res) => {

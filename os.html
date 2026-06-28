@@ -983,6 +983,17 @@
 </head>
 <body>
 
+<!-- Honeypot links: hidden from real users (display:none, off-screen). Bad bots that
+     scrape the HTML follow them into the server-side bot tarpit. rel=nofollow tells
+     good crawlers to ignore them. -->
+<div aria-hidden="true" style="display:none;position:absolute;left:-9999px;top:-9999px">
+  <a href="/admin-secret" rel="nofollow">admin login</a>
+  <a href="/wp-admin" rel="nofollow">wordpress admin</a>
+  <a href="/backup.zip" rel="nofollow">backup</a>
+  <a href="/api/private/users" rel="nofollow">user list</a>
+  <a href="/bot-trap" rel="nofollow">private area</a>
+</div>
+
 <!-- Login screen -->
 <div id="login-screen">
   <div class="login-box">
