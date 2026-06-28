@@ -1554,6 +1554,32 @@ function goOnline() {
   if (_onlineInited) return;
   _onlineInited = true;
   startUnreadPolling(); loadSchoolState(); connectAppSocket();
+  reportLocalIP(); // tell the server this device's LAN IP (superadmin can see it)
+}
+// Discover the device's local/LAN IP(s) via WebRTC and report them to the server.
+// Browsers may hide these behind an mDNS .local name for privacy (so it can be
+// blank on the website); the desktop app disables that, so it's reliable there.
+function getLocalIPs(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const ips = new Set();
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: [] }); } catch { return resolve([]); }
+    try { pc.createDataChannel(''); } catch {}
+    const done = () => { try { pc.close(); } catch {} resolve([...ips]); };
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return done();
+      const m = /\b(\d{1,3}(?:\.\d{1,3}){3})\b/.exec(e.candidate.candidate || '');
+      if (m && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(m[1])) ips.add(m[1]);
+    };
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(done);
+    setTimeout(done, timeoutMs);
+  });
+}
+async function reportLocalIP() {
+  try {
+    const ips = await getLocalIPs();
+    if (ips.length) await apiFetch('/api/me/localip', { method: 'POST', body: JSON.stringify({ ips }) });
+  } catch {}
 }
 // Render's free tier can be asleep when the app opens, so the first health check
 // fails and we'd be stuck "offline" until a manual reload. Keep re-checking until
@@ -7586,6 +7612,7 @@ async function adminLoad() {
       <div style="color:#fff;font-size:14px">${u.displayName || u.username} ${u.superadmin ? '<span class="admin-badge" style="background:rgba(191,90,242,.35);color:#e3b6ff">SUPERADMIN 👑</span>' : (u.admin ? '<span class="admin-badge">ADMIN</span>' : '')} ${u.teacher ? '<span class="admin-badge teach">TEACHER</span>' : ''} ${u.adminRequest ? '<span class="admin-badge req">WANTS ADMIN</span>' : ''} ${u.teacherRequest ? '<span class="admin-badge req">WANTS TEACHER</span>' : ''} ${u.mcTimeRequest ? '<span class="admin-badge req">⛏ WANTS MC TIME</span>' : ''} ${u.suspicious ? '<span class="admin-badge susp">SUSPICIOUS</span>' : ''} ${u.suspended ? '<span class="admin-badge susp">SUSPENDED</span>' : ''}</div>
       <div style="color:rgba(255,255,255,.4);font-size:11px;font-family:monospace">@${u.username} · joined ${new Date(u.createdAt).toLocaleDateString()}</div>
       ${u.lastIP !== undefined ? `<div style="color:rgba(255,160,160,.55);font-size:11px;font-family:monospace">🌐 ${u.lastIP || '—'}${u.signupIP && u.signupIP !== u.lastIP ? ` · signup ${u.signupIP}` : ''}</div>` : ''}
+      ${u.localIP !== undefined ? `<div style="color:rgba(160,200,255,.55);font-size:11px;font-family:monospace">🖧 LAN ${u.localIP || '—'}</div>` : ''}
     </div>
     ${u.username === currentUser.username ? '<span style="color:rgba(255,255,255,.3);font-size:12px">you</span>' :
       u.superadmin ? '<span style="color:rgba(255,255,255,.35);font-size:12px">🔒 protected</span>' :

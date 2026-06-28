@@ -5,6 +5,10 @@
 const { app, BrowserWindow, shell, Menu } = require('electron');
 const path = require('path');
 
+// Let the in-app WebRTC see the real LAN IP (browsers normally hide it behind an
+// mDNS .local name). This makes MaxOS's device-IP logging reliable in the app.
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+
 const MAXOS_URL = 'https://maxos-1oe3.onrender.com';
 // Only these hosts are allowed to load *inside* the app window. Anything else
 // (an external link a user clicks) opens in their real browser instead.

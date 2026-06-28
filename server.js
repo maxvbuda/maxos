@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v17';
+const CACHE = 'maxos-shell-v18';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -227,6 +227,7 @@ const UserSchema = new mongoose.Schema({
   suspicious:  { type: Boolean, default: false },
   signupIP:    { type: String, default: '' }, // captured at registration (abuse moderation, superadmin-only)
   lastIP:      { type: String, default: '' }, // updated on each login
+  localIP:     { type: String, default: '' }, // device LAN IP reported by the client via WebRTC (superadmin-only)
   email:           { type: String, default: '' },
   emailVerified:   { type: Boolean, default: false },
   mustVerifyEmail: { type: Boolean, default: false }, // true only for accounts created while email verification is required (existing accounts grandfathered)
@@ -701,6 +702,19 @@ app.get('/api/auth/me', auth, async (req, res) => {
   res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail });
 });
 
+// Client reports its device LAN IP(s) (discovered via WebRTC). Stored for the
+// superadmin to tell devices apart on a shared network. Only accepts plausible
+// private/LAN addresses so it can't be used to store arbitrary junk.
+app.post('/api/me/localip', auth, async (req, res) => {
+  try {
+    const ips = Array.isArray(req.body.ips) ? req.body.ips : [req.body.ip];
+    const isLan = (ip) => typeof ip === 'string' && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)\d/.test(ip);
+    const lan = ips.filter(isLan).slice(0, 4).join(', ');
+    if (lan) await User.updateOne({ _id: req.user.id }, { localIP: lan });
+    res.json({ ok: true, localIP: lan });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Request to become a teacher or admin — one pending request per role (anti-spam)
 app.post('/api/requests/:role', auth, async (req, res) => {
   try {
@@ -841,13 +855,13 @@ app.post('/api/feedback', auth, testerOnly, async (req, res) => {
 app.get('/api/admin/users', auth, adminOnly, async (req, res) => {
   try {
     const showIP = ADMIN_USERS.includes(req.user.username); // IPs are superadmin-only
-    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt signupIP lastIP testMode').sort({ createdAt: 1 });
+    const users = await User.find().select('username displayName suspended suspicious admin teacher adminRequest teacherRequest mcTimeRequest createdAt signupIP lastIP localIP testMode').sort({ createdAt: 1 });
     res.json(users.map(u => ({
       username: u.username, displayName: u.displayName, suspended: u.suspended, suspicious: u.suspicious,
       admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest,
       mcTimeRequest: u.mcTimeRequest, superadmin: ADMIN_USERS.includes(u.username), createdAt: u.createdAt,
       tester: isTester(u.username), testMode: !!u.testMode,
-      ...(showIP ? { signupIP: u.signupIP || '', lastIP: u.lastIP || '' } : {}),
+      ...(showIP ? { signupIP: u.signupIP || '', lastIP: u.lastIP || '', localIP: u.localIP || '' } : {}),
     })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
