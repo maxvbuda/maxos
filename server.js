@@ -15,6 +15,10 @@ app.set('trust proxy', true); // Render runs behind proxies
 // req.ip is often a 10.x internal load-balancer hop on Render, so derive the real
 // client IP from X-Forwarded-For — the first PUBLIC address in the chain.
 function clientIp(req) {
+  // Behind Cloudflare → cf-connecting-ip is the true client IP and can't be spoofed
+  // (Cloudflare overwrites any client-sent value).
+  const cf = (req.headers['cf-connecting-ip'] || '').trim();
+  if (cf) return cf;
   const xff = (req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
   const isPrivate = ip => /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1|fc|fd)/i.test(ip);
   return xff.find(ip => !isPrivate(ip)) || xff[0] || req.socket?.remoteAddress || '';
@@ -690,7 +694,9 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode emailVerified mustVerifyEmail');
+  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode emailVerified mustVerifyEmail lastIP');
+  const ip = clientIp(req); // refresh the stored IP on app boot, even without a fresh login
+  if (ip && u.lastIP !== ip) { u.lastIP = ip; u.save().catch(() => {}); }
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
   res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail });
 });
@@ -1542,17 +1548,6 @@ async function trapHandler(req, res) {
   await new Promise(r => setTimeout(r, 1200)); // stall the bot, but not enough to hurt us
   res.type('html').send(trapPage('Access check'));
 }
-app.get('/api/_ipdebug', (req, res) => {
-  res.json({
-    clientIp: clientIp(req),
-    reqIp: req.ip,
-    xff: req.headers['x-forwarded-for'] || null,
-    xRealIp: req.headers['x-real-ip'] || null,
-    cfConnecting: req.headers['cf-connecting-ip'] || null,
-    trueClient: req.headers['true-client-ip'] || null,
-    remote: req.socket?.remoteAddress || null,
-  });
-});
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send('User-agent: *\n' + TRAP_PATHS.map(p => 'Disallow: ' + p).join('\n') + '\nDisallow: /bot-trap/\n');
 });
