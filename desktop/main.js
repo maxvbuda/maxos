@@ -2,7 +2,7 @@
 // Opens the live MaxOS deployment in a native window. The web app does all the
 // real work (login, apps, server APIs) — this just gives it a Dock/Taskbar icon,
 // its own window, and lets MaxOS's Fullscreen API drive real native fullscreen.
-const { app, BrowserWindow, shell, Menu, ipcMain, net } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -141,6 +141,52 @@ ipcMain.handle('update:install', async () => {
   }
 });
 
+// Menu-driven "Check for Updates…" — always available (even while logged in),
+// using native dialogs + a Dock/taskbar progress bar during download.
+async function checkForUpdatesInteractive() {
+  let rel;
+  try {
+    rel = await fetchJson(`https://api.github.com/repos/${GH_REPO}/releases/latest`);
+  } catch (e) {
+    dialog.showMessageBox(win, { type: 'warning', message: 'Could not check for updates',
+      detail: String((e && e.message) || e), buttons: ['OK'] });
+    return;
+  }
+  const latest = rel.tag_name || rel.name || '';
+  const current = app.getVersion();
+
+  if (cmpVersion(latest, current) <= 0) {
+    dialog.showMessageBox(win, { type: 'info', message: "You're up to date",
+      detail: `MaxOS ${current} is the latest version.`, buttons: ['OK'] });
+    return;
+  }
+
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'info', message: `Update available — MaxOS ${latest}`,
+    detail: `You have ${current}. Download and install the update now?`,
+    buttons: ['Install', 'Later'], defaultId: 0, cancelId: 1 });
+  if (response !== 0) return;
+
+  const want = assetNameForPlatform();
+  const asset = (rel.assets || []).find(x => x.name === want);
+  if (!asset) { shell.openExternal(rel.html_url || `https://github.com/${GH_REPO}/releases/latest`); return; }
+
+  const dest = path.join(app.getPath('downloads'), asset.name);
+  try {
+    await downloadTo(asset.browser_download_url, dest, (pct) => {
+      if (win && !win.isDestroyed()) win.setProgressBar(pct / 100); // Dock/taskbar bar
+    });
+    if (win && !win.isDestroyed()) win.setProgressBar(-1); // clear
+    await shell.openPath(dest);
+    dialog.showMessageBox(win, { type: 'info', message: 'Installer opened',
+      detail: 'Finish the install in the window that just opened, then reopen MaxOS.', buttons: ['OK'] });
+  } catch (e) {
+    if (win && !win.isDestroyed()) win.setProgressBar(-1);
+    dialog.showMessageBox(win, { type: 'error', message: 'Update failed',
+      detail: String((e && e.message) || e), buttons: ['OK'] });
+  }
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -183,8 +229,22 @@ function createWindow() {
 // quit) and the standard macOS app menu, drop the clutter.
 function buildMenu() {
   const isMac = process.platform === 'darwin';
+  const checkForUpdates = { label: 'Check for Updates…', click: () => checkForUpdatesInteractive() };
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
+    // Custom app menu on macOS so we can slot "Check for Updates…" under About.
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        checkForUpdates,
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    }] : []),
     { role: 'editMenu' },
     {
       label: 'View',
@@ -201,6 +261,8 @@ function buildMenu() {
       ],
     },
     { role: 'windowMenu' },
+    // On Windows/Linux there's no app menu, so expose updates under Help.
+    ...(!isMac ? [{ label: 'Help', submenu: [checkForUpdates] }] : []),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
