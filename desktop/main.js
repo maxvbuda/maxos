@@ -96,6 +96,19 @@ if (!app.requestSingleInstanceLock()) {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
   });
 
+  // When a page inside the in-app browser opens a new window (window.open /
+  // target=_blank), route it into a new browser TAB instead of a bare window.
+  app.on('web-contents-created', (e, contents) => {
+    if (contents.getType && contents.getType() === 'webview') {
+      contents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:/i.test(url) && win) {
+          win.webContents.executeJavaScript(`window.ebNewTab && ebNewTab(${JSON.stringify(url)})`).catch(() => {});
+        }
+        return { action: 'deny' };
+      });
+    }
+  });
+
   app.whenReady().then(() => {
     buildMenu();
     createWindow();

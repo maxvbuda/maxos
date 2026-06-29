@@ -2997,12 +2997,15 @@ function ebNewTab(url) {
   const id = ++ebTabSeq;
   const wv = document.createElement('webview');
   wv.className = 'eb-wv';
+  wv.setAttribute('allowpopups', ''); // let buttons that open popups/new windows work
   const start = url || ebHomeUrl();
   wv.setAttribute('src', start);
   const tab = { id, title: 'New Tab', url: start, wv };
   wv.addEventListener('did-navigate', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
   wv.addEventListener('did-navigate-in-page', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
   wv.addEventListener('page-title-updated', (e) => { tab.title = e.title || tab.title; ebRenderTabs(); });
+  // A page opening a new window/tab (window.open, target=_blank) → open it as a new tab.
+  wv.addEventListener('new-window', (e) => { if (e.url && e.url !== 'about:blank') { e.preventDefault && e.preventDefault(); ebNewTab(e.url); } });
   document.getElementById('eb-views').appendChild(wv);
   ebTabs.push(tab);
   ebActivate(id);
