@@ -1841,7 +1841,7 @@ initAuth();
 function initDownloadCTA() {
   const box = document.getElementById('dl-app');
   if (!box) return;
-  if (/Electron/i.test(navigator.userAgent)) { box.style.display = 'none'; return; }
+  if (/Electron/i.test(navigator.userAgent)) { box.style.display = 'none'; initDesktopUpdates(box); return; }
   const ua = navigator.userAgent;
   const isWin = /Windows/i.test(ua);
   const isMac = /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua);
@@ -1852,6 +1852,100 @@ function initDownloadCTA() {
   box.style.display = '';
 }
 initDownloadCTA();
+
+// ── In-app desktop updates ───────────────────────────────────────────────────
+// Only runs inside the MaxOS desktop app (where window.maxosDesktop exists). The
+// web part of MaxOS always loads fresh from the server; this updates the native
+// shell. It auto-checks once on boot and, if a newer installer is published on
+// GitHub Releases, shows a floating "Install update" pill. The login screen also
+// gets a manual "Check for updates" line. Clicking Install downloads the right
+// installer for this OS and launches it — no reinstall hunting.
+function initDesktopUpdates(box) {
+  const D = window.maxosDesktop;
+  if (!D || !D.checkForUpdate) return;
+
+  // Floating pill (built once, shown only when an update is available).
+  let pill;
+  function ensurePill() {
+    if (pill) return pill;
+    pill = document.createElement('div');
+    pill.id = 'maxos-update-pill';
+    pill.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2147483000;max-width:320px;'
+      + 'background:rgba(18,20,34,.96);color:#eaf0ff;border:1px solid rgba(120,170,255,.35);'
+      + 'border-radius:14px;padding:14px 16px;box-shadow:0 16px 50px rgba(0,0,0,.55);'
+      + 'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;'
+      + 'backdrop-filter:blur(8px);display:none';
+    document.body.appendChild(pill);
+    return pill;
+  }
+
+  function btn(label, primary) {
+    return '<button data-act="' + label.toLowerCase().replace(/[^a-z]/g,'') + '" style="'
+      + 'cursor:pointer;border:0;border-radius:9px;padding:7px 13px;font-weight:600;font-size:12.5px;'
+      + (primary ? 'background:linear-gradient(135deg,#64b4ff,#bf5af2);color:#fff;'
+                 : 'background:rgba(255,255,255,.08);color:#cfe0ff;') + '">' + label + '</button>';
+  }
+
+  function showAvailable(info) {
+    const p = ensurePill();
+    p.innerHTML =
+      '<div style="font-weight:700;margin-bottom:3px">Update available</div>'
+      + '<div style="opacity:.7;margin-bottom:11px">MaxOS ' + (info.latest || '') + ' is ready to install.</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+      + btn('Later', false) + btn('Install', true) + '</div>';
+    p.style.display = 'block';
+    p.querySelector('[data-act="later"]').onclick = () => { p.style.display = 'none'; };
+    p.querySelector('[data-act="install"]').onclick = () => runInstall(p);
+  }
+
+  function runInstall(p) {
+    p.innerHTML =
+      '<div style="font-weight:700;margin-bottom:8px">Downloading update…</div>'
+      + '<div style="height:8px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden">'
+      + '<div id="mu-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#64b4ff,#bf5af2);transition:width .2s"></div></div>'
+      + '<div id="mu-pct" style="opacity:.7;margin-top:7px;text-align:right">0%</div>';
+    const bar = p.querySelector('#mu-bar'), pct = p.querySelector('#mu-pct');
+    D.installUpdate((n) => { if (bar) bar.style.width = n + '%'; if (pct) pct.textContent = n + '%'; })
+      .then((r) => {
+        if (r && r.ok && r.opened === 'installer') {
+          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Installer opened</div>'
+            + '<div style="opacity:.75">Finish the install in the window that just opened, then reopen MaxOS.</div>';
+        } else if (r && r.ok) {
+          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Opened release page</div>'
+            + '<div style="opacity:.75">Download the installer for your system there.</div>';
+        } else {
+          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Update failed</div>'
+            + '<div style="opacity:.75">' + ((r && r.error) || 'Please try again later.') + '</div>';
+        }
+      })
+      .catch((e) => {
+        p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Update failed</div>'
+          + '<div style="opacity:.75">' + (e && e.message || 'Please try again later.') + '</div>';
+      });
+  }
+
+  // Manual "Check for updates" line on the login screen.
+  Promise.resolve(D.version ? D.version() : '').then((v) => {
+    box.style.display = '';
+    box.innerHTML = '<div class="dl-app-alt" style="margin-top:10px">MaxOS Desktop'
+      + (v ? ' v' + v : '') + ' · <a href="#" id="mu-check">Check for updates</a></div>';
+    const link = box.querySelector('#mu-check');
+    link.onclick = (e) => {
+      e.preventDefault();
+      link.textContent = 'Checking…';
+      D.checkForUpdate().then((info) => {
+        if (info && info.ok && info.hasUpdate) { showAvailable(info); link.textContent = 'Update available'; }
+        else if (info && info.ok) { link.textContent = "You're up to date"; }
+        else { link.textContent = 'Check failed — retry'; }
+      });
+    };
+  });
+
+  // Auto-check once on boot (quietly — only surfaces if there's an update).
+  setTimeout(() => {
+    D.checkForUpdate().then((info) => { if (info && info.ok && info.hasUpdate) showAvailable(info); }).catch(() => {});
+  }, 4000);
+}
 
 // Learn from the server whether signup must collect an email (verification gate).
 window.__emailRequired = false;
