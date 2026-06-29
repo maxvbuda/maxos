@@ -1907,12 +1907,12 @@ function initDesktopUpdates(box) {
     const bar = p.querySelector('#mu-bar'), pct = p.querySelector('#mu-pct');
     D.installUpdate((n) => { if (bar) bar.style.width = n + '%'; if (pct) pct.textContent = n + '%'; })
       .then((r) => {
-        if (r && r.ok && r.opened === 'installer') {
-          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Installer opened</div>'
-            + '<div style="opacity:.75">Finish the install in the window that just opened, then reopen MaxOS.</div>';
-        } else if (r && r.ok) {
-          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Opened release page</div>'
-            + '<div style="opacity:.75">Download the installer for your system there.</div>';
+        if (r && r.ok && r.applied) {
+          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Update ready — restarting…</div>'
+            + '<div style="opacity:.75">MaxOS is swapping in the new version and will reopen on its own.</div>';
+        } else if (r && r.ok && r.opened) {
+          p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Update downloaded</div>'
+            + '<div style="opacity:.75">Opened the download to finish.</div>';
         } else {
           p.innerHTML = '<div style="font-weight:700;margin-bottom:4px">Update failed</div>'
             + '<div style="opacity:.75">' + ((r && r.error) || 'Please try again later.') + '</div>';

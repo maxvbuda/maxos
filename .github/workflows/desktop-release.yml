@@ -29,8 +29,8 @@ jobs:
           - os: macos-latest
             name: macOS
             build: npm run dist:mac
-            # universal .dmg (Apple Silicon + Intel)
-            assets: desktop/release/MaxOS-mac.dmg
+            # universal .dmg (first-time install) + .zip (used by the in-app self-updater)
+            assets: desktop/release/MaxOS-mac.dmg desktop/release/MaxOS-mac.zip
           - os: windows-latest
             name: Windows
             build: npm run dist:win

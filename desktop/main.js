@@ -5,6 +5,8 @@
 const { app, BrowserWindow, shell, Menu, ipcMain, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { spawn, execFileSync } = require('child_process');
 
 // Let the in-app WebRTC see the real LAN IP (browsers normally hide it behind an
 // mDNS .local name). This makes MaxOS's device-IP logging reliable in the app.
@@ -29,15 +31,32 @@ function isInternal(url) {
 
 // ── In-app updates ────────────────────────────────────────────────────────────
 // The app loads the live site, so the *web* part updates instantly. This handles
-// the native shell: it asks GitHub Releases for the latest version and, on the
-// user's click, downloads the right installer for this OS and launches it. No
-// code-signing / auto-update feed required — it's a one-button "go get the new
-// installer and open it" so the user doesn't have to hunt for a download link.
+// the native shell with a NO-INSTALLER self-update: it downloads the new version
+// as a zip, swaps its own .app bundle on disk, and relaunches. This works without
+// an Apple Developer ID because the app lives in a user-writable folder and is
+// ad-hoc signed — we just strip quarantine and reopen. (The standard Squirrel
+// auto-updater can't do this on macOS without a paid signing identity.)
 
-// Which release asset matches the machine we're running on.
-function assetNameForPlatform() {
-  if (process.platform === 'darwin') return 'MaxOS-mac.dmg';
-  if (process.platform === 'win32') return 'MaxOS-Setup.exe';
+// The release asset this OS self-updates FROM. macOS uses a zip of the .app so we
+// can swap the bundle in place; Windows uses the portable zip for the same reason.
+function updateAssetName() {
+  if (process.platform === 'darwin') return 'MaxOS-mac.zip';
+  if (process.platform === 'win32') return 'MaxOS-windows.zip';
+  return null;
+}
+
+// Path to the running .app bundle (macOS), or null if not packaged in one (dev).
+function appBundlePath() {
+  const exe = app.getPath('exe');           // …/MaxOS.app/Contents/MacOS/MaxOS
+  const i = exe.indexOf('.app/');
+  return i === -1 ? null : exe.slice(0, i + 4);
+}
+
+// First *.app directory found directly under `dir`.
+function findDotApp(dir) {
+  for (const name of fs.readdirSync(dir)) {
+    if (name.endsWith('.app')) return path.join(dir, name);
+  }
   return null;
 }
 
@@ -99,6 +118,78 @@ function downloadTo(url, dest, onProgress) {
   });
 }
 
+// Download the update zip, then hand off to the platform self-replacer. On macOS
+// this quits the app and a detached helper swaps the bundle + relaunches, so this
+// promise typically never resolves on success (the process is gone) — that's fine.
+async function applyUpdate(asset) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'maxos-update-'));
+  const zipPath = path.join(tmp, asset.name);
+  await downloadTo(asset.browser_download_url, zipPath, (pct) => {
+    if (win && !win.isDestroyed()) { win.setProgressBar(pct / 100); win.webContents.send('update:progress', pct); }
+  });
+  if (win && !win.isDestroyed()) win.setProgressBar(-1);
+
+  if (process.platform === 'darwin') return applyUpdateMac(zipPath, tmp);
+  if (process.platform === 'win32')  return applyUpdateWin(zipPath, tmp);
+  await shell.openPath(zipPath); // other platforms: just reveal the download
+  return { ok: true, opened: 'file' };
+}
+
+// macOS: extract the new .app, then a detached bash helper waits for us to quit,
+// replaces the bundle in place, strips quarantine, and relaunches.
+function applyUpdateMac(zipPath, tmp) {
+  const bundle = appBundlePath();
+  if (!bundle) return { ok: false, error: "Not running from an .app bundle (dev mode)" };
+  const extractDir = path.join(tmp, 'x');
+  fs.mkdirSync(extractDir, { recursive: true });
+  execFileSync('/usr/bin/ditto', ['-x', '-k', zipPath, extractDir]); // preserves signature
+  const newApp = findDotApp(extractDir);
+  if (!newApp) return { ok: false, error: 'No .app found inside the update' };
+  try { execFileSync('/usr/bin/xattr', ['-dr', 'com.apple.quarantine', newApp]); } catch {}
+
+  const q = (s) => s.replace(/"/g, '\\"');
+  const script = `#!/bin/bash
+APP="${q(bundle)}"
+NEW="${q(newApp)}"
+# Wait (up to ~30s) for the running app to fully exit.
+for i in $(seq 1 60); do
+  pgrep -f "$APP/Contents/MacOS/" >/dev/null || break
+  sleep 0.5
+done
+rm -rf "$APP" && /usr/bin/ditto "$NEW" "$APP"
+/usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+open "$APP"
+`;
+  const scriptPath = path.join(tmp, 'swap.sh');
+  fs.writeFileSync(scriptPath, script, { mode: 0o755 });
+  spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' }).unref();
+  // Quit so the helper can replace us; it relaunches the new version.
+  setTimeout(() => app.exit(0), 400);
+  return { ok: true, applied: 'mac' };
+}
+
+// Windows: extract the portable zip, then a detached batch waits for exit,
+// mirrors the new files over the install dir, and relaunches.
+function applyUpdateWin(zipPath, tmp) {
+  const exe = app.getPath('exe');
+  const installDir = path.dirname(exe);
+  const extractDir = path.join(tmp, 'x');
+  execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+    `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${extractDir}' -Force`]);
+  // The portable zip extracts the app files at the root of extractDir.
+  const bat = `@echo off
+:wait
+tasklist /FI "IMAGENAME eq MaxOS.exe" | find /I "MaxOS.exe" >nul && (timeout /t 1 /nobreak >nul & goto wait)
+robocopy "${extractDir}" "${installDir}" /MIR /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+start "" "${exe}"
+`;
+  const batPath = path.join(tmp, 'swap.bat');
+  fs.writeFileSync(batPath, bat);
+  spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  setTimeout(() => app.exit(0), 400);
+  return { ok: true, applied: 'win' };
+}
+
 ipcMain.handle('app:version', () => app.getVersion());
 
 ipcMain.handle('update:check', async () => {
@@ -106,7 +197,7 @@ ipcMain.handle('update:check', async () => {
     const rel = await fetchJson(`https://api.github.com/repos/${GH_REPO}/releases/latest`);
     const latest = rel.tag_name || rel.name || '';
     const current = app.getVersion();
-    const want = assetNameForPlatform();
+    const want = updateAssetName();
     let downloadUrl = null;
     if (Array.isArray(rel.assets) && want) {
       const a = rel.assets.find(x => x.name === want);
@@ -122,21 +213,16 @@ ipcMain.handle('update:check', async () => {
 ipcMain.handle('update:install', async () => {
   try {
     const rel = await fetchJson(`https://api.github.com/repos/${GH_REPO}/releases/latest`);
-    const want = assetNameForPlatform();
+    const want = updateAssetName();
     const asset = (rel.assets || []).find(x => x.name === want);
-    // No matching installer (e.g. Linux) → just open the releases page.
+    // No matching asset (e.g. Linux) → just open the releases page.
     if (!asset) {
       await shell.openExternal(rel.html_url || `https://github.com/${GH_REPO}/releases/latest`);
       return { ok: true, opened: 'page' };
     }
-    const dest = path.join(app.getPath('downloads'), asset.name);
-    await downloadTo(asset.browser_download_url, dest, (pct) => {
-      if (win && !win.isDestroyed()) win.webContents.send('update:progress', pct);
-    });
-    // Launch the installer (.dmg mounts / .exe runs); user finishes the install.
-    await shell.openPath(dest);
-    return { ok: true, opened: 'installer', path: dest };
+    return await applyUpdate(asset); // downloads, swaps in place, relaunches
   } catch (e) {
+    if (win && !win.isDestroyed()) win.setProgressBar(-1);
     return { ok: false, error: String((e && e.message) || e) };
   }
 });
@@ -163,23 +249,24 @@ async function checkForUpdatesInteractive() {
 
   const { response } = await dialog.showMessageBox(win, {
     type: 'info', message: `Update available — MaxOS ${latest}`,
-    detail: `You have ${current}. Download and install the update now?`,
-    buttons: ['Install', 'Later'], defaultId: 0, cancelId: 1 });
+    detail: `You have ${current}. Update now? MaxOS will download it, then restart itself — no installer.`,
+    buttons: ['Update & Restart', 'Later'], defaultId: 0, cancelId: 1 });
   if (response !== 0) return;
 
-  const want = assetNameForPlatform();
+  const want = updateAssetName();
   const asset = (rel.assets || []).find(x => x.name === want);
   if (!asset) { shell.openExternal(rel.html_url || `https://github.com/${GH_REPO}/releases/latest`); return; }
 
-  const dest = path.join(app.getPath('downloads'), asset.name);
   try {
-    await downloadTo(asset.browser_download_url, dest, (pct) => {
-      if (win && !win.isDestroyed()) win.setProgressBar(pct / 100); // Dock/taskbar bar
-    });
-    if (win && !win.isDestroyed()) win.setProgressBar(-1); // clear
-    await shell.openPath(dest);
-    dialog.showMessageBox(win, { type: 'info', message: 'Installer opened',
-      detail: 'Finish the install in the window that just opened, then reopen MaxOS.', buttons: ['OK'] });
+    const r = await applyUpdate(asset); // downloads + swaps in place + relaunches
+    // On macOS/Windows the app exits to relaunch, so we usually never reach here.
+    if (r && r.ok && r.opened) {
+      dialog.showMessageBox(win, { type: 'info', message: 'Update downloaded',
+        detail: 'Opened the download to finish.', buttons: ['OK'] });
+    } else if (r && !r.ok) {
+      dialog.showMessageBox(win, { type: 'error', message: 'Update failed',
+        detail: r.error || 'Please try again later.', buttons: ['OK'] });
+    }
   } catch (e) {
     if (win && !win.isDestroyed()) win.setProgressBar(-1);
     dialog.showMessageBox(win, { type: 'error', message: 'Update failed',
