@@ -1,7 +1,7 @@
 {
   "name": "maxos-desktop",
   "productName": "MaxOS",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MaxOS desktop app (Mac & Windows) — a native window for maxos-1oe3.onrender.com",
   "author": "Max Buda",
   "license": "MIT",
