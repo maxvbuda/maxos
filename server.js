@@ -1565,12 +1565,30 @@ app.delete('/api/rm', auth, async (req, res) => {
 // from their own URLs); the crawler follows links breadth-first up to a page cap.
 const SEARCH_SEED = [
   'https://en.wikipedia.org/wiki/Wikipedia:Contents/Portals',
+  'https://en.wikipedia.org/wiki/Wikipedia:Vital_articles/Level/3',
   'https://en.wikipedia.org/wiki/Science',
   'https://en.wikipedia.org/wiki/Mathematics',
   'https://en.wikipedia.org/wiki/History',
   'https://en.wikipedia.org/wiki/Technology',
   'https://en.wikipedia.org/wiki/Geography',
   'https://en.wikipedia.org/wiki/Art',
+  'https://en.wikipedia.org/wiki/Robot',
+  'https://en.wikipedia.org/wiki/Robotics',
+  'https://en.wikipedia.org/wiki/Artificial_intelligence',
+  'https://en.wikipedia.org/wiki/Computer',
+  'https://en.wikipedia.org/wiki/Computer_science',
+  'https://en.wikipedia.org/wiki/Internet',
+  'https://en.wikipedia.org/wiki/Space_exploration',
+  'https://en.wikipedia.org/wiki/Biology',
+  'https://en.wikipedia.org/wiki/Physics',
+  'https://en.wikipedia.org/wiki/Chemistry',
+  'https://en.wikipedia.org/wiki/Animal',
+  'https://en.wikipedia.org/wiki/Music',
+  'https://en.wikipedia.org/wiki/Film',
+  'https://en.wikipedia.org/wiki/Video_game',
+  'https://en.wikipedia.org/wiki/Sport',
+  'https://en.wikipedia.org/wiki/Country',
+  'https://en.wikipedia.org/wiki/Food',
   'https://developer.mozilla.org/en-US/docs/Web',
   'https://simple.wikipedia.org/wiki/Main_Page',
 ];
@@ -1614,8 +1632,9 @@ function isSafeCrawlUrl(u) {
   if (/\.(pdf|zip|gz|tar|png|jpe?g|gif|svg|webp|mp4|mp3|wav|mov|avi|css|js|json|xml|ico|woff2?|ttf|exe|dmg)(\?|$)/i.test(url.pathname)) return false;
   return true;
 }
-// Fetch one page and upsert it into our index. Returns true if indexed.
-async function crawlOne(u) {
+// Fetch one page; upsert it into our index (unless indexIt is false, in which case
+// we only harvest its links). Returns whether it was indexed plus the links found.
+async function crawlOne(u, indexIt = true) {
   if (!isSafeCrawlUrl(u)) return { indexed: false, links: [] };
   let resp;
   try {
@@ -1630,30 +1649,35 @@ async function crawlOne(u) {
   let html = '';
   try { html = (await resp.text()).slice(0, 600000); } catch { return { indexed: false, links: [] }; }
   const finalUrl = resp.url || u;
+  const links = extractLinks(html, finalUrl);
+  if (!indexIt) return { indexed: false, links }; // hub page we already have — links only
   const { title, desc, text } = extractPage(html);
-  if (!title || text.length < 200) return { indexed: false, links: extractLinks(html, finalUrl) };
+  if (!title || text.length < 200) return { indexed: false, links };
   const snippet = (desc || text).slice(0, 300);
   await IndexPage.updateOne(
     { url: finalUrl },
     { $set: { url: finalUrl, host: new URL(finalUrl).hostname, title: title.slice(0, 300),
-              snippet, text: text.slice(0, 6000), fetchedAt: new Date() } },
+              snippet, text: text.slice(0, 5000), fetchedAt: new Date() } },
     { upsert: true }
   );
-  return { indexed: true, links: extractLinks(html, finalUrl) };
+  return { indexed: true, links };
 }
-// Breadth-first crawl from seeds, capped so a run stays within request time.
+// Breadth-first crawl from seeds. Pages already in the index are fetched only to
+// harvest their links, so the page budget is always spent on *new* pages — that's
+// what lets repeated/automatic runs keep growing the index instead of churning.
 async function crawlFrom(seeds, maxPages, sameHostOnly) {
+  const known = new Set(await IndexPage.distinct('url'));
   const queue = [...new Set(seeds.filter(isSafeCrawlUrl))];
   const seen = new Set(queue);
   const seedHosts = new Set(queue.map(s => { try { return new URL(s).hostname; } catch { return ''; } }));
   let indexed = 0;
   while (queue.length && indexed < maxPages) {
     const batch = queue.splice(0, 4);
-    const results = await Promise.all(batch.map(crawlOne));
+    const results = await Promise.all(batch.map(u => crawlOne(u, !known.has(u))));
     for (const r of results) {
       if (r.indexed) indexed++;
       for (const link of r.links) {
-        if (seen.size > maxPages * 8 || queue.length > maxPages * 4) break;
+        if (seen.size > maxPages * 12 || queue.length > maxPages * 6) break;
         if (seen.has(link) || !isSafeCrawlUrl(link)) continue;
         if (sameHostOnly) { try { if (!seedHosts.has(new URL(link).hostname)) continue; } catch { continue; } }
         seen.add(link); queue.push(link);
@@ -1663,6 +1687,29 @@ async function crawlFrom(seeds, maxPages, sameHostOnly) {
   return indexed;
 }
 let crawlBusy = false; // one crawl at a time — protects the free-tier instance
+
+// ── Auto-grow: keep crawling in the background up to a cap, no manual clicks ───
+// Storage-bounded so we don't blow the free MongoDB tier (~5k pages × 5KB ≈ 25MB).
+const SEARCH_TARGET = 5000;
+async function autoGrow() {
+  if (crawlBusy) return;
+  let total;
+  try { total = await IndexPage.estimatedDocumentCount(); } catch { return; }
+  if (total >= SEARCH_TARGET) return;
+  crawlBusy = true;
+  try {
+    // Seed each run with the fixed list plus a few random indexed pages, so the
+    // crawl frontier keeps expanding into parts of the web we haven't reached yet.
+    let seeds = [...SEARCH_SEED];
+    if (total > 0) {
+      const sample = await IndexPage.aggregate([{ $sample: { size: 8 } }, { $project: { url: 1, _id: 0 } }]);
+      seeds = seeds.concat(sample.map(s => s.url));
+    }
+    const added = await crawlFrom(seeds, 60, false);
+    console.log(`🔎 MaxSearch auto-grow: +${added} pages (now ~${total + added})`);
+  } catch (e) { console.log('MaxSearch auto-grow error:', e.message); }
+  finally { crawlBusy = false; }
+}
 
 // Query our index. Our ranking = weighted full-text score (title > snippet > body).
 app.get('/api/search', auth, async (req, res) => {
@@ -1771,5 +1818,9 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
     } catch (e) { console.log('Admin bootstrap skipped:', e.message); }
     const port = process.env.PORT || 3001;
     server.listen(port, () => console.log(`🚀 MaxOS server on http://localhost:${port}`));
+    // MaxSearch keeps indexing in the background up to SEARCH_TARGET, whenever the
+    // instance is awake. First pass shortly after boot, then on a steady interval.
+    setTimeout(() => autoGrow().catch(() => {}), 20 * 1000);
+    setInterval(() => autoGrow().catch(() => {}), 3 * 60 * 1000);
   })
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
