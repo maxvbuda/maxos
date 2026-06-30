@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v22';
+const CACHE = 'maxos-shell-v23';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -353,6 +353,23 @@ const ReportSchema = new mongoose.Schema({
   handled:  { type: Boolean, default: false }, // cleared when an admin acts on it
 }, { timestamps: true });
 const Report = mongoose.model('Report', ReportSchema);
+
+// ── MaxSearch — our own curated web index ─────────────────────────────────────
+// Every doc is a page our crawler chose to index. Ranking is ours: a MongoDB
+// full-text index weighted title > snippet > body, scored at query time.
+const IndexPageSchema = new mongoose.Schema({
+  url:      { type: String, required: true, unique: true },
+  host:     { type: String, default: '' },
+  title:    { type: String, default: '' },
+  snippet:  { type: String, default: '' }, // shown on the results page
+  text:     { type: String, default: '' }, // extracted body text (capped), for matching
+  fetchedAt:{ type: Date, default: Date.now },
+}, { timestamps: true });
+IndexPageSchema.index(
+  { title: 'text', snippet: 'text', text: 'text' },
+  { weights: { title: 10, snippet: 4, text: 1 }, name: 'maxsearch_text' }
+);
+const IndexPage = mongoose.model('IndexPage', IndexPageSchema);
 
 const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
@@ -1543,6 +1560,156 @@ app.delete('/api/rm', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── MaxSearch crawler + query ─────────────────────────────────────────────────
+// Starter seed — a spread of reference pages. Admins grow the index from here (or
+// from their own URLs); the crawler follows links breadth-first up to a page cap.
+const SEARCH_SEED = [
+  'https://en.wikipedia.org/wiki/Wikipedia:Contents/Portals',
+  'https://en.wikipedia.org/wiki/Science',
+  'https://en.wikipedia.org/wiki/Mathematics',
+  'https://en.wikipedia.org/wiki/History',
+  'https://en.wikipedia.org/wiki/Technology',
+  'https://en.wikipedia.org/wiki/Geography',
+  'https://en.wikipedia.org/wiki/Art',
+  'https://developer.mozilla.org/en-US/docs/Web',
+  'https://simple.wikipedia.org/wiki/Main_Page',
+];
+const HTML_ENTITIES = { '&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'", '&apos;':"'", '&nbsp;':' ' };
+function decodeEntities(s) {
+  return (s || '')
+    .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCodePoint(+n); } catch { return ' '; } })
+    .replace(/&[a-z]+;/gi, m => HTML_ENTITIES[m.toLowerCase()] ?? ' ');
+}
+// Strip a page down to title, description and readable body text.
+function extractPage(html) {
+  const h = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  const title = decodeEntities((h.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '')).replace(/\s+/g, ' ').trim();
+  const desc  = decodeEntities((h.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1]
+    || h.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i)?.[1] || '')).trim();
+  const text  = decodeEntities(h.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+  return { title, desc, text };
+}
+function extractLinks(html, baseUrl) {
+  const out = [];
+  const re = /<a\b[^>]*\bhref=["']([^"'#]+)["']/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 200) {
+    try { out.push(new URL(m[1], baseUrl).toString().split('#')[0]); } catch {}
+  }
+  return out;
+}
+// Block non-web schemes, binaries, and SSRF targets (localhost / private ranges / metadata).
+function isSafeCrawlUrl(u) {
+  let url;
+  try { url = new URL(u); } catch { return false; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  if (host === '::1' || host === '169.254.169.254') return false;
+  if (/\.(pdf|zip|gz|tar|png|jpe?g|gif|svg|webp|mp4|mp3|wav|mov|avi|css|js|json|xml|ico|woff2?|ttf|exe|dmg)(\?|$)/i.test(url.pathname)) return false;
+  return true;
+}
+// Fetch one page and upsert it into our index. Returns true if indexed.
+async function crawlOne(u) {
+  if (!isSafeCrawlUrl(u)) return { indexed: false, links: [] };
+  let resp;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    resp = await fetch(u, { signal: ctrl.signal, redirect: 'follow',
+      headers: { 'User-Agent': 'MaxSearchBot/1.0 (+https://maxos)', 'Accept': 'text/html' } });
+    clearTimeout(t);
+  } catch { return { indexed: false, links: [] }; }
+  const ct = resp.headers.get('content-type') || '';
+  if (!resp.ok || !/text\/html/i.test(ct)) return { indexed: false, links: [] };
+  let html = '';
+  try { html = (await resp.text()).slice(0, 600000); } catch { return { indexed: false, links: [] }; }
+  const finalUrl = resp.url || u;
+  const { title, desc, text } = extractPage(html);
+  if (!title || text.length < 200) return { indexed: false, links: extractLinks(html, finalUrl) };
+  const snippet = (desc || text).slice(0, 300);
+  await IndexPage.updateOne(
+    { url: finalUrl },
+    { $set: { url: finalUrl, host: new URL(finalUrl).hostname, title: title.slice(0, 300),
+              snippet, text: text.slice(0, 6000), fetchedAt: new Date() } },
+    { upsert: true }
+  );
+  return { indexed: true, links: extractLinks(html, finalUrl) };
+}
+// Breadth-first crawl from seeds, capped so a run stays within request time.
+async function crawlFrom(seeds, maxPages, sameHostOnly) {
+  const queue = [...new Set(seeds.filter(isSafeCrawlUrl))];
+  const seen = new Set(queue);
+  const seedHosts = new Set(queue.map(s => { try { return new URL(s).hostname; } catch { return ''; } }));
+  let indexed = 0;
+  while (queue.length && indexed < maxPages) {
+    const batch = queue.splice(0, 4);
+    const results = await Promise.all(batch.map(crawlOne));
+    for (const r of results) {
+      if (r.indexed) indexed++;
+      for (const link of r.links) {
+        if (seen.size > maxPages * 8 || queue.length > maxPages * 4) break;
+        if (seen.has(link) || !isSafeCrawlUrl(link)) continue;
+        if (sameHostOnly) { try { if (!seedHosts.has(new URL(link).hostname)) continue; } catch { continue; } }
+        seen.add(link); queue.push(link);
+      }
+    }
+  }
+  return indexed;
+}
+let crawlBusy = false; // one crawl at a time — protects the free-tier instance
+
+// Query our index. Our ranking = weighted full-text score (title > snippet > body).
+app.get('/api/search', auth, async (req, res) => {
+  const q = (req.query.q || '').toString().trim().slice(0, 200);
+  if (!q) return res.json({ results: [], total: 0, indexSize: await IndexPage.estimatedDocumentCount() });
+  try {
+    const rows = await IndexPage.find(
+      { $text: { $search: q } },
+      { score: { $meta: 'textScore' }, url: 1, title: 1, snippet: 1, host: 1 }
+    ).sort({ score: { $meta: 'textScore' } }).limit(20).lean();
+    res.json({
+      results: rows.map(r => ({ url: r.url, title: r.title, snippet: r.snippet, host: r.host })),
+      total: rows.length,
+      indexSize: await IndexPage.estimatedDocumentCount(),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Index size + a few of the most-indexed hosts (shown to admins on the home page).
+app.get('/api/search/stats', auth, async (req, res) => {
+  try {
+    const total = await IndexPage.estimatedDocumentCount();
+    const hosts = await IndexPage.aggregate([
+      { $group: { _id: '$host', n: { $sum: 1 } } }, { $sort: { n: -1 } }, { $limit: 8 }
+    ]);
+    res.json({ total, hosts: hosts.map(h => ({ host: h._id, n: h.n })), busy: crawlBusy });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Grow the index (admin). Crawl the starter seed, or admin-supplied URLs.
+app.post('/api/search/crawl', auth, adminOnly, async (req, res) => {
+  if (crawlBusy) return res.status(409).json({ error: 'A crawl is already running.' });
+  if (!rateLimit('crawl:' + req.user.username, 8, 60 * 1000)) return res.status(429).json({ error: 'Slow down a moment.' });
+  const urls = Array.isArray(req.body.urls) && req.body.urls.length ? req.body.urls.slice(0, 30) : SEARCH_SEED;
+  const maxPages = Math.min(Math.max(parseInt(req.body.maxPages, 10) || 40, 1), 120);
+  const sameHostOnly = !!req.body.sameHostOnly;
+  crawlBusy = true;
+  try {
+    const indexed = await crawlFrom(urls, maxPages, sameHostOnly);
+    res.json({ ok: true, indexed, total: await IndexPage.estimatedDocumentCount() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+  finally { crawlBusy = false; }
+});
+// Wipe the index (superadmin only).
+app.post('/api/search/reset', auth, superadminOnly, async (req, res) => {
+  try { await IndexPage.deleteMany({}); res.json({ ok: true, total: 0 }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Bot tarpit ────────────────────────────────────────────────────────────────
 // Hidden honeypot links (in the page) plus robots.txt-disallowed paths lure bad
 // crawlers/scrapers into fake "trap" pages that log them, stall ~1.2s, and serve an
@@ -1589,6 +1756,7 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
       }
     } catch (e) { console.log('Index check skipped:', e.message); }
     await File.syncIndexes();
+    try { await IndexPage.syncIndexes(); } catch (e) { console.log('MaxSearch index sync skipped:', e.message); }
     // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
     // otherwise promote the oldest account (the owner).
     try {

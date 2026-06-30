@@ -278,6 +278,27 @@
   .eb-home-tile:hover { background:rgba(255,255,255,.07); }
   .eb-home-tile .ico { font-size:30px; }
   .eb-home-tile .nm { font-size:11px; color:rgba(255,255,255,.7); text-align:center; line-height:1.2; }
+  /* MaxSearch results (rendered in MaxOS UI, not an external engine) */
+  #eb-home-results { text-align:left; margin-top:22px; }
+  .eb-res-head { display:flex; align-items:center; justify-content:space-between; color:rgba(255,255,255,.55); font-size:13px; margin-bottom:12px; }
+  .eb-res-clear { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); color:#dce7ff; border-radius:8px; padding:4px 12px; font-size:12px; cursor:pointer; }
+  .eb-res-clear:hover { background:rgba(255,255,255,.16); }
+  .eb-res-status { color:rgba(255,255,255,.5); font-size:14px; padding:10px 2px; }
+  .eb-res-apps { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .eb-res-app { display:flex; align-items:center; gap:7px; background:rgba(120,160,255,.16); border:1px solid rgba(140,180,255,.25); border-radius:20px; padding:6px 13px; font-size:13px; color:#e6ecff; cursor:pointer; }
+  .eb-res-app:hover { background:rgba(120,160,255,.28); }
+  .eb-res-app .ico { font-size:16px; }
+  .eb-res-item { padding:11px 13px; border-radius:12px; cursor:pointer; margin-bottom:6px; }
+  .eb-res-item:hover { background:rgba(255,255,255,.06); }
+  .eb-res-host { color:#7fd6a8; font-size:12px; }
+  .eb-res-title { color:#9ec5ff; font-size:16px; margin:2px 0; }
+  .eb-res-item:hover .eb-res-title { text-decoration:underline; }
+  .eb-res-snip { color:rgba(255,255,255,.6); font-size:13px; line-height:1.4; }
+  .eb-home-admin { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:30px; padding-top:16px; border-top:1px solid rgba(255,255,255,.08); color:rgba(255,255,255,.45); font-size:12px; }
+  .eb-home-admin button { background:rgba(120,160,255,.2); border:1px solid rgba(140,180,255,.3); color:#dce7ff; border-radius:8px; padding:5px 13px; font-size:12px; cursor:pointer; }
+  .eb-home-admin button:hover { background:rgba(120,160,255,.32); }
+  .eb-home-admin button:disabled { opacity:.5; cursor:default; }
+  .eb-home-admin button.ghost { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.14); }
   .portal-hero { text-align:center; padding:30px 0 20px; }
   .portal-logo { font-size:54px; }
   .portal-hero h1 { color:#fff; font-size:28px; font-weight:700; margin-top:6px; letter-spacing:.5px; }
@@ -3233,34 +3254,53 @@ function ebAppMatches(q) {
 function ebRenderHome() {
   const host = document.getElementById('eb-home');
   if (!host) return;
-  const eng = ebEngine();
   const tiles = ebLaunchableApps().map(id => {
     const a = apps[id];
     return `<div class="eb-home-tile" onclick="ebHomeOpenApp('${id}')" title="${escapeHtml(a.desc || a.title)}">
       <div class="ico">${a.icon}</div><div class="nm">${escapeHtml(a.short || a.title)}</div></div>`;
   }).join('');
+  const admin = !!currentUser?.admin;
   host.innerHTML = `
     <div class="eb-home-inner">
       <div class="eb-home-logo">🖥️</div>
       <div class="eb-home-word">Max<b>Search</b></div>
-      <div class="eb-home-tag">Search the web — or jump straight into a MaxOS app.</div>
+      <div class="eb-home-tag">Search the MaxOS index — our own crawled web — or jump into an app.</div>
       <div class="eb-home-searchwrap">
         <div class="eb-home-search">
           <span style="font-size:18px">🔍</span>
-          <input id="eb-home-q" placeholder="Search MaxOS &amp; the web" autocomplete="off"
+          <input id="eb-home-q" placeholder="Search MaxSearch" autocomplete="off"
                  oninput="ebHomeInput()" onkeydown="ebHomeKey(event)">
           <button class="eb-home-go" onclick="ebHomeSearch()">Search</button>
         </div>
         <div id="eb-home-sug"></div>
       </div>
-      <div class="eb-home-poweredby">Web results powered by ${escapeHtml(eng.name)} · change the engine in the toolbar</div>
-      <div class="eb-home-apps">
+      <div class="eb-home-poweredby" id="eb-home-idx">Powered by the MaxOS index</div>
+      <div id="eb-home-results" hidden></div>
+      <div class="eb-home-apps" id="eb-home-apps">
         <h4>Your MaxOS apps</h4>
         <div class="eb-home-grid">${tiles || '<div class="eb-home-tag">No apps installed yet — open the App Store.</div>'}</div>
       </div>
+      ${admin ? `<div class="eb-home-admin" id="eb-home-admin">
+        <span id="eb-home-admin-stats">Index: …</span>
+        <button onclick="ebGrowIndex()" id="eb-home-grow">Grow index</button>
+        <button onclick="ebResetIndex()" class="ghost">Reset</button>
+      </div>` : ''}
     </div>`;
   const q = document.getElementById('eb-home-q');
   if (q) setTimeout(() => { try { q.focus(); } catch {} }, 30);
+  ebRefreshHomeStats();
+}
+// Show the live index size (and admin host breakdown) under the search box.
+async function ebRefreshHomeStats() {
+  const r = await apiFetch('/api/search/stats');
+  if (!r || r.error) return;
+  const idx = document.getElementById('eb-home-idx');
+  if (idx) idx.textContent = r.total
+    ? `Powered by the MaxOS index — ${r.total.toLocaleString()} pages`
+    : 'The MaxOS index is empty — an admin can grow it below.';
+  const a = document.getElementById('eb-home-admin-stats');
+  if (a) a.textContent = `Index: ${r.total.toLocaleString()} pages` +
+    (r.hosts?.length ? ` · ${r.hosts.slice(0, 3).map(h => h.host).join(', ')}` : '');
 }
 function ebHomeInput() {
   const box = document.getElementById('eb-home-sug');
@@ -3268,39 +3308,88 @@ function ebHomeInput() {
   if (!box) return;
   if (!q) { box.innerHTML = ''; return; }
   const matches = ebAppMatches(q);
-  const appRows = matches.map((id, i) => {
+  const appRows = matches.map(id => {
     const a = apps[id];
-    return `<div class="eb-sug-item" data-idx="${i}" onclick="ebHomeOpenApp('${id}')">
+    return `<div class="eb-sug-item" onclick="ebHomeOpenApp('${id}')">
       <span class="ico">${a.icon}</span><span>${escapeHtml(a.title)}</span><span class="sub">MaxOS app</span></div>`;
   }).join('');
   box.innerHTML =
     (appRows ? `<div class="eb-sug-head">MaxOS apps</div>${appRows}` : '') +
-    `<div class="eb-sug-head">Web search</div>
-     <div class="eb-sug-item" onclick="ebHomeSearchWeb()">
-       <span class="ico">🌐</span><span>Search the web for “${escapeHtml(q)}”</span>
-       <span class="sub">${escapeHtml(ebEngine().name)}</span></div>`;
+    `<div class="eb-sug-head">MaxSearch</div>
+     <div class="eb-sug-item" onclick="ebHomeSearch()">
+       <span class="ico">🔍</span><span>Search MaxSearch for “${escapeHtml(q)}”</span></div>`;
 }
 function ebHomeKey(e) {
   if (e.key === 'Enter') { e.preventDefault(); ebHomeSearch(); }
 }
-// Enter / Search button: an exact app-name match opens the app, otherwise web search.
-function ebHomeSearch() {
+// Run a MaxSearch query against our own index and render results in MaxOS's UI.
+async function ebHomeSearch() {
   const q = (document.getElementById('eb-home-q')?.value || '').trim();
   if (!q) return;
-  const lc = q.toLowerCase();
-  const exact = ebLaunchableApps().find(id =>
-    id === lc || (apps[id].title || '').toLowerCase() === lc || (apps[id].short || '').toLowerCase() === lc);
-  if (exact) { ebHomeOpenApp(exact); return; }
-  ebHomeSearchWeb();
+  const sug = document.getElementById('eb-home-sug'); if (sug) sug.innerHTML = '';
+  const apper = document.getElementById('eb-home-apps'); if (apper) apper.hidden = true;
+  const out = document.getElementById('eb-home-results');
+  if (!out) return;
+  out.hidden = false;
+  out.innerHTML = `<div class="eb-res-status">Searching the MaxOS index…</div>`;
+  const r = await apiFetch('/api/search?q=' + encodeURIComponent(q));
+  if (!r || r.error) { out.innerHTML = `<div class="eb-res-status">Search is offline right now.</div>`; return; }
+  ebRenderResults(q, r);
 }
-function ebHomeSearchWeb() {
-  const q = (document.getElementById('eb-home-q')?.value || '').trim();
-  if (!q) return;
-  ebNavigate(ebEngine().search + encodeURIComponent(q));
+function ebRenderResults(q, r) {
+  const out = document.getElementById('eb-home-results');
+  if (!out) return;
+  const appMatches = ebAppMatches(q);
+  const appBlock = appMatches.length ? `
+    <div class="eb-res-apps">${appMatches.map(id => {
+      const a = apps[id];
+      return `<div class="eb-res-app" onclick="ebHomeOpenApp('${id}')" title="${escapeHtml(a.desc || a.title)}">
+        <span class="ico">${a.icon}</span><span>${escapeHtml(a.title)}</span></div>`;
+    }).join('')}</div>` : '';
+  const list = (r.results || []).map(x => `
+    <div class="eb-res-item" onclick="ebOpenResult('${encodeURIComponent(x.url)}')">
+      <div class="eb-res-host">${escapeHtml(x.host || '')}</div>
+      <div class="eb-res-title">${escapeHtml(x.title || x.url)}</div>
+      <div class="eb-res-snip">${escapeHtml(x.snippet || '')}</div>
+    </div>`).join('');
+  const empty = !(r.results || []).length
+    ? `<div class="eb-res-status">No pages in the MaxOS index match “${escapeHtml(q)}”.${
+        currentUser?.admin ? ' Grow the index below.' : ''}</div>` : '';
+  out.innerHTML = `
+    <div class="eb-res-head">
+      <span>${(r.results || []).length} result${(r.results || []).length === 1 ? '' : 's'} for “${escapeHtml(q)}”</span>
+      <button class="eb-res-clear" onclick="ebClearSearch()">Clear</button>
+    </div>
+    ${appBlock}${list}${empty}`;
+}
+function ebOpenResult(encUrl) {
+  try { ebNavigate(decodeURIComponent(encUrl)); } catch {}
+}
+function ebClearSearch() {
+  const out = document.getElementById('eb-home-results'); if (out) { out.hidden = true; out.innerHTML = ''; }
+  const apper = document.getElementById('eb-home-apps'); if (apper) apper.hidden = false;
+  const q = document.getElementById('eb-home-q'); if (q) { q.value = ''; q.focus(); }
 }
 function ebHomeOpenApp(id) {
   if (!apps[id]) return;
   openApp(id);
+}
+// ── MaxSearch index admin (admins only) ──────────────────────────────────────
+async function ebGrowIndex() {
+  const btn = document.getElementById('eb-home-grow');
+  if (btn) { btn.disabled = true; btn.textContent = 'Crawling…'; }
+  const r = await apiFetch('/api/search/crawl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  if (btn) { btn.disabled = false; btn.textContent = 'Grow index'; }
+  if (r && !r.error) notify('🔍', 'MaxSearch', `Indexed ${r.indexed} new page${r.indexed === 1 ? '' : 's'} — ${r.total} total.`);
+  else notify('🔍', 'MaxSearch', (r && r.error) || 'Crawl failed.');
+  ebRefreshHomeStats();
+}
+async function ebResetIndex() {
+  if (!confirm('Clear the entire MaxOS search index?')) return;
+  const r = await apiFetch('/api/search/reset', { method: 'POST' });
+  if (r && !r.error) notify('🔍', 'MaxSearch', 'Index cleared.');
+  else notify('🔍', 'MaxSearch', (r && r.error) || 'Reset failed.');
+  ebRefreshHomeStats();
 }
 
 // ── Bookmarks (per-user, stored locally) ─────────────────────────────────────
