@@ -631,7 +631,19 @@ async function sendVerifyEmail(user) {
 }
 
 // Public config the login screen needs (e.g. whether to collect an email at signup).
-app.get('/api/config', (req, res) => res.json({ emailRequired: REQUIRE_EMAIL_VERIFY }));
+app.get('/api/config', async (req, res) => {
+  let indexSize = 0;
+  try { indexSize = await IndexPage.estimatedDocumentCount(); } catch {}
+  res.json({
+    emailRequired: REQUIRE_EMAIL_VERIFY,
+    search: {
+      size: indexSize, target: SEARCH_TARGET, busy: crawlBusy,
+      lastAt: crawlStats.lastAt, lastAdded: crawlStats.lastAdded, lastYt: crawlStats.lastYt,
+      lastError: crawlStats.lastError, runs: crawlStats.runs,
+      keepAwake: !!process.env.RENDER_EXTERNAL_URL,
+    },
+  });
+});
 
 // Verify-email landing page (opened from the email link in a browser).
 app.get('/api/auth/verify-email', async (req, res) => {
@@ -1743,6 +1755,8 @@ async function crawlFrom(seeds, maxPages, sameHostOnly) {
   return indexed;
 }
 let crawlBusy = false; // one crawl at a time — protects the free-tier instance
+// Crawler health, surfaced on /api/config so we can watch it without logging in.
+let crawlStats = { lastAt: null, lastAdded: 0, lastYt: 0, lastError: null, runs: 0 };
 
 // ── Auto-grow: keep crawling in the background up to a cap, no manual clicks ───
 // Storage-bounded so we don't blow the free MongoDB tier (~5k pages × 5KB ≈ 25MB).
@@ -1769,9 +1783,12 @@ async function autoGrow() {
       seeds = seeds.concat(sample.map(s => s.url));
     }
     const added = await crawlFrom(seeds, 45, false);
+    crawlStats = { lastAt: new Date(), lastAdded: added, lastYt: ytAdded, lastError: null, runs: crawlStats.runs + 1 };
     console.log(`🔎 MaxSearch auto-grow: +${added} web +${ytAdded} youtube (now ~${total + added + ytAdded})`);
-  } catch (e) { console.log('MaxSearch auto-grow error:', e.message); }
-  finally { crawlBusy = false; }
+  } catch (e) {
+    crawlStats = { ...crawlStats, lastAt: new Date(), lastError: String(e.message || e).slice(0, 200) };
+    console.log('MaxSearch auto-grow error:', e.message);
+  } finally { crawlBusy = false; }
 }
 
 // Query our index. Our ranking = weighted full-text score (title > snippet > body).
