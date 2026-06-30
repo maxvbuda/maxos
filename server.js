@@ -1866,5 +1866,19 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
     // instance is awake. First pass shortly after boot, then on a steady interval.
     setTimeout(() => autoGrow().catch(() => {}), 20 * 1000);
     setInterval(() => autoGrow().catch(() => {}), 3 * 60 * 1000);
+    // Keep-awake: Render's free tier sleeps after ~15 min with no inbound traffic,
+    // which pauses the crawler. Pinging our own public URL every 10 min counts as
+    // inbound traffic and keeps the instance up so the index fills unattended.
+    // RENDER_EXTERNAL_URL is only set on Render, so this self-disables locally.
+    const KEEP_AWAKE = process.env.RENDER_EXTERNAL_URL;
+    if (KEEP_AWAKE) {
+      setInterval(() => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 10000);
+        fetch(KEEP_AWAKE + '/api/config', { signal: ctrl.signal })
+          .catch(() => {}).finally(() => clearTimeout(t));
+      }, 10 * 60 * 1000);
+      console.log('⏰ Keep-awake self-ping enabled:', KEEP_AWAKE);
+    }
   })
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
