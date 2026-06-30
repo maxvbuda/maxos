@@ -290,6 +290,11 @@
   .eb-res-app .ico { font-size:16px; }
   .eb-res-item { padding:11px 13px; border-radius:12px; cursor:pointer; margin-bottom:6px; }
   .eb-res-item:hover { background:rgba(255,255,255,.06); }
+  .eb-res-video { display:flex; gap:13px; align-items:flex-start; }
+  .eb-res-video .eb-res-body { flex:1; min-width:0; }
+  .eb-res-thumb { position:relative; flex:0 0 auto; width:140px; height:79px; border-radius:9px; overflow:hidden; background:#0c0f1c; }
+  .eb-res-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .eb-res-play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; text-shadow:0 1px 6px rgba(0,0,0,.7); opacity:.9; }
   .eb-res-host { color:#7fd6a8; font-size:12px; }
   .eb-res-title { color:#9ec5ff; font-size:16px; margin:2px 0; }
   .eb-res-item:hover .eb-res-title { text-decoration:underline; }
@@ -3346,12 +3351,20 @@ function ebRenderResults(q, r) {
       return `<div class="eb-res-app" onclick="ebHomeOpenApp('${id}')" title="${escapeHtml(a.desc || a.title)}">
         <span class="ico">${a.icon}</span><span>${escapeHtml(a.title)}</span></div>`;
     }).join('')}</div>` : '';
-  const list = (r.results || []).map(x => `
-    <div class="eb-res-item" onclick="ebOpenResult('${encodeURIComponent(x.url)}')">
-      <div class="eb-res-host">${escapeHtml(x.host || '')}</div>
-      <div class="eb-res-title">${escapeHtml(x.title || x.url)}</div>
-      <div class="eb-res-snip">${escapeHtml(x.snippet || '')}</div>
-    </div>`).join('');
+  const list = (r.results || []).map(x => {
+    const vid = ebYtId(x.url);
+    const thumb = vid
+      ? `<div class="eb-res-thumb"><img src="https://img.youtube.com/vi/${vid}/mqdefault.jpg" loading="lazy" onerror="this.parentNode.style.display='none'"><span class="eb-res-play">▶</span></div>`
+      : '';
+    return `<div class="eb-res-item${vid ? ' eb-res-video' : ''}" onclick="ebOpenResult('${encodeURIComponent(x.url)}')">
+      ${thumb}
+      <div class="eb-res-body">
+        <div class="eb-res-host">${vid ? '▶ youtube.com' : escapeHtml(x.host || '')}</div>
+        <div class="eb-res-title">${escapeHtml(x.title || x.url)}</div>
+        <div class="eb-res-snip">${escapeHtml(x.snippet || '')}</div>
+      </div>
+    </div>`;
+  }).join('');
   const empty = !(r.results || []).length
     ? `<div class="eb-res-status">No pages in the MaxOS index match “${escapeHtml(q)}”.${
         currentUser?.admin ? ' Grow the index below.' : ''}</div>` : '';
@@ -3361,6 +3374,11 @@ function ebRenderResults(q, r) {
       <button class="eb-res-clear" onclick="ebClearSearch()">Clear</button>
     </div>
     ${appBlock}${list}${empty}`;
+}
+// The YouTube video id from a result URL, or '' — used to show a thumbnail.
+function ebYtId(url) {
+  try { const u = new URL(url); if (/(^|\.)youtube\.com$/i.test(u.hostname)) return u.searchParams.get('v') || ''; } catch {}
+  return '';
 }
 function ebOpenResult(encUrl) {
   try { ebNavigate(decodeURIComponent(encUrl)); } catch {}
