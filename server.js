@@ -1836,32 +1836,6 @@ app.post('/api/search/reset', auth, superadminOnly, async (req, res) => {
   try { await IndexPage.deleteMany({}); res.json({ ok: true, total: 0 }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Temporary diagnostic: fetch fixed YouTube URLs exactly as the crawler does and
-// report what this server actually receives (videoIds / bot-or-consent flags).
-// Fixed URLs only (no user input), so it can't be abused as an open fetcher.
-app.get('/api/search/probe', async (req, res) => {
-  const targets = ['https://www.youtube.com/results?search_query=robot', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'];
-  const headers = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-    'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9',
-    'Cookie': 'CONSENT=YES+1; SOCS=CAISNQgDEitib3hfMjANCg',
-  };
-  const out = [];
-  for (const u of targets) {
-    try {
-      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
-      const r = await fetch(u, { signal: ctrl.signal, redirect: 'follow', headers });
-      clearTimeout(t);
-      const html = await r.text();
-      const vids = [...new Set((html.match(/"videoId":"[\w-]{11}"/g) || []).map(s => s.slice(11, 22)))];
-      const flags = ['consent', 'before you continue', 'sign in to confirm', "isn't a robot", 'captcha', 'unusual traffic', 'cookies']
-        .filter(k => html.toLowerCase().includes(k));
-      out.push({ url: u, status: r.status, finalUrl: r.url, ct: r.headers.get('content-type'), len: html.length,
-        videoIds: vids.length, title: (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 90).trim(), flags });
-    } catch (e) { out.push({ url: u, error: String(e.message || e) }); }
-  }
-  res.json({ probe: out });
-});
 
 // ── Bot tarpit ────────────────────────────────────────────────────────────────
 // Hidden honeypot links (in the page) plus robots.txt-disallowed paths lure bad
