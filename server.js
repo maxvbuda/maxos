@@ -1591,6 +1591,15 @@ const SEARCH_SEED = [
   'https://en.wikipedia.org/wiki/Food',
   'https://developer.mozilla.org/en-US/docs/Web',
   'https://simple.wikipedia.org/wiki/Main_Page',
+  // YouTube — seeded from search pages; each video also surfaces ~60 related ones.
+  'https://www.youtube.com/feed/trending',
+  'https://www.youtube.com/results?search_query=music',
+  'https://www.youtube.com/results?search_query=science',
+  'https://www.youtube.com/results?search_query=technology',
+  'https://www.youtube.com/results?search_query=robot',
+  'https://www.youtube.com/results?search_query=gaming',
+  'https://www.youtube.com/results?search_query=news',
+  'https://www.youtube.com/results?search_query=how+to',
 ];
 const HTML_ENTITIES = { '&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'", '&apos;':"'", '&nbsp;':' ' };
 function decodeEntities(s) {
@@ -1634,6 +1643,10 @@ function isSafeCrawlUrl(u) {
 }
 // Fetch one page; upsert it into our index (unless indexIt is false, in which case
 // we only harvest its links). Returns whether it was indexed plus the links found.
+function ogMeta(html, prop) {
+  const re = new RegExp('<meta[^>]+(?:property|name)=["\']' + prop + '["\'][^>]+content=["\']([^"\']*)["\']', 'i');
+  return decodeEntities(html.match(re)?.[1] || '').trim();
+}
 async function crawlOne(u, indexIt = true) {
   if (!isSafeCrawlUrl(u)) return { indexed: false, links: [] };
   let resp;
@@ -1641,22 +1654,53 @@ async function crawlOne(u, indexIt = true) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
     resp = await fetch(u, { signal: ctrl.signal, redirect: 'follow',
-      headers: { 'User-Agent': 'MaxSearchBot/1.0 (+https://maxos)', 'Accept': 'text/html' } });
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36', 'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9' } });
     clearTimeout(t);
   } catch { return { indexed: false, links: [] }; }
   const ct = resp.headers.get('content-type') || '';
   if (!resp.ok || !/text\/html/i.test(ct)) return { indexed: false, links: [] };
   let html = '';
-  try { html = (await resp.text()).slice(0, 600000); } catch { return { indexed: false, links: [] }; }
+  try { html = (await resp.text()).slice(0, 800000); } catch { return { indexed: false, links: [] }; }
   const finalUrl = resp.url || u;
-  const links = extractLinks(html, finalUrl);
-  if (!indexIt) return { indexed: false, links }; // hub page we already have — links only
+  let host = ''; try { host = new URL(finalUrl).hostname; } catch {}
+  const isYT = /(^|\.)youtube\.com$/i.test(host);
+
+  // YouTube renders its <a> links in JS, but the HTML embeds videoIds we can turn
+  // into watch URLs — that's the crawl frontier. (Real links elsewhere.)
+  let links;
+  if (isYT) {
+    const ids = [...new Set((html.match(/"videoId":"[\w-]{11}"/g) || []).map(s => s.slice(11, 22)))];
+    links = ids.map(id => 'https://www.youtube.com/watch?v=' + id);
+  } else {
+    links = extractLinks(html, finalUrl);
+  }
+  if (!indexIt) return { indexed: false, links }; // page we already have — links only
+
+  if (isYT) {
+    // Only index actual video watch pages (search/feed pages have no title to index).
+    let vid = ''; try { vid = new URL(finalUrl).searchParams.get('v') || ''; } catch {}
+    if (!/\/watch/i.test(finalUrl) || !vid) return { indexed: false, links };
+    let title = ogMeta(html, 'og:title')
+      || decodeEntities((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '')).replace(/\s*-\s*YouTube\s*$/i, '');
+    title = title.replace(/\s+/g, ' ').trim();
+    if (!title) return { indexed: false, links };
+    const desc = ogMeta(html, 'og:description');
+    const url = 'https://www.youtube.com/watch?v=' + vid; // normalize (drop tracking params)
+    await IndexPage.updateOne(
+      { url },
+      { $set: { url, host: 'youtube.com', title: title.slice(0, 300),
+                snippet: (desc || title).slice(0, 300), text: (title + ' ' + desc).slice(0, 5000), fetchedAt: new Date() } },
+      { upsert: true }
+    );
+    return { indexed: true, links };
+  }
+
   const { title, desc, text } = extractPage(html);
   if (!title || text.length < 200) return { indexed: false, links };
   const snippet = (desc || text).slice(0, 300);
   await IndexPage.updateOne(
     { url: finalUrl },
-    { $set: { url: finalUrl, host: new URL(finalUrl).hostname, title: title.slice(0, 300),
+    { $set: { url: finalUrl, host, title: title.slice(0, 300),
               snippet, text: text.slice(0, 5000), fetchedAt: new Date() } },
     { upsert: true }
   );
