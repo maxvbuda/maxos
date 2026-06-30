@@ -1591,7 +1591,11 @@ const SEARCH_SEED = [
   'https://en.wikipedia.org/wiki/Food',
   'https://developer.mozilla.org/en-US/docs/Web',
   'https://simple.wikipedia.org/wiki/Main_Page',
-  // YouTube — seeded from search pages; each video also surfaces ~60 related ones.
+];
+// YouTube gets its own seed list + dedicated crawl budget, because Wikipedia's
+// huge link fanout would otherwise starve video pages out of the page budget.
+// Each search page yields videoIds; each video also surfaces ~60 related ones.
+const YT_SEED = [
   'https://www.youtube.com/feed/trending',
   'https://www.youtube.com/results?search_query=music',
   'https://www.youtube.com/results?search_query=science',
@@ -1600,6 +1604,8 @@ const SEARCH_SEED = [
   'https://www.youtube.com/results?search_query=gaming',
   'https://www.youtube.com/results?search_query=news',
   'https://www.youtube.com/results?search_query=how+to',
+  'https://www.youtube.com/results?search_query=sports',
+  'https://www.youtube.com/results?search_query=cooking',
 ];
 const HTML_ENTITIES = { '&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'", '&apos;':"'", '&nbsp;':' ' };
 function decodeEntities(s) {
@@ -1649,12 +1655,18 @@ function ogMeta(html, prop) {
 }
 async function crawlOne(u, indexIt = true) {
   if (!isSafeCrawlUrl(u)) return { indexed: false, links: [] };
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+    'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9',
+  };
+  // Google/YouTube bounce cookie-less datacenter requests to a consent wall (no
+  // videoIds). This cookie marks consent as already given so we get the real page.
+  if (/(youtube|google)\.com/i.test(u)) headers['Cookie'] = 'CONSENT=YES+1; SOCS=CAISNQgDEitib3hfMjANCg';
   let resp;
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    resp = await fetch(u, { signal: ctrl.signal, redirect: 'follow',
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36', 'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9' } });
+    resp = await fetch(u, { signal: ctrl.signal, redirect: 'follow', headers });
     clearTimeout(t);
   } catch { return { indexed: false, links: [] }; }
   const ct = resp.headers.get('content-type') || '';
@@ -1742,15 +1754,22 @@ async function autoGrow() {
   if (total >= SEARCH_TARGET) return;
   crawlBusy = true;
   try {
-    // Seed each run with the fixed list plus a few random indexed pages, so the
-    // crawl frontier keeps expanding into parts of the web we haven't reached yet.
+    // Dedicated YouTube pass first (its own budget so videos always get crawled),
+    // seeded from the search pages plus a few videos we already have.
+    let ytSeeds = [...YT_SEED];
+    const ytSample = await IndexPage.aggregate([{ $match: { host: 'youtube.com' } },
+      { $sample: { size: 6 } }, { $project: { url: 1, _id: 0 } }]);
+    ytSeeds = ytSeeds.concat(ytSample.map(s => s.url));
+    const ytAdded = await crawlFrom(ytSeeds, 30, false);
+    // General pass — fixed seed list plus random indexed pages so the frontier
+    // keeps expanding into parts of the web we haven't reached yet.
     let seeds = [...SEARCH_SEED];
     if (total > 0) {
       const sample = await IndexPage.aggregate([{ $sample: { size: 8 } }, { $project: { url: 1, _id: 0 } }]);
       seeds = seeds.concat(sample.map(s => s.url));
     }
-    const added = await crawlFrom(seeds, 60, false);
-    console.log(`🔎 MaxSearch auto-grow: +${added} pages (now ~${total + added})`);
+    const added = await crawlFrom(seeds, 45, false);
+    console.log(`🔎 MaxSearch auto-grow: +${added} web +${ytAdded} youtube (now ~${total + added + ytAdded})`);
   } catch (e) { console.log('MaxSearch auto-grow error:', e.message); }
   finally { crawlBusy = false; }
 }
@@ -1785,7 +1804,7 @@ app.get('/api/search/stats', auth, async (req, res) => {
 app.post('/api/search/crawl', auth, adminOnly, async (req, res) => {
   if (crawlBusy) return res.status(409).json({ error: 'A crawl is already running.' });
   if (!rateLimit('crawl:' + req.user.username, 8, 60 * 1000)) return res.status(429).json({ error: 'Slow down a moment.' });
-  const urls = Array.isArray(req.body.urls) && req.body.urls.length ? req.body.urls.slice(0, 30) : SEARCH_SEED;
+  const urls = Array.isArray(req.body.urls) && req.body.urls.length ? req.body.urls.slice(0, 30) : [...SEARCH_SEED, ...YT_SEED];
   const maxPages = Math.min(Math.max(parseInt(req.body.maxPages, 10) || 40, 1), 120);
   const sameHostOnly = !!req.body.sameHostOnly;
   crawlBusy = true;
