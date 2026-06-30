@@ -1609,15 +1609,12 @@ const SEARCH_SEED = [
 // Each search page yields videoIds; each video also surfaces ~60 related ones.
 const YT_SEED = [
   'https://www.youtube.com/feed/trending',
-  'https://www.youtube.com/results?search_query=music',
-  'https://www.youtube.com/results?search_query=science',
-  'https://www.youtube.com/results?search_query=technology',
-  'https://www.youtube.com/results?search_query=robot',
-  'https://www.youtube.com/results?search_query=gaming',
-  'https://www.youtube.com/results?search_query=news',
-  'https://www.youtube.com/results?search_query=how+to',
-  'https://www.youtube.com/results?search_query=sports',
-  'https://www.youtube.com/results?search_query=cooking',
+  ...['music', 'science', 'technology', 'robot', 'gaming', 'news', 'how to', 'sports',
+      'cooking', 'history', 'space', 'animals', 'cars', 'comedy', 'movie trailer',
+      'documentary', 'tutorial', 'minecraft', 'football', 'guitar', 'math', 'coding',
+      'travel', 'art', 'nature', 'fitness', 'cats', 'lego', 'experiment', 'review',
+      'podcast', 'dance', 'piano', 'chemistry', 'physics', 'biology', 'art for kids']
+    .map(q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q)),
 ];
 const HTML_ENTITIES = { '&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'", '&apos;':"'", '&nbsp;':' ' };
 function decodeEntities(s) {
@@ -1665,8 +1662,27 @@ function ogMeta(html, prop) {
   const re = new RegExp('<meta[^>]+(?:property|name)=["\']' + prop + '["\'][^>]+content=["\']([^"\']*)["\']', 'i');
   return decodeEntities(html.match(re)?.[1] || '').trim();
 }
+// Unescape a JSON string body (\uXXXX, \", \\, …) captured by regex.
+function jsonStr(raw) { try { return JSON.parse('"' + raw + '"'); } catch { return raw.replace(/\\u[0-9a-fA-F]{4}/g, '').replace(/\\(.)/g, '$1'); } }
+// Pull {id, title} pairs straight out of a YouTube listing page's embedded JSON.
+// This is how we index videos WITHOUT fetching each watch page — Google 429-blocks
+// individual watch-page fetches from datacenter IPs, but listing pages come through.
+function extractYtVideos(html) {
+  const out = [], seen = new Set();
+  const re = /"videoId":"([\w-]{11})"[\s\S]{0,800}?"title":\{(?:"runs":\[\{"text":"((?:[^"\\]|\\.)*)"|"simpleText":"((?:[^"\\]|\\.)*)")/g;
+  let m;
+  while ((m = re.exec(html)) && out.length < 60) {
+    const id = m[1], title = jsonStr(m[2] || m[3] || '').replace(/\s+/g, ' ').trim();
+    if (!title || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, title });
+  }
+  return out;
+}
+// Fetch one page and index it. For YouTube, bulk-index every video found on a
+// listing page. Returns { indexedCount: net-new pages, links: crawl frontier }.
 async function crawlOne(u, indexIt = true) {
-  if (!isSafeCrawlUrl(u)) return { indexed: false, links: [] };
+  if (!isSafeCrawlUrl(u)) return { indexedCount: 0, links: [] };
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
     'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9',
@@ -1680,47 +1696,35 @@ async function crawlOne(u, indexIt = true) {
     const t = setTimeout(() => ctrl.abort(), 8000);
     resp = await fetch(u, { signal: ctrl.signal, redirect: 'follow', headers });
     clearTimeout(t);
-  } catch { return { indexed: false, links: [] }; }
+  } catch { return { indexedCount: 0, links: [] }; }
   const ct = resp.headers.get('content-type') || '';
-  if (!resp.ok || !/text\/html/i.test(ct)) return { indexed: false, links: [] };
+  if (!resp.ok || !/text\/html/i.test(ct)) return { indexedCount: 0, links: [] };
   let html = '';
-  try { html = (await resp.text()).slice(0, 800000); } catch { return { indexed: false, links: [] }; }
+  try { html = (await resp.text()).slice(0, 800000); } catch { return { indexedCount: 0, links: [] }; }
   const finalUrl = resp.url || u;
   let host = ''; try { host = new URL(finalUrl).hostname; } catch {}
   const isYT = /(^|\.)youtube\.com$/i.test(host);
 
-  // YouTube renders its <a> links in JS, but the HTML embeds videoIds we can turn
-  // into watch URLs — that's the crawl frontier. (Real links elsewhere.)
-  let links;
   if (isYT) {
-    const ids = [...new Set((html.match(/"videoId":"[\w-]{11}"/g) || []).map(s => s.slice(11, 22)))];
-    links = ids.map(id => 'https://www.youtube.com/watch?v=' + id);
-  } else {
-    links = extractLinks(html, finalUrl);
-  }
-  if (!indexIt) return { indexed: false, links }; // page we already have — links only
-
-  if (isYT) {
-    // Only index actual video watch pages (search/feed pages have no title to index).
-    let vid = ''; try { vid = new URL(finalUrl).searchParams.get('v') || ''; } catch {}
-    if (!/\/watch/i.test(finalUrl) || !vid) return { indexed: false, links };
-    let title = ogMeta(html, 'og:title')
-      || decodeEntities((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '')).replace(/\s*-\s*YouTube\s*$/i, '');
-    title = title.replace(/\s+/g, ' ').trim();
-    if (!title) return { indexed: false, links };
-    const desc = ogMeta(html, 'og:description');
-    const url = 'https://www.youtube.com/watch?v=' + vid; // normalize (drop tracking params)
-    await IndexPage.updateOne(
-      { url },
-      { $set: { url, host: 'youtube.com', title: title.slice(0, 300),
-                snippet: (desc || title).slice(0, 300), text: (title + ' ' + desc).slice(0, 5000), fetchedAt: new Date() } },
-      { upsert: true }
-    );
-    return { indexed: true, links };
+    // No frontier links (we don't crawl watch pages — they 429). Index every video
+    // listed on this page in one bulk upsert; upsertedCount = net-new videos.
+    const vids = extractYtVideos(html);
+    if (!vids.length) return { indexedCount: 0, links: [] };
+    const ops = vids.map(v => {
+      const url = 'https://www.youtube.com/watch?v=' + v.id;
+      return { updateOne: { filter: { url },
+        update: { $set: { url, host: 'youtube.com', title: v.title.slice(0, 300),
+                          snippet: '', text: v.title.slice(0, 5000), fetchedAt: new Date() } },
+        upsert: true } };
+    });
+    try { const r = await IndexPage.bulkWrite(ops, { ordered: false }); return { indexedCount: r.upsertedCount || 0, links: [] }; }
+    catch { return { indexedCount: 0, links: [] }; }
   }
 
+  const links = extractLinks(html, finalUrl);
+  if (!indexIt) return { indexedCount: 0, links }; // page we already have — links only
   const { title, desc, text } = extractPage(html);
-  if (!title || text.length < 200) return { indexed: false, links };
+  if (!title || text.length < 200) return { indexedCount: 0, links };
   const snippet = (desc || text).slice(0, 300);
   await IndexPage.updateOne(
     { url: finalUrl },
@@ -1728,7 +1732,7 @@ async function crawlOne(u, indexIt = true) {
               snippet, text: text.slice(0, 5000), fetchedAt: new Date() } },
     { upsert: true }
   );
-  return { indexed: true, links };
+  return { indexedCount: 1, links };
 }
 // Breadth-first crawl from seeds. Pages already in the index are fetched only to
 // harvest their links, so the page budget is always spent on *new* pages — that's
@@ -1743,7 +1747,7 @@ async function crawlFrom(seeds, maxPages, sameHostOnly) {
     const batch = queue.splice(0, 4);
     const results = await Promise.all(batch.map(u => crawlOne(u, !known.has(u))));
     for (const r of results) {
-      if (r.indexed) indexed++;
+      indexed += r.indexedCount;
       for (const link of r.links) {
         if (seen.size > maxPages * 12 || queue.length > maxPages * 6) break;
         if (seen.has(link) || !isSafeCrawlUrl(link)) continue;
@@ -1768,13 +1772,9 @@ async function autoGrow() {
   if (total >= SEARCH_TARGET) return;
   crawlBusy = true;
   try {
-    // Dedicated YouTube pass first (its own budget so videos always get crawled),
-    // seeded from the search pages plus a few videos we already have.
-    let ytSeeds = [...YT_SEED];
-    const ytSample = await IndexPage.aggregate([{ $match: { host: 'youtube.com' } },
-      { $sample: { size: 6 } }, { $project: { url: 1, _id: 0 } }]);
-    ytSeeds = ytSeeds.concat(ytSample.map(s => s.url));
-    const ytAdded = await crawlFrom(ytSeeds, 30, false);
+    // Dedicated YouTube pass first: crawl every search-query seed (each listing
+    // page bulk-indexes ~20 videos). Budget high enough to process all of them.
+    const ytAdded = await crawlFrom([...YT_SEED], 300, false);
     // General pass — fixed seed list plus random indexed pages so the frontier
     // keeps expanding into parts of the web we haven't reached yet.
     let seeds = [...SEARCH_SEED];
