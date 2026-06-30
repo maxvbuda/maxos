@@ -2288,6 +2288,19 @@ function focusWindow(id) {
   setAppUrl(id);
 }
 
+// True when keystrokes are being typed into an editable field (text box, textarea,
+// or rich-text area). Global game/shortcut key handlers use this to stay out of the
+// way so arrow keys, typing, etc. work normally in Notes, Max MD, the editor, …
+function isTypingTarget(e) {
+  const t = (e && e.target) || document.activeElement;
+  return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+// True when the given app's window exists and is the currently focused one. A game
+// should only react to keys when it's the front window, not while it sits behind Notes.
+function appIsFocused(id) {
+  return !!(windows[id] && !windows[id].minimized && windows[id].el.classList.contains('focused'));
+}
+
 function closeWindow(id) {
   const w = windows[id];
   if (!w) return;
@@ -3095,20 +3108,22 @@ function ebNewTab(url) {
   const start = url || ebHomeUrl();
   wv.setAttribute('src', start);
   const tab = { id, title: 'New Tab', url: start, wv };
-  wv.addEventListener('did-navigate', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
-  wv.addEventListener('did-navigate-in-page', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); });
-  wv.addEventListener('page-title-updated', (e) => { tab.title = e.title || tab.title; ebRenderTabs(); });
+  wv.addEventListener('did-navigate', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); ebSaveSession(); });
+  wv.addEventListener('did-navigate-in-page', () => { tab.url = ebSafeUrl(wv) || tab.url; if (ebActive === id) ebSyncBar(); ebSaveSession(); });
+  wv.addEventListener('page-title-updated', (e) => { tab.title = e.title || tab.title; ebRenderTabs(); ebSaveSession(); });
   // A page opening a new window/tab (window.open, target=_blank) → open it as a new tab.
   wv.addEventListener('new-window', (e) => { if (e.url && e.url !== 'about:blank') { e.preventDefault && e.preventDefault(); ebNewTab(e.url); } });
   document.getElementById('eb-views').appendChild(wv);
   ebTabs.push(tab);
   ebActivate(id);
+  ebSaveSession();
 }
 function ebActivate(id) {
   ebActive = id;
   ebTabs.forEach(t => { t.wv.style.display = t.id === id ? 'flex' : 'none'; });
   ebSyncBar();
   ebRenderTabs();
+  ebSaveSession();
 }
 function ebCloseTab(id, ev) {
   if (ev) ev.stopPropagation();
@@ -3119,6 +3134,7 @@ function ebCloseTab(id, ev) {
   if (!ebTabs.length) { ebNewTab(ebHomeUrl()); return; }
   if (ebActive === id) ebActivate(ebTabs[Math.max(0, idx - 1)].id);
   else ebRenderTabs();
+  ebSaveSession();
 }
 function ebSyncBar() {
   const u = document.getElementById('browser-url');
@@ -3146,6 +3162,25 @@ function ebForward() { const wv = ebActiveWv(); if (wv && wv.canGoForward && wv.
 function ebBmKey() { return 'maxos_bm_' + (currentUser?.username || 'guest'); }
 function ebLoadBookmarks() { try { ebBookmarks = JSON.parse(localStorage.getItem(ebBmKey()) || '[]'); } catch { ebBookmarks = []; } }
 function ebSaveBookmarks() { try { localStorage.setItem(ebBmKey(), JSON.stringify(ebBookmarks)); } catch {} }
+
+// ── Tab session (per-user) — open tabs survive closing/reopening the browser ──
+function ebSessKey() { return 'maxos_ebtabs_' + (currentUser?.username || 'guest'); }
+function ebSaveSession() {
+  try {
+    const tabs = ebTabs.map(t => ({ url: ebSafeUrl(t.wv) || t.url, title: t.title }))
+                       .filter(t => t.url && t.url !== 'about:blank');
+    const activeIdx = ebTabs.findIndex(t => t.id === ebActive);
+    localStorage.setItem(ebSessKey(), JSON.stringify({ tabs, activeIdx }));
+  } catch {}
+}
+function ebRestoreSession() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(ebSessKey()) || 'null'); } catch {}
+  if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length) { ebNewTab(ebHomeUrl()); return; }
+  saved.tabs.forEach(t => ebNewTab(t.url || ebHomeUrl()));
+  const idx = Math.min(Math.max(0, saved.activeIdx | 0), ebTabs.length - 1);
+  if (ebTabs[idx]) ebActivate(ebTabs[idx].id);
+}
 function ebBookmark() {
   const t = ebActiveTab(); if (!t) return;
   const url = ebSafeUrl(t.wv) || t.url; if (!url) return;
@@ -3168,7 +3203,7 @@ function initBrowser() {
   if (IS_ELECTRON) {
     ebTabs = []; ebActive = null; ebTabSeq = 0;
     ebLoadBookmarks(); ebRenderBookmarks();
-    ebNewTab(ebHomeUrl());
+    ebRestoreSession(); // reopen the tabs that were open last time
     return;
   }
   browserHome();
@@ -3535,6 +3570,8 @@ function initSnake() {
   }
 
   const keyHandler = e => {
+    // Don't hijack keys while typing in a field or when Snake isn't the front window.
+    if (isTypingTarget(e) || !appIsFocused('snake')) return;
     const map = {ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},
                  w:{x:0,y:-1},s:{x:0,y:1},a:{x:-1,y:0},d:{x:1,y:0}};
     if (e.key===' ') { if(!running){start();}else{paused=!paused;draw();} return; }
@@ -4377,7 +4414,7 @@ function g2048Draw() {
   const s = document.getElementById('g2048-score'); if (s) s.textContent = g2048.score;
 }
 function g2048Key(e) {
-  if (!windows['g2048'] || windows['g2048'].minimized || !g2048) return;
+  if (isTypingTarget(e) || !appIsFocused('g2048') || !g2048) return;
   const map = { ArrowLeft: 'L', ArrowRight: 'R', ArrowUp: 'U', ArrowDown: 'D', a: 'L', d: 'R', w: 'U', s: 'D' };
   const dir = map[e.key]; if (!dir) return;
   e.preventDefault();
