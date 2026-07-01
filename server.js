@@ -401,11 +401,36 @@ const lastPostByUser = new Map(); // username -> last text (block instant duplic
 function moderatePost(text, username) {
   const t = (text || '').trim();
   if (!t) return 'Say something!';
-  if (POST_BAD.test(t)) return 'Please keep it friendly — that post was blocked.';
+  if (isExplicit(t)) return 'Please keep it friendly — that post was blocked.';
   if (POST_LINK.test(t)) return "Links aren't allowed in posts.";
   if (POST_SPAMMY.test(t)) return 'That looks like spam.';
   if (lastPostByUser.get(username) === t) return 'You just posted that — try something new.';
   return null;
+}
+
+// ── Explicit-content filter (applies to shared content, never to private files) ──
+// Catches profanity / adult terms even when obfuscated with separators, leetspeak,
+// repeats or concatenation — e.g. "f.u.c.k", "sh1t", "p o r n", "n1gg3r", "fuckyou".
+const LEET_MAP = { '0':'o','1':'i','3':'e','4':'a','5':'s','6':'g','7':'t','8':'b','9':'g','@':'a','$':'s','!':'i','|':'i','(':'c','+':'t' };
+function normLeet(s) { return String(s || '').toLowerCase().replace(/[0-9@$!|(+]/g, c => LEET_MAP[c] || c); }
+function stripTags(h) { return String(h || '').replace(/<[^>]+>/g, ' '); }
+// Allow up to 3 non-letter chars between each letter, so obfuscation with dots,
+// spaces, asterisks or dashes ("s.h.i.t", "s h i t", "s*h*i*t") still matches.
+const sep = w => w.split('').join('[^a-z]{0,3}');
+// Strong terms: matched anywhere (so concatenations like "bullshit"/"fuckyou" are caught).
+const EXPLICIT_STRONG = ['fuck','shit','bitch','cunt','asshole','motherfuck','nigger','nigga','faggot',
+  'pornhub','porn','whore','slut','dildo','blowjob','handjob','masturbat','ejaculat','cumshot','creampie',
+  'gangbang','bestiality','hentai','jerkoff','jizz','molest','pedophil','coochie','clit','deepthroat'];
+// Ambiguous terms: whole-word only, so "class"/"analysis"/"cockpit"/"grape"/"Sussex" stay clean.
+const EXPLICIT_WORD = ['ass','anal','anus','cock','dick','penis','vagina','pussy','tit','tits','boob','boobs',
+  'nude','nudes','naked','sex','sexy','rape','rapist','wank','prick','twat','piss','horny','orgasm','semen',
+  'scrotum','testicle','cum','xxx','nsfw','milf','bdsm','fetish'];
+const EXPLICIT_STRONG_RE = EXPLICIT_STRONG.map(w => new RegExp(sep(w), 'i'));
+const EXPLICIT_WORD_RE = EXPLICIT_WORD.map(w => new RegExp('(?<![a-z])' + sep(w) + '(?![a-z])', 'i'));
+function isExplicit(text) {
+  if (!text) return false;
+  const n = normLeet(text);
+  return EXPLICIT_STRONG_RE.some(re => re.test(n)) || EXPLICIT_WORD_RE.some(re => re.test(n));
 }
 
 // Persistent duplicate detection (DB-backed, survives restarts). Blocks the same
@@ -1050,6 +1075,7 @@ app.post('/api/messages', auth, async (req, res) => {
   try {
     const { to, text } = req.body;
     if (!to || !text?.trim()) return res.status(400).json({ error: 'Recipient and text required' });
+    if (isExplicit(text)) return res.status(400).json({ error: 'Please keep it friendly — that message was blocked.' });
     const recipient = await User.findOne({ username: to.toLowerCase() });
     if (!recipient) return res.status(404).json({ error: 'User not found' });
     // School mode: students may only message their class teacher
@@ -1164,6 +1190,7 @@ app.get('/api/chat/:channel', auth, async (req, res) => {
 app.post('/api/chat/:channel', auth, async (req, res) => {
   try {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty message' });
+    if (isExplicit(req.body.text)) return res.status(400).json({ error: 'Please keep it friendly — that message was blocked.' });
     const m = await Chat.create({ channel: req.params.channel.toLowerCase(), from: req.user.username, text: req.body.text.trim() });
     io.to('chan:' + m.channel).emit('chat', { channel: m.channel }); // real-time channel update
     res.json({ from: m.from, text: m.text, at: m.createdAt });
@@ -1257,7 +1284,7 @@ app.post('/api/posts/:id/comment', auth, async (req, res) => {
     if (!req.body.text?.trim()) return res.status(400).json({ error: 'Empty comment' });
     if (!rateLimit('cmt:' + req.user.username, 12, 60 * 1000)) return res.status(429).json({ error: "You're commenting too fast." });
     const t = req.body.text.trim();
-    if (POST_BAD.test(t)) return res.status(400).json({ error: 'Please keep it friendly.' });
+    if (isExplicit(t)) return res.status(400).json({ error: 'Please keep it friendly.' });
     if (POST_LINK.test(t)) return res.status(400).json({ error: "Links aren't allowed." });
     const p = await Post.findById(req.params.id); if (!p) return res.status(404).json({ error: 'Not found' });
     p.comments.push({ from: req.user.username, text: req.body.text.trim().slice(0, 500) });
@@ -1302,6 +1329,9 @@ app.post('/api/apps', auth, async (req, res) => {
   try {
     const { id, title, icon, html, css, js, lang } = req.body;
     if (!title) return res.status(400).json({ error: 'Title required' });
+    // Published apps are shared with everyone → screen their title and visible text.
+    if (isExplicit(title) || isExplicit(stripTags(html)))
+      return res.status(400).json({ error: 'That app contains blocked language — please remove it and republish.' });
     let doc = null;
     if (id) { doc = await AppModel.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }
     if (doc) {
@@ -1382,6 +1412,9 @@ app.post('/api/shared', auth, async (req, res) => {
   try {
     const { id, type, title, content, visibility, allow } = req.body;
     if (!type || !['form', 'sheet', 'doc'].includes(type)) return res.status(400).json({ error: 'Bad type' });
+    // Shared docs/sheets/forms are published to others → screen title + content.
+    if (isExplicit(title) || isExplicit(stripTags(content)))
+      return res.status(400).json({ error: 'That contains blocked language — please edit it and share again.' });
     // Only touch audience settings when the client explicitly sends them, so a plain
     // re-publish (Save) keeps the existing visibility instead of resetting to public.
     const vis = typeof visibility === 'undefined' ? undefined : (visibility === 'private' ? 'private' : 'public');
@@ -1448,6 +1481,9 @@ app.post('/api/shared/:id/respond', auth, async (req, res) => {
     const isOwner = d.authorId.toString() === req.user.id;
     if ((d.visibility || 'public') === 'private' && !isOwner && !(d.allow || []).includes(req.user.username.toLowerCase()))
       return res.status(403).json({ error: "You don't have access to this form" });
+    // Responses are shared with the form owner → screen the submitted answers.
+    if (isExplicit(JSON.stringify(req.body.answers || [])))
+      return res.status(400).json({ error: 'Please keep your answers friendly — that response was blocked.' });
     await Response.create({ sharedId: req.params.id, answers: req.body.answers || [], byName: req.user.username });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1737,7 +1773,7 @@ async function crawlOne(u, indexIt = true, langHint = 'en') {
   if (isYT) {
     // No frontier links (we don't crawl watch pages — they 429). Index every video
     // listed on this page in one bulk upsert; upsertedCount = net-new videos.
-    const vids = extractYtVideos(html);
+    const vids = extractYtVideos(html).filter(v => !isExplicit(v.title)); // skip adult titles
     if (!vids.length) return { indexedCount: 0, links: [] };
     const lang = SEARCH_LANGS.includes(langHint) ? langHint : 'en'; // hl= drove the titles' language
     const ops = vids.map(v => {
@@ -1755,6 +1791,7 @@ async function crawlOne(u, indexIt = true, langHint = 'en') {
   if (!indexIt) return { indexedCount: 0, links }; // page we already have — links only
   const { title, desc, text } = extractPage(html);
   if (!title || text.length < 200) return { indexedCount: 0, links };
+  if (isExplicit(title) || isExplicit(desc)) return { indexedCount: 0, links }; // don't index adult pages
   const snippet = (desc || text).slice(0, 300);
   const lang = detectLang(html, host, langHint);
   await IndexPage.updateOne(
@@ -1840,10 +1877,11 @@ app.get('/api/search', auth, async (req, res) => {
     const rows = await IndexPage.find(
       filter,
       { score: { $meta: 'textScore' }, url: 1, title: 1, snippet: 1, host: 1, lang: 1 }
-    ).sort({ score: { $meta: 'textScore' } }).limit(20).lean();
+    ).sort({ score: { $meta: 'textScore' } }).limit(30).lean();
+    const clean = rows.filter(r => !isExplicit(r.title) && !isExplicit(r.snippet)).slice(0, 20);
     res.json({
-      results: rows.map(r => ({ url: r.url, title: r.title, snippet: r.snippet, host: r.host, lang: r.lang })),
-      total: rows.length,
+      results: clean.map(r => ({ url: r.url, title: r.title, snippet: r.snippet, host: r.host, lang: r.lang })),
+      total: clean.length,
       indexSize: await IndexPage.estimatedDocumentCount(),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
