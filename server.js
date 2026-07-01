@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v29';
+const CACHE = 'maxos-shell-v30';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -254,10 +254,12 @@ const FileSchema = new mongoose.Schema({
 FileSchema.index({ userId: 1, path: 1 }, { unique: true });
 
 const MessageSchema = new mongoose.Schema({
-  from:     { type: String, required: true },   // username
-  to:       { type: String, required: true },   // username
-  text:     { type: String, required: true },
-  read:     { type: Boolean, default: false },
+  from:      { type: String, required: true },   // username
+  to:        { type: String, required: true },   // username
+  text:      { type: String, required: true },
+  read:      { type: Boolean, default: false },
+  readAt:    { type: Date },
+  reactions: { type: [{ username: String, emoji: String }], default: [] },
 }, { timestamps: true });
 
 const ChatSchema = new mongoose.Schema({
@@ -575,6 +577,13 @@ io.on('connection', socket => {
     if (socket.data.chatRoom) socket.leave(socket.data.chatRoom);
     socket.data.chatRoom = 'chan:' + ch.toLowerCase();
     socket.join(socket.data.chatRoom);
+  });
+
+  // Typing indicator for DMs — ephemeral, no persistence. { to: username }
+  socket.on('dm:typing', payload => {
+    const to = String(payload?.to || '').trim().toLowerCase();
+    if (!to || !me?.username) return;
+    io.to('user:' + to).emit('dm:typing', { from: me.username });
   });
 
   socket.on('screenwatch:subscribe', async payload => {
@@ -1065,8 +1074,31 @@ app.get('/api/messages', auth, async (req, res) => {
     const msgs = await Message.find({
       $or: [{ from: me, to: other }, { from: other, to: me }],
     }).sort({ createdAt: 1 }).limit(200);
-    await Message.updateMany({ from: other, to: me, read: false }, { read: true });
-    res.json(msgs.map(m => ({ id: m._id, from: m.from, to: m.to, text: m.text, at: m.createdAt })));
+    const unreadIds = msgs.filter(m => m.from === other && m.to === me && !m.read).map(m => m._id);
+    if (unreadIds.length) {
+      await Message.updateMany({ _id: { $in: unreadIds } }, { read: true, readAt: new Date() });
+      io.to('user:' + other).emit('dm:read', { by: me }); // let the sender's thread update live
+    }
+    res.json(msgs.map(m => ({ id: m._id, from: m.from, to: m.to, text: m.text, at: m.createdAt, read: m.read, readAt: m.readAt, reactions: m.reactions || [] })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Toggle a reaction on a message (only the two people in the conversation may react)
+app.post('/api/messages/:id/react', auth, async (req, res) => {
+  try {
+    const me = req.user.username;
+    const emoji = String(req.body.emoji || '').trim().slice(0, 8);
+    if (!emoji) return res.status(400).json({ error: 'emoji required' });
+    const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    if (msg.from !== me && msg.to !== me) return res.status(403).json({ error: 'Not your conversation' });
+    const existing = msg.reactions.findIndex(r => r.username === me && r.emoji === emoji);
+    if (existing >= 0) msg.reactions.splice(existing, 1); // toggle off
+    else msg.reactions.push({ username: me, emoji });
+    await msg.save();
+    const other = msg.from === me ? msg.to : msg.from;
+    io.to('user:' + other).emit('dm:react', { id: msg._id });
+    res.json({ reactions: msg.reactions });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

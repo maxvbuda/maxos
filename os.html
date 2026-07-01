@@ -478,7 +478,20 @@
   .msg-bubble.me:hover .msg-del { opacity:1; }
   .msg-del:hover { background:#ff5f57; color:#fff; }
   .msg-time { font-size:10px; opacity:.5; margin-top:2px; display:block; }
+  .msg-receipt { font-size:10px; opacity:.55; margin-top:2px; display:block; text-align:right; }
   .msg-empty { flex:1; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.3); font-size:14px; flex-direction:column; gap:8px; }
+  .msg-typing { align-self:flex-start; padding:9px 13px; border-radius:16px; background:rgba(255,255,255,.1); display:flex; gap:4px; }
+  .msg-typing span { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.6); animation:msgTypingBounce 1.1s infinite; }
+  .msg-typing span:nth-child(2) { animation-delay:.15s; }
+  .msg-typing span:nth-child(3) { animation-delay:.3s; }
+  @keyframes msgTypingBounce { 0%,60%,100%{transform:translateY(0);opacity:.5} 30%{transform:translateY(-4px);opacity:1} }
+  .msg-reactions { display:flex; gap:3px; margin-top:3px; flex-wrap:wrap; }
+  .msg-reaction { background:rgba(0,0,0,.25); border-radius:10px; padding:1px 6px; font-size:11px; cursor:pointer; display:flex; align-items:center; gap:2px; }
+  .msg-reaction.mine { background:rgba(100,180,255,.35); }
+  .msg-react-picker { position:absolute; top:-32px; right:0; background:rgba(30,30,45,.98); border-radius:16px; padding:4px 6px; display:none; gap:2px; box-shadow:0 2px 10px rgba(0,0,0,.4); z-index:5; }
+  .msg-bubble:hover .msg-react-picker { display:flex; }
+  .msg-react-picker span { cursor:pointer; font-size:15px; padding:2px 3px; border-radius:8px; }
+  .msg-react-picker span:hover { background:rgba(255,255,255,.15); }
   .msg-inputbar { padding:12px; border-top:1px solid rgba(255,255,255,.08); display:flex; gap:8px; }
   .msg-input { flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:20px; padding:9px 16px; color:#fff; font-size:13px; outline:none; font-family:inherit; }
   .msg-send { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:50%; width:38px; height:38px; cursor:pointer; font-size:16px; flex-shrink:0; }
@@ -4634,25 +4647,50 @@ function msgOpenChat(user) {
     <div class="msg-main-head"><div class="msg-avatar">${user[0].toUpperCase()}</div>${user}</div>
     <div class="msg-thread" id="msg-thread"></div>
     <div class="msg-inputbar">
-      <input class="msg-input mos-check" id="msg-input" placeholder="Message ${user}…" onkeydown="if(event.key==='Enter')msgSend()">
+      <input class="msg-input mos-check" id="msg-input" placeholder="Message ${user}…" onkeydown="if(event.key==='Enter')msgSend()" oninput="msgOnTyping()">
       <button class="msg-send" onclick="msgSend()">➤</button>
     </div>`;
   msgLoadThread(user);
   msgLoadConversations();
   setTimeout(() => document.getElementById('msg-input')?.focus(), 50);
 }
-async function msgLoadThread(user, keepScroll) {
-  const msgs = await apiFetch('/api/messages?with=' + encodeURIComponent(user));
+const MSG_REACT_EMOJI = ['❤️','😂','👍','😮','😢','🔥'];
+let msgLastThreadData = [];
+function msgRenderThread(msgs) {
   const thread = document.getElementById('msg-thread');
-  if (!thread || msgs.error) return;
+  if (!thread) return;
   const atBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 50;
-  thread.innerHTML = msgs.map(m => {
+  const lastMineIdx = msgs.map(m => m.from === currentUser.username).lastIndexOf(true);
+  thread.innerHTML = msgs.map((m, i) => {
     const mine = m.from === currentUser.username;
     const t = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const del = mine && m.id ? `<button class="msg-del" title="Delete" onclick="msgDelete('${m.id}')">🗑</button>` : '';
-    return `<div class="msg-bubble ${mine ? 'me' : 'them'}">${del}${escapeHtml(m.text)}<span class="msg-time">${t}</span></div>`;
+    const picker = m.id ? `<div class="msg-react-picker">${MSG_REACT_EMOJI.map(e => `<span onclick="msgReact('${m.id}','${e}')">${e}</span>`).join('')}</div>` : '';
+    const reactions = (m.reactions || []).length ? `<div class="msg-reactions">${groupReactions(m.reactions).map(r => `<span class="msg-reaction${r.mine ? ' mine' : ''}" onclick="${m.id ? `msgReact('${m.id}','${r.emoji}')` : ''}">${r.emoji}${r.count > 1 ? r.count : ''}</span>`).join('')}</div>` : '';
+    const receipt = (mine && i === lastMineIdx && m.read) ? `<span class="msg-receipt">Read${m.readAt ? ' ' + new Date(m.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>` : '';
+    return `<div class="msg-bubble ${mine ? 'me' : 'them'}">${del}${picker}${escapeHtml(m.text)}<span class="msg-time">${t}</span>${reactions}${receipt}</div>`;
   }).join('');
-  if (!keepScroll || atBottom) thread.scrollTop = thread.scrollHeight;
+  if (atBottom) thread.scrollTop = thread.scrollHeight;
+}
+function groupReactions(reactions) {
+  const byEmoji = {};
+  for (const r of reactions) {
+    if (!byEmoji[r.emoji]) byEmoji[r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+    byEmoji[r.emoji].count++;
+    if (r.username === currentUser.username) byEmoji[r.emoji].mine = true;
+  }
+  return Object.values(byEmoji);
+}
+async function msgReact(id, emoji) {
+  const res = await apiFetch('/api/messages/' + id + '/react', { method: 'POST', body: JSON.stringify({ emoji }) });
+  if (res.error) return;
+  if (msgActiveUser) msgLoadThread(msgActiveUser, true);
+}
+async function msgLoadThread(user, keepScroll) {
+  const msgs = await apiFetch('/api/messages?with=' + encodeURIComponent(user));
+  if (!document.getElementById('msg-thread') || msgs.error) return;
+  msgLastThreadData = msgs;
+  msgRenderThread(msgs);
   refreshUnreadBadge(); // reading a thread marks it read — update the badge (no poll anymore)
 }
 async function msgDelete(id) {
@@ -4670,6 +4708,32 @@ async function msgSend() {
   const res = await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ to: msgActiveUser, text }) });
   if (res.error) { notify('💬', 'Failed', res.error); return; }
   msgLoadThread(msgActiveUser);
+}
+
+// ── Typing indicator ──────────────────────────────────────────────────────────
+let msgTypingTimer = null, msgTypingShownFor = null, msgTypingHideTimer = null;
+function msgOnTyping() {
+  if (!msgActiveUser || !appSocket) return;
+  if (msgTypingTimer) return; // throttle to ~1 emit/sec while actively typing
+  appSocket.emit('dm:typing', { to: msgActiveUser });
+  msgTypingTimer = setTimeout(() => { msgTypingTimer = null; }, 1000);
+}
+function msgShowTyping(from) {
+  if (from !== msgActiveUser) return;
+  msgTypingShownFor = from;
+  const thread = document.getElementById('msg-thread');
+  if (!thread) return;
+  let el = document.getElementById('msg-typing-indicator');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'msg-typing-indicator';
+    el.className = 'msg-typing';
+    el.innerHTML = '<span></span><span></span><span></span>';
+    thread.appendChild(el);
+  }
+  thread.scrollTop = thread.scrollHeight;
+  clearTimeout(msgTypingHideTimer);
+  msgTypingHideTimer = setTimeout(() => { el?.remove(); msgTypingShownFor = null; }, 3000);
 }
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -4706,6 +4770,9 @@ async function connectAppSocket() {
     if (windows['messages'] && !msgPickingNew) { msgLoadConversations(); if (msgActiveUser) msgLoadThread(msgActiveUser, true); }
     refreshUnreadBadge();
   });
+  appSocket.on('dm:typing', d => { if (windows['messages'] && d?.from) msgShowTyping(d.from); });
+  appSocket.on('dm:read', d => { if (windows['messages'] && msgActiveUser === d?.by) msgLoadThread(msgActiveUser, true); });
+  appSocket.on('dm:react', () => { if (windows['messages'] && msgActiveUser) msgLoadThread(msgActiveUser, true); });
   appSocket.on('chat', d => { if (windows['chat'] && (!d || d.channel === chatChannel)) chatLoad(true); });
   appSocket.on('feed', () => { if (windows['social']) socialLoad(); });
   // Superadmin flipped this tester's test mode → update live, no refresh needed.
