@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v24';
+const CACHE = 'maxos-shell-v25';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -363,6 +363,7 @@ const IndexPageSchema = new mongoose.Schema({
   title:    { type: String, default: '' },
   snippet:  { type: String, default: '' }, // shown on the results page
   text:     { type: String, default: '' }, // extracted body text (capped), for matching
+  lang:     { type: String, default: 'en', index: true }, // ISO code, for language filtering
   fetchedAt:{ type: Date, default: Date.now },
 }, { timestamps: true });
 IndexPageSchema.index(
@@ -1616,6 +1617,34 @@ const YT_SEED = [
       'podcast', 'dance', 'piano', 'chemistry', 'physics', 'biology', 'art for kids']
     .map(q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q)),
 ];
+// ── Languages ─────────────────────────────────────────────────────────────────
+// Languages the index can grow in. English is the default/primary; the auto-grow
+// loop rotates through one extra language each cycle so non-English fills in too.
+const SEARCH_LANGS = ['en', 'es', 'fr', 'de', 'pt', 'it'];
+const LANG_NAMES = { en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', it: 'Italiano' };
+const GL = { en: 'US', es: 'ES', fr: 'FR', de: 'DE', pt: 'BR', it: 'IT' };
+// Per-language Wikipedia seed pages (main page + a few evergreen topics).
+const WIKI_LANG = {
+  es: ['Portada', 'Ciencia', 'Historia', 'Tecnología', 'Arte', 'Música', 'Deporte', 'Geografía'],
+  fr: ['Wikipédia:Accueil_principal', 'Science', 'Histoire', 'Technologie', 'Art', 'Musique', 'Sport', 'Géographie'],
+  de: ['Wikipedia:Hauptseite', 'Wissenschaft', 'Geschichte', 'Technik', 'Kunst', 'Musik', 'Sport', 'Geographie'],
+  pt: ['Wikipédia:Página_principal', 'Ciência', 'História', 'Tecnologia', 'Arte', 'Música', 'Esporte', 'Geografia'],
+  it: ['Pagina_principale', 'Scienza', 'Storia', 'Tecnologia', 'Arte', 'Musica', 'Sport', 'Geografia'],
+};
+function wikiSeedsFor(lang) { return (WIKI_LANG[lang] || []).map(p => `https://${lang}.wikipedia.org/wiki/${p}`); }
+// Localized YouTube search seeds (hl/gl make YouTube return titles in that language).
+function ytSeedsFor(lang) {
+  return ['music', 'news', 'science', 'sports', 'kids', 'tutorial']
+    .map(q => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=${lang}&gl=${GL[lang] || 'US'}`);
+}
+// Best-effort language of a page: Wikipedia subdomain, then <html lang>, then hint.
+function detectLang(html, host, hint) {
+  const wiki = /^([a-z]{2,3})\.(?:m\.)?wikipedia\.org$/i.exec(host || '');
+  if (wiki && SEARCH_LANGS.includes(wiki[1].toLowerCase())) return wiki[1].toLowerCase();
+  const tag = /<html[^>]*\blang=["\']([a-z]{2})/i.exec(html || '');
+  if (tag && SEARCH_LANGS.includes(tag[1].toLowerCase())) return tag[1].toLowerCase();
+  return SEARCH_LANGS.includes(hint) ? hint : 'en';
+}
 const HTML_ENTITIES = { '&amp;':'&', '&lt;':'<', '&gt;':'>', '&quot;':'"', '&#39;':"'", '&apos;':"'", '&nbsp;':' ' };
 function decodeEntities(s) {
   return (s || '')
@@ -1681,11 +1710,11 @@ function extractYtVideos(html) {
 }
 // Fetch one page and index it. For YouTube, bulk-index every video found on a
 // listing page. Returns { indexedCount: net-new pages, links: crawl frontier }.
-async function crawlOne(u, indexIt = true) {
+async function crawlOne(u, indexIt = true, langHint = 'en') {
   if (!isSafeCrawlUrl(u)) return { indexedCount: 0, links: [] };
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-    'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9',
+    'Accept': 'text/html', 'Accept-Language': (langHint || 'en') + ',en;q=0.8',
   };
   // Google/YouTube bounce cookie-less datacenter requests to a consent wall (no
   // videoIds). This cookie marks consent as already given so we get the real page.
@@ -1710,11 +1739,12 @@ async function crawlOne(u, indexIt = true) {
     // listed on this page in one bulk upsert; upsertedCount = net-new videos.
     const vids = extractYtVideos(html);
     if (!vids.length) return { indexedCount: 0, links: [] };
+    const lang = SEARCH_LANGS.includes(langHint) ? langHint : 'en'; // hl= drove the titles' language
     const ops = vids.map(v => {
       const url = 'https://www.youtube.com/watch?v=' + v.id;
       return { updateOne: { filter: { url },
         update: { $set: { url, host: 'youtube.com', title: v.title.slice(0, 300),
-                          snippet: '', text: v.title.slice(0, 5000), fetchedAt: new Date() } },
+                          snippet: '', text: v.title.slice(0, 5000), lang, fetchedAt: new Date() } },
         upsert: true } };
     });
     try { const r = await IndexPage.bulkWrite(ops, { ordered: false }); return { indexedCount: r.upsertedCount || 0, links: [] }; }
@@ -1726,10 +1756,11 @@ async function crawlOne(u, indexIt = true) {
   const { title, desc, text } = extractPage(html);
   if (!title || text.length < 200) return { indexedCount: 0, links };
   const snippet = (desc || text).slice(0, 300);
+  const lang = detectLang(html, host, langHint);
   await IndexPage.updateOne(
     { url: finalUrl },
     { $set: { url: finalUrl, host, title: title.slice(0, 300),
-              snippet, text: text.slice(0, 5000), fetchedAt: new Date() } },
+              snippet, text: text.slice(0, 5000), lang, fetchedAt: new Date() } },
     { upsert: true }
   );
   return { indexedCount: 1, links };
@@ -1737,7 +1768,7 @@ async function crawlOne(u, indexIt = true) {
 // Breadth-first crawl from seeds. Pages already in the index are fetched only to
 // harvest their links, so the page budget is always spent on *new* pages — that's
 // what lets repeated/automatic runs keep growing the index instead of churning.
-async function crawlFrom(seeds, maxPages, sameHostOnly) {
+async function crawlFrom(seeds, maxPages, sameHostOnly, langHint = 'en') {
   const known = new Set(await IndexPage.distinct('url'));
   const queue = [...new Set(seeds.filter(isSafeCrawlUrl))];
   const seen = new Set(queue);
@@ -1745,7 +1776,7 @@ async function crawlFrom(seeds, maxPages, sameHostOnly) {
   let indexed = 0;
   while (queue.length && indexed < maxPages) {
     const batch = queue.splice(0, 4);
-    const results = await Promise.all(batch.map(u => crawlOne(u, !known.has(u))));
+    const results = await Promise.all(batch.map(u => crawlOne(u, !known.has(u), langHint)));
     for (const r of results) {
       indexed += r.indexedCount;
       for (const link of r.links) {
@@ -1783,8 +1814,15 @@ async function autoGrow() {
       seeds = seeds.concat(sample.map(s => s.url));
     }
     const added = await crawlFrom(seeds, 45, false);
-    crawlStats = { lastAt: new Date(), lastAdded: added, lastYt: ytAdded, lastError: null, runs: crawlStats.runs + 1 };
-    console.log(`🔎 MaxSearch auto-grow: +${added} web +${ytAdded} youtube (now ~${total + added + ytAdded})`);
+    // Rotate one non-English language per cycle so the index grows multilingual
+    // without multiplying every run's crawl load.
+    const otherLangs = SEARCH_LANGS.filter(l => l !== 'en');
+    const lang = otherLangs[crawlStats.runs % otherLangs.length];
+    let langAdded = 0;
+    langAdded += await crawlFrom(wikiSeedsFor(lang), 30, false, lang);
+    langAdded += await crawlFrom(ytSeedsFor(lang), 60, false, lang);
+    crawlStats = { lastAt: new Date(), lastAdded: added, lastYt: ytAdded, lastLang: lang, lastLangAdded: langAdded, lastError: null, runs: crawlStats.runs + 1 };
+    console.log(`🔎 MaxSearch auto-grow: +${added} web +${ytAdded} youtube +${langAdded} ${lang} (now ~${total + added + ytAdded + langAdded})`);
   } catch (e) {
     crawlStats = { ...crawlStats, lastAt: new Date(), lastError: String(e.message || e).slice(0, 200) };
     console.log('MaxSearch auto-grow error:', e.message);
@@ -1795,13 +1833,16 @@ async function autoGrow() {
 app.get('/api/search', auth, async (req, res) => {
   const q = (req.query.q || '').toString().trim().slice(0, 200);
   if (!q) return res.json({ results: [], total: 0, indexSize: await IndexPage.estimatedDocumentCount() });
+  const lang = (req.query.lang || '').toString().toLowerCase();
+  const filter = { $text: { $search: q } };
+  if (SEARCH_LANGS.includes(lang)) filter.lang = lang; // omitted / 'all' → every language
   try {
     const rows = await IndexPage.find(
-      { $text: { $search: q } },
-      { score: { $meta: 'textScore' }, url: 1, title: 1, snippet: 1, host: 1 }
+      filter,
+      { score: { $meta: 'textScore' }, url: 1, title: 1, snippet: 1, host: 1, lang: 1 }
     ).sort({ score: { $meta: 'textScore' } }).limit(20).lean();
     res.json({
-      results: rows.map(r => ({ url: r.url, title: r.title, snippet: r.snippet, host: r.host })),
+      results: rows.map(r => ({ url: r.url, title: r.title, snippet: r.snippet, host: r.host, lang: r.lang })),
       total: rows.length,
       indexSize: await IndexPage.estimatedDocumentCount(),
     });
@@ -1883,7 +1924,12 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
       }
     } catch (e) { console.log('Index check skipped:', e.message); }
     await File.syncIndexes();
-    try { await IndexPage.syncIndexes(); } catch (e) { console.log('MaxSearch index sync skipped:', e.message); }
+    try {
+      await IndexPage.syncIndexes();
+      // Backfill: existing pages predate the lang field and are all English.
+      const r = await IndexPage.updateMany({ lang: { $exists: false } }, { $set: { lang: 'en' } });
+      if (r.modifiedCount) console.log(`🌐 MaxSearch: tagged ${r.modifiedCount} existing pages as 'en'`);
+    } catch (e) { console.log('MaxSearch index sync skipped:', e.message); }
     // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
     // otherwise promote the oldest account (the owner).
     try {

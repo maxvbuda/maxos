@@ -270,7 +270,10 @@
   .eb-sug-item:hover, .eb-sug-item.sel { background:rgba(120,160,255,.16); }
   .eb-sug-item .ico { font-size:19px; width:24px; text-align:center; }
   .eb-sug-item .sub { color:rgba(255,255,255,.4); font-size:12px; margin-left:auto; }
-  .eb-home-poweredby { color:rgba(255,255,255,.35); font-size:12px; margin-top:14px; }
+  .eb-home-langrow { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; color:rgba(255,255,255,.5); font-size:12px; }
+  .eb-home-langrow select { background:rgba(255,255,255,.08); border:1px solid rgba(140,180,255,.25); border-radius:8px; color:#dce7ff; padding:5px 9px; font-size:12px; cursor:pointer; outline:none; }
+  .eb-home-langrow select option { background:#1a1f38; color:#fff; }
+  .eb-home-poweredby { color:rgba(255,255,255,.35); font-size:12px; margin-top:10px; }
   .eb-home-apps { margin-top:34px; }
   .eb-home-apps h4 { color:rgba(255,255,255,.5); font-size:12px; text-transform:uppercase; letter-spacing:.6px; margin:0 0 14px; }
   .eb-home-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(76px,1fr)); gap:14px 8px; }
@@ -3256,6 +3259,10 @@ function ebAppMatches(q) {
       || (a.desc  || '').toLowerCase().includes(q);
   }).slice(0, 5);
 }
+// Languages MaxSearch can filter by (mirrors SEARCH_LANGS on the server).
+const EB_LANGS = { all: 'All languages', en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', it: 'Italiano' };
+function ebSearchLang() { const l = localStorage.getItem('maxos_search_lang'); return (l && EB_LANGS[l]) ? l : 'all'; }
+function ebSetSearchLang(v) { if (EB_LANGS[v]) localStorage.setItem('maxos_search_lang', v); }
 function ebRenderHome() {
   const host = document.getElementById('eb-home');
   if (!host) return;
@@ -3278,6 +3285,12 @@ function ebRenderHome() {
           <button class="eb-home-go" onclick="ebHomeSearch()">Search</button>
         </div>
         <div id="eb-home-sug"></div>
+      </div>
+      <div class="eb-home-langrow">
+        <label>🌐 Language</label>
+        <select id="eb-home-lang" onchange="ebSetSearchLang(this.value); ebHomeSearch()">
+          ${Object.keys(EB_LANGS).map(k => `<option value="${k}"${k === ebSearchLang() ? ' selected' : ''}>${EB_LANGS[k]}</option>`).join('')}
+        </select>
       </div>
       <div class="eb-home-poweredby" id="eb-home-idx">Powered by the MaxOS index</div>
       <div id="eb-home-results" hidden></div>
@@ -3337,7 +3350,8 @@ async function ebHomeSearch() {
   if (!out) return;
   out.hidden = false;
   out.innerHTML = `<div class="eb-res-status">Searching the MaxOS index…</div>`;
-  const r = await apiFetch('/api/search?q=' + encodeURIComponent(q));
+  const lang = ebSearchLang();
+  const r = await apiFetch('/api/search?q=' + encodeURIComponent(q) + (lang !== 'all' ? '&lang=' + lang : ''));
   if (!r || r.error) { out.innerHTML = `<div class="eb-res-status">Search is offline right now.</div>`; return; }
   ebRenderResults(q, r);
 }
