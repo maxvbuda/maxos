@@ -70,10 +70,13 @@ const isTester = (name) => TESTER_USERS.includes((name || '').toLowerCase());
 // Env var name: RESEND_API (RESEND_API_KEY also accepted as a fallback).
 const RESEND_API_KEY = process.env.RESEND_API || process.env.RESEND_API_KEY || '';
 const FEEDBACK_TO = process.env.FEEDBACK_TO || 'maxvbuda@gmail.com';
-// Email verification for NEW signups before they can post. OFF by default — only
-// enable once a sending DOMAIN is verified in Resend (onboarding@resend.dev can't
-// deliver to arbitrary users). Existing accounts are grandfathered (mustVerifyEmail
-// stays false). Set REQUIRE_EMAIL_VERIFY=1 in the environment to turn it on.
+// Email verification for NEW signups, enforced on the WHOLE account (every
+// authenticated request, every sign-in — see EMAIL_GATE_ALLOWLIST in auth() below),
+// not just posting. OFF by default — only enable once a sending DOMAIN is verified in
+// Resend (onboarding@resend.dev can't deliver to arbitrary users), because turning
+// this on with broken delivery permanently locks new signups out of their account.
+// Existing accounts are grandfathered (mustVerifyEmail stays false).
+// Set REQUIRE_EMAIL_VERIFY=1 in the environment to turn it on.
 const REQUIRE_EMAIL_VERIFY = process.env.REQUIRE_EMAIL_VERIFY === '1';
 const BASE_URL = (process.env.BASE_URL || 'https://maxos-1oe3.onrender.com').replace(/\/+$/, '');
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -190,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v30';
+const CACHE = 'maxos-shell-v31';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -511,6 +514,9 @@ async function seedUser(userId, username) {
 }
 
 // ── Auth middleware (verifies the account still exists & isn't suspended) ─────
+// Endpoints an unverified account may still hit — just enough to check status,
+// resend the email, and sign itself out. Everything else is blocked below.
+const EMAIL_GATE_ALLOWLIST = ['/api/auth/me', '/api/auth/resend-verification'];
 async function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
@@ -521,6 +527,11 @@ async function auth(req, res, next) {
   const user = await User.findById(payload.id);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
   if (user.suspended) return res.status(403).json({ error: 'Account suspended' });
+  // Unverified accounts are locked out of the whole account on every request —
+  // not just posting — until they click the link in their email.
+  if (REQUIRE_EMAIL_VERIFY && user.mustVerifyEmail && !user.emailVerified && !EMAIL_GATE_ALLOWLIST.includes(req.path)) {
+    return res.status(403).json({ error: 'Please verify your email to continue — check your inbox (or resend it).', mustVerifyEmail: true, emailVerified: false });
+  }
   req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin, teacher: !!user.teacher };
   next();
 }
@@ -1281,10 +1292,8 @@ app.post('/api/posts', auth, async (req, res) => {
     // These are NOT spam strikes — a legit new user shouldn't get auto-suspended.
     const isStaff = ADMIN_USERS.includes(username) || req.user.admin;
     if (!isStaff) {
-      const me = await User.findById(req.user.id).select('createdAt emailVerified mustVerifyEmail').lean();
-      if (REQUIRE_EMAIL_VERIFY && me && me.mustVerifyEmail && !me.emailVerified) {
-        return res.status(403).json({ error: 'Please verify your email before posting — check your inbox (or resend it from your profile).' });
-      }
+      // Email verification is enforced globally in auth() now — this only needs createdAt.
+      const me = await User.findById(req.user.id).select('createdAt').lean();
       const ageMs = me ? Date.now() - new Date(me.createdAt).getTime() : Infinity;
       if (ageMs < 10 * 60 * 1000) {
         const mins = Math.ceil((10 * 60 * 1000 - ageMs) / 60000);
