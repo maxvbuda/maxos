@@ -7601,6 +7601,8 @@ let sharedSheetId = null, formSharedId = null, formRespondMode = false, sharedDo
 // Returns the full server share object ({id,type,title,content,visibility,allow}) or null.
 // visibility/allow are omitted on a plain (re)publish so the server keeps existing audience settings.
 async function shareDoc(type, title, content, currentId, visibility, allow) {
+  // Sharing publishes to others → screen title + visible content immediately.
+  if (mosGuard((title || '') + ' ' + String(content || '').replace(/<[^>]+>/g, ' '))) return null;
   const body = { id: currentId, type, title, content };
   if (typeof visibility !== 'undefined') { body.visibility = visibility; body.allow = allow || []; }
   const r = await apiFetch('/api/shared', { method: 'POST', body: JSON.stringify(body) });
