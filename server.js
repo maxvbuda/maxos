@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v27';
+const CACHE = 'maxos-shell-v28';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -1329,8 +1329,9 @@ app.post('/api/apps', auth, async (req, res) => {
   try {
     const { id, title, icon, html, css, js, lang } = req.body;
     if (!title) return res.status(400).json({ error: 'Title required' });
-    // Published apps are shared with everyone → screen their title and visible text.
-    if (isExplicit(title) || isExplicit(stripTags(html)))
+    // Published apps are shared with everyone → screen title, visible text, and the
+    // code (MaxScript `show`/`text`/`title` content lives in js, not html).
+    if (isExplicit(title) || isExplicit(stripTags(html)) || isExplicit(css) || isExplicit(js))
       return res.status(400).json({ error: 'That app contains blocked language — please remove it and republish.' });
     let doc = null;
     if (id) { doc = await AppModel.findOne({ id }); if (doc && doc.authorId.toString() !== req.user.id) doc = null; }

@@ -7218,7 +7218,7 @@ function buildStudio() {
     <div class="studio-left">
       <div class="studio-meta">
         <input id="st-icon" class="studio-icon" maxlength="2" value="🛠️" title="App icon (emoji)">
-        <input id="st-name" class="studio-name" placeholder="My App Name" value="My App">
+        <input id="st-name" class="studio-name mos-check" placeholder="My App Name" value="My App">
       </div>
       <div class="studio-tabs">
         <button class="studio-tab active" id="st-codetab" data-t="js">✨ MaxScript</button>
@@ -7229,7 +7229,7 @@ function buildStudio() {
            studio is MaxScript-only now to keep every app inside the ecosystem. -->
       <textarea id="st-html" class="studio-code" spellcheck="false" style="display:none"></textarea>
       <textarea id="st-css" class="studio-code" spellcheck="false" style="display:none"></textarea>
-      <textarea id="st-js" class="studio-code" spellcheck="false" oninput="studioPreview()"></textarea>
+      <textarea id="st-js" class="studio-code mos-check" spellcheck="false" oninput="studioPreview()"></textarea>
       <button class="studio-publish" onclick="studioPublish()">🚀 Publish to MaxOS</button>
     </div>
     <div class="studio-right">
@@ -7268,6 +7268,8 @@ async function studioPublish() {
     id: studioEditId, title: name, icon, lang: studioLang,
     html: document.getElementById('st-html').value, css: document.getElementById('st-css').value, js: document.getElementById('st-js').value,
   };
+  // Publishing shares the app with everyone → screen name + code before sending.
+  if (mosGuard([name, payload.html, payload.css, payload.js].join('\n'))) return;
   const def = await apiFetch('/api/apps', { method: 'POST', body: JSON.stringify(payload) });
   if (def.error) { notify('⚠️', 'Publish failed', def.error); return; }
   studioEditId = def.id;
