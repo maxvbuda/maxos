@@ -594,6 +594,27 @@
   .mc-btn small { color:rgba(255,255,255,.45); font-size:10px; font-weight:400; }
   .mc-note { color:rgba(255,255,255,.6); font-size:12px; margin-top:auto; min-height:16px; }
 
+  /* Max Wordle */
+  .wd-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; height:100%; padding:14px; }
+  .wd-head { color:#fff; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .wd-streak { color:#ffb457; font-size:12px; font-weight:600; }
+  .wd-grid { display:flex; flex-direction:column; gap:5px; }
+  .wd-row { display:flex; gap:5px; }
+  .wd-cell { width:44px; height:44px; border:2px solid rgba(255,255,255,.18); border-radius:6px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:20px; text-transform:uppercase; }
+  .wd-cell.wd-filled { border-color:rgba(255,255,255,.4); }
+  .wd-cell.correct { background:#28c840; border-color:#28c840; }
+  .wd-cell.present { background:#f5b400; border-color:#f5b400; }
+  .wd-cell.absent { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.08); color:rgba(255,255,255,.4); }
+  .wd-msg { color:rgba(255,255,255,.7); font-size:13px; min-height:16px; text-align:center; }
+  .wd-keyboard { display:flex; flex-direction:column; gap:6px; margin-top:auto; width:100%; }
+  .wd-krow { display:flex; gap:4px; justify-content:center; }
+  .wd-key { background:rgba(255,255,255,.12); border:none; border-radius:6px; color:#fff; font-size:12px; font-weight:600; padding:12px 8px; cursor:pointer; text-transform:uppercase; min-width:26px; }
+  .wd-key:hover { background:rgba(255,255,255,.22); }
+  .wd-key.correct { background:#28c840; }
+  .wd-key.present { background:#f5b400; }
+  .wd-key.absent { background:rgba(255,255,255,.05); color:rgba(255,255,255,.35); }
+  .wd-key.wd-wide { min-width:50px; font-size:11px; }
+
   /* Max Animator */
   .an-app { display:flex; flex-direction:column; height:100%; gap:8px; padding:10px; }
   .an-tools, .an-bar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
@@ -1264,9 +1285,18 @@ async function authSubmit() {
     document.getElementById('login-screen').style.display = 'none';
     if (currentUser.mustVerifyEmail && !currentUser.emailVerified) showEmailVerifyGate();
     else bootOS();
+    notifyLoginStreak(data.loginStreak);
   } catch (e) {
     errEl.textContent = 'Cannot reach server'; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false;
   }
+}
+
+// Shows a one-time notification the moment the server credits a new daily streak
+// day — justAwarded is only nonzero on the request that actually crossed into a new
+// calendar day, so this never double-fires on repeated /api/auth/me polls.
+function notifyLoginStreak(streak) {
+  if (!streak || !streak.justAwarded) return;
+  setTimeout(() => notify('🔥', `${streak.count}-day streak!`, `+${streak.justAwarded} MaxCoin for coming back today`), 1200);
 }
 
 // Re-send the email-verification link to the signed-in user.
@@ -1508,6 +1538,7 @@ async function checkExistingSession() {
       currentUser = { username: d.username, displayName: d.displayName, admin: d.admin, teacher: !!d.teacher, adminRequest: !!d.adminRequest, teacherRequest: !!d.teacherRequest, suspicious: !!d.suspicious, superadmin: !!d.superadmin, tester: !!d.tester, testMode: !!d.testMode, emailVerified: !!d.emailVerified, mustVerifyEmail: !!d.mustVerifyEmail };
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
       localStorage.setItem('maxos_user', JSON.stringify(currentUser));
+      notifyLoginStreak(d.loginStreak);
       return true;
     }
     // The server answered but rejected us (401/403/404) → token invalid or account gone
@@ -2199,6 +2230,9 @@ const apps = {
   otp:      { title: 'Secret Pad',     short:'Secret Pad', icon:'🔐', w:460, h:560, cat:'Utilities',  desc:'Unbreakable one-time-pad cipher', html: buildOTP },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
   maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
+  wordle:   { title: 'Max Wordle',     short:'Wordle',     icon:'🟩', w:380, h:560, cat:'Games',      desc:'Daily 5-letter word puzzle',   html: buildWordle },
+  clicker:  { title: 'Max Clicker',    short:'Clicker',    icon:'⚡', w:420, h:580, cat:'Games',      desc:'Idle clicker — check in daily', html: buildClicker },
+  leaderboard:{ title: 'Leaderboards', short:'Leaders',    icon:'🏆', w:420, h:520, cat:'Games',      desc:'Global high scores',           html: buildLeaderboard },
   animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:820, h:600, cat:'Creativity', desc:'Frame animation with movable shapes, text & .pic images', html: buildAnimator },
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   camera:   { title: 'Photo Booth',    short:'Camera',     icon:'📷', w:640, h:560, cat:'Creativity', desc:'Snap with filters, open images, import & save .pic', html: buildCamera },
@@ -2414,6 +2448,7 @@ function closeWindow(id) {
   if (id === 'camera') camStop(); // release the webcam
   if (id === 'jumpworld') jump?.stop();
   if (id === 'mines') mines?.stop();
+  if (id === 'clicker') { clearInterval(ckTickTimer); clearTimeout(ckSaveTimer); if (ckState) apiFetch('/api/me/data/clicker', { method: 'PUT', body: JSON.stringify({ value: ckState }) }); }
   if (id === 'adminwatch') adminStopWatching('Watch window closed.');
   if (id === 'minecraft') { exitOSFullscreen(); mcStopTracking(); } // leave fullscreen + save playtime
   w.el.classList.add('closing');
@@ -3846,7 +3881,7 @@ function initSnake() {
     dir = next;
     const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
     if (head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)) {
-      clearInterval(interval); running=false; draw(); return;
+      clearInterval(interval); running=false; draw(); submitScore('snake', score); return;
     }
     snake.unshift(head);
     if (head.x===food.x&&head.y===food.y) {
@@ -4839,7 +4874,7 @@ function g2048Key(e) {
   e.preventDefault();
   const before = g2048.grid.join(',');
   g2048Move(dir);
-  if (g2048.grid.join(',') !== before) { g2048AddTile(); g2048Draw(); if (g2048Over()) setTimeout(() => notify('🔢', 'Game Over', 'Score: ' + g2048.score), 100); }
+  if (g2048.grid.join(',') !== before) { g2048AddTile(); g2048Draw(); if (g2048Over()) { submitScore('g2048', g2048.score); setTimeout(() => notify('🔢', 'Game Over', 'Score: ' + g2048.score), 100); } }
 }
 function g2048Move(dir) {
   const get = (r, c) => g2048.grid[r * 4 + c], set = (r, c, v) => g2048.grid[r * 4 + c] = v;
@@ -5216,6 +5251,222 @@ function initMaxcoin() {
     mcCoins = 0; mcSave(); mcRefresh();
   };
 }
+
+// ── MAX WORDLE — daily 5-letter word puzzle, same word for everyone each day ───
+let wordleState = null; // { date, guesses, feedback, solved, done, maxGuesses, wordLength, streak }
+const WORDLE_KEYROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+function buildWordle() {
+  return `<div class="wd-wrap">
+    <div class="wd-head">🟩 Max Wordle <span class="wd-streak" id="wd-streak"></span></div>
+    <div class="wd-grid" id="wd-grid"></div>
+    <div class="wd-msg" id="wd-msg"></div>
+    <div class="wd-keyboard" id="wd-keyboard"></div>
+  </div>`;
+}
+function wdRenderKeyboard() {
+  const el = document.getElementById('wd-keyboard'); if (!el) return;
+  const letterState = {}; // letter -> best known state (correct > present > absent)
+  const rank = { correct: 3, present: 2, absent: 1 };
+  (wordleState.feedback || []).forEach((row, i) => {
+    const guess = wordleState.guesses[i];
+    row.forEach((state, j) => { const l = guess[j]; if (!letterState[l] || rank[state] > rank[letterState[l]]) letterState[l] = state; });
+  });
+  el.innerHTML = WORDLE_KEYROWS.map((row, ri) => `<div class="wd-krow">${ri === 2 ? '<button class="wd-key wd-wide" onclick="wdSubmit()">Enter</button>' : ''}${row.split('').map(l => `<button class="wd-key ${letterState[l] || ''}" onclick="wdType('${l}')">${l}</button>`).join('')}${ri === 2 ? '<button class="wd-key wd-wide" onclick="wdBackspace()">⌫</button>' : ''}</div>`).join('');
+}
+let wdCurrentGuess = '';
+function wdRenderGrid() {
+  const el = document.getElementById('wd-grid'); if (!el || !wordleState) return;
+  const rows = [];
+  for (let i = 0; i < wordleState.maxGuesses; i++) {
+    const guess = wordleState.guesses[i] || (i === wordleState.guesses.length ? wdCurrentGuess : '');
+    const feedback = wordleState.feedback[i] || [];
+    let cells = '';
+    for (let j = 0; j < wordleState.wordLength; j++) {
+      const letter = guess[j] || '';
+      const state = feedback[j] || '';
+      cells += `<div class="wd-cell ${state}${letter && !state ? ' wd-filled' : ''}">${letter.toUpperCase()}</div>`;
+    }
+    rows.push(`<div class="wd-row">${cells}</div>`);
+  }
+  el.innerHTML = rows.join('');
+}
+function wdMsg(t) { const el = document.getElementById('wd-msg'); if (el) el.textContent = t; }
+function wdType(l) {
+  if (!wordleState || wordleState.done) return;
+  if (wdCurrentGuess.length < wordleState.wordLength) { wdCurrentGuess += l; wdRenderGrid(); }
+}
+function wdBackspace() {
+  if (!wordleState || wordleState.done) return;
+  wdCurrentGuess = wdCurrentGuess.slice(0, -1); wdRenderGrid();
+}
+async function wdSubmit() {
+  if (!wordleState || wordleState.done) return;
+  if (wdCurrentGuess.length !== wordleState.wordLength) { wdMsg('Not enough letters'); return; }
+  const res = await apiFetch('/api/wordle/guess', { method: 'POST', body: JSON.stringify({ guess: wdCurrentGuess }) });
+  if (res.error) { wdMsg(res.error); return; }
+  wordleState.guesses.push(wdCurrentGuess);
+  wordleState.feedback.push(res.feedback);
+  wordleState.solved = wordleState.solved || res.solved;
+  wordleState.done = res.done;
+  wordleState.streak = res.streak;
+  wdCurrentGuess = '';
+  wdRenderGrid(); wdRenderKeyboard();
+  updateStreakLabel();
+  if (res.done) {
+    if (res.solved) { wdMsg('🎉 Solved in ' + wordleState.guesses.length + '!'); notify('🟩', 'Wordle solved!', 'Streak: ' + (res.streak + 1) + ' days 🔥'); }
+    else wdMsg('Out of guesses — the word was ' + (res.answer || '').toUpperCase());
+  } else wdMsg('');
+}
+function updateStreakLabel() {
+  const el = document.getElementById('wd-streak'); if (!el || !wordleState) return;
+  const total = wordleState.streak + (wordleState.solved ? 1 : 0);
+  el.textContent = total > 0 ? `🔥 ${total} day streak` : '';
+}
+async function initWordle() {
+  wdCurrentGuess = '';
+  wdMsg('Loading…');
+  const res = await apiFetch('/api/wordle/today');
+  if (res.error) { wdMsg('Wordle needs a server connection.'); return; }
+  wordleState = res;
+  wdRenderGrid(); wdRenderKeyboard(); updateStreakLabel();
+  if (wordleState.done) wdMsg(wordleState.solved ? '🎉 Already solved today!' : 'Out of guesses today — the word was ' + (wordleState.answer || '').toUpperCase());
+  else wdMsg('');
+  document.removeEventListener('keydown', wdKeyHandler); // avoid stacking a duplicate on reopen
+  document.addEventListener('keydown', wdKeyHandler);
+}
+function wdKeyHandler(e) {
+  if (isTypingTarget(e) || !appIsFocused('wordle')) return;
+  if (e.key === 'Enter') wdSubmit();
+  else if (e.key === 'Backspace') wdBackspace();
+  else if (/^[a-zA-Z]$/.test(e.key)) wdType(e.key.toLowerCase());
+}
+
+// ── MAX CLICKER — idle clicker with a 24h offline-earnings cap. Production only
+// keeps accruing past that cap once you open the app and hit Collect, which is
+// the "you have to do something every day" hook. ─────────────────────────────
+const CK_UPGRADES = [
+  { id: 'bot',       name: 'Click Bot',  icon: '🤖', baseCost: 10,    perSec: 0.1 },
+  { id: 'factory',   name: 'Factory',    icon: '🏭', baseCost: 100,   perSec: 1 },
+  { id: 'mainframe', name: 'Mainframe',  icon: '🖥️', baseCost: 1000,  perSec: 8 },
+  { id: 'satellite', name: 'Satellite',  icon: '🛰️', baseCost: 10000, perSec: 50 },
+];
+const CK_OFFLINE_CAP_MS = 24 * 60 * 60 * 1000;
+let ckState = null, ckPendingOffline = 0, ckTickTimer = null, ckSaveTimer = null, ckTicksSinceSave = 0;
+function buildClicker() {
+  return `<div style="display:flex;flex-direction:column;height:100%;padding:14px;gap:10px;color:#fff;font-family:inherit">
+    <div id="ck-offline-banner"></div>
+    <div style="text-align:center">
+      <div style="font-size:30px;font-weight:800" id="ck-points">0</div>
+      <div style="color:rgba(255,255,255,.5);font-size:12px" id="ck-rate">0 / sec</div>
+    </div>
+    <button id="ck-tap" style="background:linear-gradient(135deg,#febc2e,#ff9f0a);border:none;color:#fff;border-radius:14px;padding:20px;font-size:18px;font-weight:700;cursor:pointer">⚡ Tap for a Spark</button>
+    <div style="color:rgba(255,255,255,.5);font-size:11px;margin-top:4px">Upgrades</div>
+    <div id="ck-upgrades" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto"></div>
+  </div>`;
+}
+function ckCost(u) { return Math.ceil(u.baseCost * Math.pow(1.15, ckState.upgrades[u.id] || 0)); }
+function ckPerSecond() { return CK_UPGRADES.reduce((sum, u) => sum + (ckState.upgrades[u.id] || 0) * u.perSec, 0); }
+function ckFmt(n) { return n >= 1000 ? Math.floor(n).toLocaleString() : (Math.round(n * 10) / 10).toString(); }
+function ckRenderUpgrades() {
+  const el = document.getElementById('ck-upgrades'); if (!el) return;
+  el.innerHTML = CK_UPGRADES.map(u => {
+    const cost = ckCost(u), owned = ckState.upgrades[u.id] || 0, afford = ckState.points >= cost;
+    return `<button onclick="ckBuy('${u.id}')" ${afford ? '' : 'disabled'} style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,${afford ? '.1' : '.04'});border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:#fff;cursor:${afford ? 'pointer' : 'default'};opacity:${afford ? '1' : '.55'}">
+      <span>${u.icon} ${u.name} <span style="color:rgba(255,255,255,.4);font-size:11px">×${owned}</span></span>
+      <span style="font-size:12px">${ckFmt(cost)} ⚡</span>
+    </button>`;
+  }).join('');
+}
+function ckRefresh() {
+  const p = document.getElementById('ck-points'), r = document.getElementById('ck-rate');
+  if (p) p.textContent = ckFmt(ckState.points) + ' ⚡';
+  if (r) r.textContent = ckFmt(ckPerSecond()) + ' / sec';
+  ckRenderUpgrades();
+}
+function ckSave() {
+  clearTimeout(ckSaveTimer);
+  ckSaveTimer = setTimeout(() => apiFetch('/api/me/data/clicker', { method: 'PUT', body: JSON.stringify({ value: ckState }) }), 800);
+}
+function ckBuy(id) {
+  const u = CK_UPGRADES.find(x => x.id === id); if (!u) return;
+  const cost = ckCost(u);
+  if (ckState.points < cost) return;
+  ckState.points -= cost;
+  ckState.upgrades[id] = (ckState.upgrades[id] || 0) + 1;
+  ckRefresh(); ckSave();
+}
+function ckTick() {
+  ckState.points += ckPerSecond();
+  ckState.lastCollectedAt = Date.now();
+  ckRefresh();
+  if (++ckTicksSinceSave >= 5) { ckTicksSinceSave = 0; ckSave(); }
+}
+function ckStartTicking() {
+  clearInterval(ckTickTimer);
+  ckTickTimer = setInterval(ckTick, 1000);
+}
+function ckCollectOffline() {
+  ckState.points += ckPendingOffline;
+  ckPendingOffline = 0;
+  ckState.lastCollectedAt = Date.now();
+  const banner = document.getElementById('ck-offline-banner'); if (banner) banner.innerHTML = '';
+  ckRefresh(); ckSave(); ckStartTicking();
+}
+async function initClicker() {
+  clearInterval(ckTickTimer);
+  document.getElementById('ck-tap').onclick = () => { ckState.points += 1; ckRefresh(); ckSave(); };
+  const res = await apiFetch('/api/me/data/clicker');
+  const loaded = (res && !res.error && res.value) ? res.value : null;
+  ckState = loaded || { points: 0, upgrades: {}, lastCollectedAt: Date.now() };
+  if (!ckState.upgrades) ckState.upgrades = {};
+  const elapsed = Date.now() - (ckState.lastCollectedAt || Date.now());
+  const banner = document.getElementById('ck-offline-banner');
+  if (elapsed > 5000 && ckPerSecond() > 0) {
+    const capped = Math.min(elapsed, CK_OFFLINE_CAP_MS);
+    ckPendingOffline = capped / 1000 * ckPerSecond();
+    const cappedNote = elapsed > CK_OFFLINE_CAP_MS ? ' (capped at 24h — check in daily to not miss out!)' : '';
+    if (banner) banner.innerHTML = `<div style="background:rgba(100,180,255,.15);border:1px solid rgba(100,180,255,.35);border-radius:10px;padding:10px 12px;font-size:12px;text-align:center">
+      While you were away you earned <b>${ckFmt(ckPendingOffline)} ⚡</b>${cappedNote}<br>
+      <button onclick="ckCollectOffline()" style="margin-top:8px;background:#64b4ff;border:none;color:#fff;border-radius:8px;padding:6px 16px;font-size:12px;font-weight:600;cursor:pointer">Collect</button>
+    </div>`;
+    ckRefresh();
+  } else {
+    if (banner) banner.innerHTML = '';
+    ckRefresh();
+    ckStartTicking();
+  }
+}
+
+// ── LEADERBOARDS — global high scores across games with score submission ─────
+const LB_GAMES = [ { id: 'snake', name: 'Snake', icon: '🐍' }, { id: 'g2048', name: '2048', icon: '🔢' }, { id: 'tetris', name: 'Tetris', icon: '🧩' } ];
+let lbActiveGame = 'snake';
+function buildLeaderboard() {
+  return `<div style="display:flex;flex-direction:column;height:100%;padding:14px;gap:10px;color:#fff">
+    <div style="display:flex;gap:6px" id="lb-tabs">${LB_GAMES.map(g => `<button onclick="lbSwitch('${g.id}')" id="lb-tab-${g.id}" style="flex:1;background:rgba(255,255,255,${g.id === lbActiveGame ? '.16' : '.06'});border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px;color:#fff;cursor:pointer;font-size:13px">${g.icon} ${g.name}</button>`).join('')}</div>
+    <div id="lb-list" style="flex:1;overflow-y:auto"></div>
+  </div>`;
+}
+function lbSwitch(game) {
+  lbActiveGame = game;
+  LB_GAMES.forEach(g => { const b = document.getElementById('lb-tab-' + g.id); if (b) b.style.background = g.id === game ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)'; });
+  lbLoad();
+}
+async function lbLoad() {
+  const el = document.getElementById('lb-list'); if (!el) return;
+  el.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:20px">Loading…</div>';
+  const res = await apiFetch('/api/scores/' + lbActiveGame);
+  if (!Array.isArray(res)) { el.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:20px">Leaderboards need a server connection.</div>'; return; }
+  if (!res.length) { el.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:20px">No scores yet — be the first!</div>'; return; }
+  const medals = ['🥇', '🥈', '🥉'];
+  el.innerHTML = res.map((s, i) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <span style="width:26px;text-align:center">${medals[i] || (i + 1)}</span>
+    <span style="flex:1">${escapeHtml(s.username)}${s.username === currentUser?.username ? ' (you)' : ''}</span>
+    <span style="font-weight:700">${Math.floor(s.score).toLocaleString()}</span>
+  </div>`).join('');
+}
+function initLeaderboard() { lbLoad(); }
+// Fire-and-forget best-score submission — called from each game's game-over path.
+function submitScore(game, score) { if (serverOnline && score > 0) apiFetch('/api/scores/' + game, { method: 'POST', body: JSON.stringify({ score }) }); }
 
 // ── MAX ANIMATOR — flipbook + movable elements + .pic images ──────────────────
 let anFrames = [], anCur = 0, anColor = '#ffffff', anSize = 4, anTool = 'pen', anPlay = null, anFps = 8;
@@ -6470,7 +6721,7 @@ function initTetris() {
   function collide(p, dx, dy, shape) { shape = shape || p.shape; for (let r = 0; r < shape.length; r++) for (let cc = 0; cc < shape[r].length; cc++) { if (!shape[r][cc]) continue; const nx = p.x + cc + dx, ny = p.y + r + dy; if (nx < 0 || nx >= COLS || ny >= ROWS) return true; if (ny >= 0 && grid[ny][nx]) return true; } return false; }
   function merge() { piece.shape.forEach((row, r) => row.forEach((v, cc) => { if (v) { const ny = piece.y + r; if (ny >= 0) grid[ny][piece.x + cc] = v; } })); }
   function clearLines() { let cleared = 0; for (let r = ROWS - 1; r >= 0; r--) { if (grid[r].every(v => v)) { grid.splice(r, 1); grid.unshift(Array(COLS).fill(0)); cleared++; r++; } } if (cleared) { lines += cleared; score += [0, 100, 300, 500, 800][cleared] * level; level = 1 + Math.floor(lines / 10); schedule(); tone([0,523,659,784,1047][cleared] || 523, 0.15, 'square', 0.15); upd(); } }
-  function tick() { if (gameOver) return; if (!collide(piece, 0, 1)) piece.y++; else { merge(); clearLines(); piece = nextP; nextP = newPiece(); if (collide(piece, 0, 0)) { gameOver = true; clearInterval(dropTimer); tone(160, 0.5, 'sawtooth', 0.2); notify('🧩', 'Game Over', 'Score: ' + score); } } draw(); }
+  function tick() { if (gameOver) return; if (!collide(piece, 0, 1)) piece.y++; else { merge(); clearLines(); piece = nextP; nextP = newPiece(); if (collide(piece, 0, 0)) { gameOver = true; clearInterval(dropTimer); tone(160, 0.5, 'sawtooth', 0.2); submitScore('tetris', score); notify('🧩', 'Game Over', 'Score: ' + score); } } draw(); }
   function rotate() { const s = piece.shape, R = s[0].map((_, i) => s.map(row => row[i]).reverse()); if (!collide(piece, 0, 0, R)) piece.shape = R; }
   function upd() { document.getElementById('tetris-score').textContent = score; document.getElementById('tetris-level').textContent = level; document.getElementById('tetris-lines').textContent = lines; }
   function drawCell(x, y, id, g) { g.fillStyle = TET_COLORS[id]; g.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2); g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, 3); }
@@ -8219,6 +8470,7 @@ const appInitHooks = {
   browser: initBrowser, makeyourownwebsite: initStudio, school: initSchool,
   maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin, adminwatch: initAdminWatch,
   board: initBoard, social: initSocial,
+  wordle: initWordle, clicker: initClicker, leaderboard: initLeaderboard,
 };
 </script>
 </body>

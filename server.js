@@ -193,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v35';
+const CACHE = 'maxos-shell-v36';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -242,6 +242,9 @@ const UserSchema = new mongoose.Schema({
   // bonus = extra seconds granted by the superadmin for the current week (on top of the base limit).
   mcPlay: { week: { type: String, default: '' }, used: { type: Number, default: 0 }, lastBeat: { type: Number, default: 0 }, bonus: { type: Number, default: 0 } },
   mcTimeRequest: { type: Boolean, default: false }, // pending "more Minecraft time" request to the superadmin
+  // Daily login streak (server-authoritative). lastDate is the last calendar day
+  // (server clock, 'YYYY-MM-DD') a streak bonus was credited — checked once per day.
+  loginStreak: { count: { type: Number, default: 0 }, lastDate: { type: String, default: '' } },
   testMode: { type: Boolean, default: false }, // testers only: unlimited Minecraft time while on
 }, { timestamps: true });
 
@@ -387,6 +390,28 @@ const ActivityLogSchema = new mongoose.Schema({
   tags: { type: [String], default: [] },
 }, { timestamps: true });
 const ActivityLog = mongoose.model('ActivityLog', ActivityLogSchema);
+
+// Global leaderboards — one best score per user per game
+const ScoreSchema = new mongoose.Schema({
+  game:     { type: String, required: true },
+  username: { type: String, required: true },
+  score:    { type: Number, required: true },
+}, { timestamps: true });
+ScoreSchema.index({ game: 1, username: 1 }, { unique: true });
+ScoreSchema.index({ game: 1, score: -1 });
+const Score = mongoose.model('Score', ScoreSchema);
+
+// Daily Wordle — one attempt doc per user per day, the answer is never sent to the
+// client until the attempt is done (solved or out of guesses).
+const WordleAttemptSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  date:     { type: String, required: true }, // 'YYYY-MM-DD', server clock
+  guesses:  { type: [String], default: [] },
+  solved:   { type: Boolean, default: false },
+  done:     { type: Boolean, default: false }, // solved OR out of guesses
+}, { timestamps: true });
+WordleAttemptSchema.index({ username: 1, date: 1 }, { unique: true });
+const WordleAttempt = mongoose.model('WordleAttempt', WordleAttemptSchema);
 
 const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
@@ -762,6 +787,25 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+// Bumps the daily login streak once per calendar day and credits a small MaxCoin
+// bonus that scales with streak length. Returns { count, justAwarded } — justAwarded
+// is only nonzero on the request that actually crossed into a new day, so the client
+// shows the "streak! +coins" notification exactly once per day, not on every poll.
+async function applyLoginStreak(user) {
+  const today = todayStr();
+  if (user.loginStreak?.lastDate === today) return { count: user.loginStreak.count || 0, justAwarded: 0 };
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const wasYesterday = user.loginStreak?.lastDate === yesterday;
+  const count = wasYesterday ? (user.loginStreak.count || 0) + 1 : 1;
+  const bonus = Math.min(5 + count, 50);
+  await User.updateOne({ _id: user._id }, {
+    $set: { 'loginStreak.count': count, 'loginStreak.lastDate': today },
+    $inc: { 'appData.maxcoin.coins': bonus },
+  });
+  return { count, justAwarded: bonus };
+}
+
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -775,17 +819,19 @@ app.post('/api/auth/login', async (req, res) => {
     if (user.lastIP !== ip) { user.lastIP = ip; await user.save().catch(() => {}); }
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
+    const loginStreak = await applyLoginStreak(user);
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail });
+    res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail, loginStreak });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', auth, async (req, res) => {
-  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode emailVerified mustVerifyEmail lastIP');
+  const u = await User.findById(req.user.id).select('username displayName admin teacher adminRequest teacherRequest suspicious installed testMode emailVerified mustVerifyEmail lastIP loginStreak');
   const ip = clientIp(req); // refresh the stored IP on app boot, even without a fresh login
   if (ip && u.lastIP !== ip) { u.lastIP = ip; u.save().catch(() => {}); }
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
-  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail });
+  const loginStreak = await applyLoginStreak(u);
+  res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail, loginStreak });
 });
 
 // Client reports its device LAN IP(s) (discovered via WebRTC). Stored for the
@@ -1974,7 +2020,7 @@ app.post('/api/activity/log', auth, async (req, res) => {
   const { activity, duration, tags = [] } = req.body;
   if (!activity) return res.status(400).json({ error: 'activity required' });
   try {
-    const log = new ActivityLog({ username: req.user, activity, duration: Math.max(0, duration || 0), tags });
+    const log = new ActivityLog({ username: req.user.username, activity, duration: Math.max(0, duration || 0), tags });
     await log.save();
     res.json({ ok: true, id: log._id });
   } catch (e) {
@@ -1998,7 +2044,7 @@ app.get('/api/activity/stats', auth, async (req, res) => {
     dateFilter = { startedAt: { $gte: start } };
   }
   try {
-    const logs = await ActivityLog.find({ username: req.user, ...dateFilter }).sort({ startedAt: -1 });
+    const logs = await ActivityLog.find({ username: req.user.username, ...dateFilter }).sort({ startedAt: -1 });
     const byActivity = {};
     let totalSeconds = 0;
     for (const log of logs) {
@@ -2013,6 +2059,151 @@ app.get('/api/activity/stats', auth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Global leaderboards ────────────────────────────────────────────────────────
+const LEADERBOARD_GAMES = ['snake', 'g2048', 'tetris'];
+app.post('/api/scores/:game', auth, async (req, res) => {
+  try {
+    const game = req.params.game;
+    if (!LEADERBOARD_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game' });
+    const score = Number(req.body.score);
+    if (!Number.isFinite(score) || score < 0) return res.status(400).json({ error: 'Invalid score' });
+    const existing = await Score.findOne({ game, username: req.user.username });
+    if (!existing || score > existing.score) {
+      await Score.updateOne({ game, username: req.user.username }, { score }, { upsert: true });
+    }
+    res.json({ ok: true, best: Math.max(score, existing?.score || 0) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/scores/:game', auth, async (req, res) => {
+  try {
+    if (!LEADERBOARD_GAMES.includes(req.params.game)) return res.status(400).json({ error: 'Unknown game' });
+    const top = await Score.find({ game: req.params.game }).sort({ score: -1 }).limit(20);
+    res.json(top.map(s => ({ username: s.username, score: s.score })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Daily Wordle ────────────────────────────────────────────────────────────────
+// Curated common 5-letter words — deterministic pick per calendar day so every
+// player gets the same word, without ever exposing a full dictionary to guess against.
+const WORDLE_WORDS = ['about','above','actor','adapt','admit','adult','after','again','agent','agree',
+  'ahead','alarm','album','alert','alike','alive','allow','alone','along','alter',
+  'among','anger','angle','angry','apart','apple','apply','arena','argue','arise',
+  'array','aside','asset','avoid','awake','award','aware','badge','baker','basic',
+  'basis','beach','began','begin','being','below','bench','birth','black','blade',
+  'blame','blank','blast','blend','bless','blind','block','blood','board','boost',
+  'boots','bound','brain','brand','brave','bread','break','breed','brick','bride',
+  'brief','bring','broad','broke','brown','brush','build','built','bunch','burst',
+  'cabin','cable','camel','camps','candy','cargo','carry','catch','cause','chain',
+  'chair','chalk','champ','chaos','charm','chart','chase','cheap','check','cheer',
+  'chess','chest','chief','child','chill','claim','class','clean','clear','climb',
+  'clock','close','cloud','coach','coast','could','count','court','cover','craft',
+  'crash','crawl','cream','creek','crews','crime','crisp','cross','crowd','crown',
+  'cruel','crush','curve','cycle','daily','dance','decay','delay','depth','diary',
+  'dirty','ditch','dizzy','doubt','draft','drain','drama','dream','dress','drift',
+  'drink','drive','drove','dying','eager','early','earth','eight','elbow','elder',
+  'elect','empty','enemy','enjoy','enter','entry','equal','error','event','every',
+  'exact','exist','extra','faith','false','fault','favor','feast','fence','fewer',
+  'fiber','field','fifth','fifty','fight','final','first','fixed','flame','flash',
+  'fleet','flesh','float','flock','floor','fluid','focus','force','forth','forty',
+  'found','frame','fresh','front','frost','fruit','fully','funny','giant','given',
+  'glass','globe','glory','grace','grade','grain','grand','grant','grass','great',
+  'green','greet','grief','grind','gross','group','grown','guard','guess','guest',
+  'guide','habit','happy','harsh','heart','heavy','hedge','honor','horse','hotel',
+  'house','human','humor','hurry','ideal','image','imply','index','inner','input',
+  'issue','joint','judge','juice','known','label','labor','large','laser','later',
+  'laugh','layer','learn','least','leave','legal','lemon','level','light','limit',
+  'local','logic','loose','loyal','lucky','lunch','lying','magic','major','march',
+  'match','media','mercy','merge','merit','metal','meter','might','minor','minus',
+  'mixed','model','money','month','moral','motor','mount','mouse','mouth','moved',
+  'movie','music','naked','nerve','never','newly','night','noble','noise','north',
+  'novel','nurse','ocean','offer','often','olive','order','organ','other','ought',
+  'outer','owner','ozone','paint','panel','panic','paper','party','peace','pearl',
+  'phase','phone','photo','piano','piece','pilot','pitch','pizza','place','plain',
+  'plane','plant','plate','plaza','point','pound','power','press','price','pride',
+  'prime','print','prior','prize','proof','proud','prove','pulse','punch','pupil',
+  'query','quick','quiet','quite','quote','radio','raise','range','rapid','ratio',
+  'reach','ready','realm','rebel','refer','reign','relax','reply','rider','ridge',
+  'rifle','right','rigid','risky','rival','river','roast','robot','rocky','round',
+  'route','royal','rural','sadly','salad','sauce','scale','scare','scene','scent',
+  'scope','score','scout','seven','shade','shake','shall','shame','shape','share',
+  'shark','sharp','sheep','sheet','shelf','shell','shift','shine','shirt','shock',
+  'shoot','short','shown','sight','silky','since','singe','sixth','sized','skill',
+  'skirt','sleep','slice','slide','slope','small','smart','smell','smile','smoke',
+  'snack','solid','solve','sorry','sound','south','space','spare','spark','speak',
+  'speed','spell','spend','spent','spice','spike','spine','split','spoke','sport',
+  'spray','squad','stack','staff','stage','stake','stale','stall','stamp','stand',
+  'stark','start','state','steak','steam','steel','steep','stern','stick','stiff',
+  'still','stock','stomp','stone','stood','storm','story','stove','strap','straw',
+  'strip','study','stuff','style','sugar','suite','sunny','super','sweet','swift',
+  'swing','sword','table','taken','taste','teach','thank','theme','there','thick',
+  'thing','think','third','those','three','throw','thumb','tiger','tight','timer',
+  'tired','title','today','token','topic','total','touch','tough','tower','trace',
+  'track','trade','trail','train','trait','trash','treat','trend','trial','tribe',
+  'trick','tried','truck','truly','trust','truth','tumor','twist','ultra','uncle',
+  'under','union','unite','unity','until','upper','upset','urban','usage','usual',
+  'valid','value','video','virus','visit','vital','vivid','vocal','voice','waste',
+  'watch','water','weigh','white','whole','wider','windy','wired','worse','world',
+  'worry','worth','would','wound','wrist','write','wrong','yield','young','youth'
+];
+function wordleDayIndex(dateStr) {
+  let h = 0;
+  for (const c of dateStr) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % WORDLE_WORDS.length;
+}
+function wordleFeedback(guess, answer) {
+  const result = Array(5).fill('absent');
+  const ansArr = answer.split(''), guessArr = guess.split(''), used = Array(5).fill(false);
+  for (let i = 0; i < 5; i++) if (guessArr[i] === ansArr[i]) { result[i] = 'correct'; used[i] = true; }
+  for (let i = 0; i < 5; i++) {
+    if (result[i] === 'correct') continue;
+    const idx = ansArr.findIndex((c, j) => !used[j] && c === guessArr[i]);
+    if (idx >= 0) { result[i] = 'present'; used[idx] = true; }
+  }
+  return result;
+}
+// Consecutive solved days strictly before `dateStr` — the client adds 1 if today is
+// already solved, so the streak doesn't reset to 0 just because today isn't over yet.
+async function wordleStreak(username, dateStr) {
+  let streak = 0;
+  const d = new Date(dateStr + 'T00:00:00Z');
+  for (let i = 0; i < 365; i++) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const a = await WordleAttempt.findOne({ username, date: d.toISOString().slice(0, 10) });
+    if (a && a.solved) streak++; else break;
+  }
+  return streak;
+}
+app.get('/api/wordle/today', auth, async (req, res) => {
+  try {
+    const date = todayStr(), username = req.user.username;
+    let attempt = await WordleAttempt.findOne({ username, date });
+    if (!attempt) attempt = await WordleAttempt.create({ username, date });
+    const answer = WORDLE_WORDS[wordleDayIndex(date)];
+    const feedback = attempt.guesses.map(g => wordleFeedback(g, answer));
+    const streak = await wordleStreak(username, date);
+    res.json({ date, guesses: attempt.guesses, feedback, solved: attempt.solved, done: attempt.done, maxGuesses: 6, wordLength: 5, answer: attempt.done ? answer : undefined, streak });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/wordle/guess', auth, async (req, res) => {
+  try {
+    const date = todayStr(), username = req.user.username;
+    const guess = String(req.body.guess || '').toLowerCase().trim();
+    if (!/^[a-z]{5}$/.test(guess)) return res.status(400).json({ error: 'Guess must be a 5-letter word' });
+    let attempt = await WordleAttempt.findOne({ username, date });
+    if (!attempt) attempt = await WordleAttempt.create({ username, date });
+    if (attempt.done) return res.status(400).json({ error: "Already finished today's word" });
+    if (attempt.guesses.length >= 6) return res.status(400).json({ error: 'No guesses left' });
+    const answer = WORDLE_WORDS[wordleDayIndex(date)];
+    attempt.guesses.push(guess);
+    const solved = guess === answer;
+    if (solved) attempt.solved = true;
+    attempt.done = solved || attempt.guesses.length >= 6;
+    await attempt.save();
+    const streak = await wordleStreak(username, date);
+    res.json({ feedback: wordleFeedback(guess, answer), solved, done: attempt.done, guessesLeft: 6 - attempt.guesses.length, answer: attempt.done ? answer : undefined, streak });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Bot tarpit ────────────────────────────────────────────────────────────────
