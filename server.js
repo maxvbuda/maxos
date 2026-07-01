@@ -190,7 +190,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v28';
+const CACHE = 'maxos-shell-v29';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -371,6 +371,17 @@ IndexPageSchema.index(
   { weights: { title: 10, snippet: 4, text: 1 }, name: 'maxsearch_text' }
 );
 const IndexPage = mongoose.model('IndexPage', IndexPageSchema);
+
+// Activity tracking — logs app/activity usage for personal time monitoring
+const ActivityLogSchema = new mongoose.Schema({
+  username: { type: String, required: true, index: true },
+  activity: { type: String, required: true }, // app name or activity type (minecraft, study, etc.)
+  duration: { type: Number, default: 0 }, // seconds
+  startedAt: { type: Date, default: Date.now, index: true },
+  endedAt: { type: Date },
+  tags: { type: [String], default: [] },
+}, { timestamps: true });
+const ActivityLog = mongoose.model('ActivityLog', ActivityLogSchema);
 
 const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
@@ -1915,6 +1926,52 @@ app.post('/api/search/crawl', auth, adminOnly, async (req, res) => {
 app.post('/api/search/reset', auth, superadminOnly, async (req, res) => {
   try { await IndexPage.deleteMany({}); res.json({ ok: true, total: 0 }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Activity tracking / System Monitor ─────────────────────────────────────────
+app.post('/api/activity/log', auth, async (req, res) => {
+  const { activity, duration, tags = [] } = req.body;
+  if (!activity) return res.status(400).json({ error: 'activity required' });
+  try {
+    const log = new ActivityLog({ username: req.user, activity, duration: Math.max(0, duration || 0), tags });
+    await log.save();
+    res.json({ ok: true, id: log._id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/activity/stats', auth, async (req, res) => {
+  const { period = 'today' } = req.query; // today, week, month, all
+  let dateFilter = {};
+  const now = new Date();
+  if (period === 'today') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    dateFilter = { startedAt: { $gte: start } };
+  } else if (period === 'week') {
+    const start = new Date(now);
+    start.setDate(now.getDate() - 7);
+    dateFilter = { startedAt: { $gte: start } };
+  } else if (period === 'month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    dateFilter = { startedAt: { $gte: start } };
+  }
+  try {
+    const logs = await ActivityLog.find({ username: req.user, ...dateFilter }).sort({ startedAt: -1 });
+    const byActivity = {};
+    let totalSeconds = 0;
+    for (const log of logs) {
+      if (!byActivity[log.activity]) byActivity[log.activity] = 0;
+      byActivity[log.activity] += log.duration;
+      totalSeconds += log.duration;
+    }
+    const sorted = Object.entries(byActivity)
+      .map(([activity, seconds]) => ({ activity, seconds, hours: (seconds / 3600).toFixed(2) }))
+      .sort((a, b) => b.seconds - a.seconds);
+    res.json({ stats: sorted, total: totalSeconds, period });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Bot tarpit ────────────────────────────────────────────────────────────────

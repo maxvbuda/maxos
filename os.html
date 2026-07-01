@@ -4001,44 +4001,89 @@ function timerReset() { clearInterval(timerInterval); timerRunning=false; timerR
 // ── SYSTEM MONITOR ───────────────────────────────────────────────────────────
 function buildSysmon() {
   return `<div class="sysmon-wrap">
-    <div class="sm-row">
-      <div class="sm-label"><span>CPU Usage</span><span id="sm-cpu-val">0%</span></div>
-      <div class="sm-bar-bg"><div class="sm-bar" id="sm-cpu" style="width:0%;background:linear-gradient(90deg,#64b4ff,#bf5af2)"></div></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn primary" onclick="smLoadStats('today')" style="flex:1">Today</button>
+      <button class="btn" onclick="smLoadStats('week')" style="flex:1">This Week</button>
+      <button class="btn" onclick="smLoadStats('month')" style="flex:1">Month</button>
     </div>
-    <div class="sm-row">
-      <div class="sm-label"><span>Memory</span><span id="sm-mem-val">0%</span></div>
-      <div class="sm-bar-bg"><div class="sm-bar" id="sm-mem" style="width:0%;background:linear-gradient(90deg,#28c840,#30d158)"></div></div>
+    <div style="color:rgba(255,255,255,.6);font-size:11px;margin-bottom:8px" id="sm-period">Today's Activity</div>
+    <div id="sm-stats" style="max-height:280px;overflow-y:auto">
+      <div style="color:rgba(255,255,255,.5);text-align:center;padding:40px 10px">Loading…</div>
     </div>
-    <div class="sm-row">
-      <div class="sm-label"><span>Disk</span><span id="sm-disk-val">0%</span></div>
-      <div class="sm-bar-bg"><div class="sm-bar" id="sm-disk" style="width:0%;background:linear-gradient(90deg,#febc2e,#ff9f0a)"></div></div>
+    <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:12px;padding-top:12px">
+      <div style="color:rgba(255,255,255,.5);font-size:11px;margin-bottom:8px">Log Activity (minutes)</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="sm-activity" placeholder="Activity (e.g. minecraft)" autocomplete="off" style="flex:1;padding:6px 8px;border:1px solid rgba(255,255,255,.2);border-radius:4px;background:rgba(255,255,255,.05);color:#fff;font-size:12px">
+        <input type="number" id="sm-duration" placeholder="0" min="0" value="0" style="width:60px;padding:6px 8px;border:1px solid rgba(255,255,255,.2);border-radius:4px;background:rgba(255,255,255,.05);color:#fff;font-size:12px">
+      </div>
+      <button class="btn primary" onclick="smLogActivity()" style="width:100%">Log</button>
     </div>
-    <div class="sm-row">
-      <div class="sm-label"><span>Network ↑</span><span id="sm-net-val">0 KB/s</span></div>
-      <div class="sm-bar-bg"><div class="sm-bar" id="sm-net" style="width:0%;background:linear-gradient(90deg,#ff5f57,#febc2e)"></div></div>
-    </div>
-    <div style="color:rgba(255,255,255,.5);font-size:12px;margin-top:4px">Processes</div>
-    <div class="sm-procs" id="sm-procs"></div>
   </div>`;
 }
 
-const smProcs = [
-  'kernel_task','WindowServer','loginwindow','Finder','Safari','node','mongo','nginx','redis-server','python3','claude','Spotify','Slack','Chrome'
-];
+let smCurrentPeriod = 'today';
+async function smLoadStats(period) {
+  smCurrentPeriod = period;
+  const periodLabels = { today: "Today's Activity", week: "This Week's Activity", month: "This Month's Activity" };
+  const el = document.getElementById('sm-period');
+  if (el) el.textContent = periodLabels[period];
+
+  const statsEl = document.getElementById('sm-stats');
+  if (!statsEl) return;
+  statsEl.innerHTML = '<div style="color:rgba(255,255,255,.5);text-align:center;padding:20px">Loading…</div>';
+
+  try {
+    const r = await apiFetch(`/api/activity/stats?period=${period}`);
+    if (r.error) throw new Error(r.error);
+    const { stats, total } = r;
+    if (!stats || stats.length === 0) {
+      statsEl.innerHTML = '<div style="color:rgba(255,255,255,.4);text-align:center;padding:30px 10px;font-size:12px">No activities logged yet</div>';
+      return;
+    }
+    const totalHours = (total / 3600).toFixed(1);
+    const html = stats.map((s, i) => {
+      const pct = Math.round((s.seconds / total) * 100);
+      const barColor = ['#4a90e2','#e74c3c','#f39c12','#27ae60','#9b59b6','#1abc9c'][i % 6];
+      return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px">${s.activity}</span>
+          <span style="font-size:11px;color:rgba(255,255,255,.5)">${s.hours}h (${pct}%)</span>
+        </div>
+        <div style="height:8px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${barColor}"></div>
+        </div>
+      </div>`;
+    }).join('');
+    statsEl.innerHTML = html + `<div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);text-align:center;color:rgba(255,255,255,.6);font-size:11px">Total: ${totalHours}h</div>`;
+  } catch (e) {
+    statsEl.innerHTML = `<div style="color:#ff6b6b;padding:10px;font-size:11px">Error: ${e.message}</div>`;
+  }
+}
+
+async function smLogActivity() {
+  const actEl = document.getElementById('sm-activity');
+  const durEl = document.getElementById('sm-duration');
+  if (!actEl || !durEl) return;
+  const activity = (actEl.value || '').trim();
+  const duration = parseInt(durEl.value, 10) || 0;
+  if (!activity || duration <= 0) { notify('⚠️','Input required','Enter activity name and duration'); return; }
+  try {
+    const r = await apiFetch('/api/activity/log', { method: 'POST', body: JSON.stringify({ activity, duration: duration * 60 }) });
+    if (r.error) throw new Error(r.error);
+    notify('📊','Activity logged',`${activity}: ${duration}m`);
+    actEl.value = '';
+    durEl.value = '0';
+    smLoadStats(smCurrentPeriod);
+  } catch (e) {
+    notify('❌','Error',e.message);
+  }
+}
+
 let smInterval=null;
 function initSysmon() {
   if(smInterval) clearInterval(smInterval);
-  function update() {
-    const cpu=20+Math.random()*60, mem=40+Math.random()*40, disk=55+Math.random()*15, net=Math.random()*100;
-    const set=(id,val,unit='%')=>{
-      const b=document.getElementById('sm-'+id); const v=document.getElementById('sm-'+id+'-val');
-      if(b) b.style.width=val+'%'; if(v) v.textContent=unit==='%'?Math.round(val)+'%':val.toFixed(1)+' KB/s';
-    };
-    set('cpu',cpu); set('mem',mem); set('disk',disk); set('net',net,'kb');
-    const el=document.getElementById('sm-procs'); if(!el) return;
-    el.innerHTML=smProcs.map(p=>`<div class="sm-proc"><span>${p}</span><span style="color:rgba(255,255,255,.4)">${(Math.random()*5).toFixed(1)}%  ${Math.floor(Math.random()*500)}MB</span></div>`).join('');
-  }
-  update(); smInterval=setInterval(update,1500);
+  smLoadStats('today');
+  smInterval=setInterval(() => smLoadStats(smCurrentPeriod), 30000);
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────────────────────
