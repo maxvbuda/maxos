@@ -615,6 +615,35 @@
   .ck-offline { background:linear-gradient(135deg,rgba(100,180,255,.18),rgba(150,120,255,.12)); border:1px solid rgba(140,170,255,.35); border-radius:12px; padding:12px; font-size:12px; text-align:center; position:relative; z-index:2; }
   .ck-offline button { margin-top:8px; background:linear-gradient(135deg,#64b4ff,#8a7bff); border:none; color:#fff; border-radius:8px; padding:7px 18px; font-size:12px; font-weight:700; cursor:pointer; }
 
+  /* Marketplace */
+  .mkt-wrap { display:flex; flex-direction:column; height:100%; padding:16px; gap:12px; color:#fff; }
+  .mkt-head { display:flex; align-items:center; justify-content:space-between; }
+  .mkt-balance { font-size:16px; font-weight:700; color:#ffd76a; }
+  .mkt-sell-btn { background:linear-gradient(135deg,#64b4ff,#bf5af2); border:none; color:#fff; border-radius:9px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; }
+  .mkt-sell-btn:hover { filter:brightness(1.1); }
+  .mkt-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+  .mkt-empty { color:rgba(255,255,255,.4); text-align:center; padding:40px 10px; font-size:13px; }
+  .mkt-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px 14px; }
+  .mkt-card-icon { font-size:22px; }
+  .mkt-card-info { flex:1; min-width:0; }
+  .mkt-card-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mkt-card-sub { font-size:11px; color:rgba(255,255,255,.45); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mkt-card-price { font-size:13px; font-weight:700; color:#ffd76a; white-space:nowrap; }
+  .mkt-buy, .mkt-cancel { border:none; border-radius:8px; padding:7px 14px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .mkt-buy { background:linear-gradient(135deg,#28c840,#30d158); color:#0a1a0a; }
+  .mkt-buy:hover { filter:brightness(1.1); }
+  .mkt-cancel { background:rgba(255,95,87,.2); color:#ff8a84; }
+  .mkt-cancel:hover { background:rgba(255,95,87,.32); }
+  .mkt-modal { position:absolute; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:50; }
+  .mkt-modal.open { display:flex; }
+  .mkt-modal-card { background:#1a1a2e; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:20px; width:320px; max-width:90%; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .mkt-modal-card h3 { margin:0 0 4px; color:#fff; font-size:16px; }
+  .mkt-modal-card select, .mkt-modal-card input, .mkt-modal-card textarea { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:9px 11px; color:#fff; font-size:13px; font-family:inherit; outline:none; }
+  .mkt-modal-card textarea { resize:vertical; min-height:50px; }
+  .mkt-modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+  .mkt-modal-actions button { border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; background:rgba(255,255,255,.1); color:#fff; }
+  .mkt-modal-actions button.primary { background:linear-gradient(135deg,#64b4ff,#bf5af2); font-weight:600; }
+
   /* Max Wordle */
   .wd-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; height:100%; padding:14px; }
   .wd-head { color:#fff; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px; }
@@ -2253,6 +2282,7 @@ const apps = {
   wordle:   { title: 'Max Wordle',     short:'Wordle',     icon:'🟩', w:380, h:560, cat:'Games',      desc:'Daily 5-letter word puzzle',   html: buildWordle },
   clicker:  { title: 'Max Clicker',    short:'Clicker',    icon:'⚡', w:420, h:580, cat:'Games',      desc:'Idle clicker — check in daily', html: buildClicker },
   leaderboard:{ title: 'Leaderboards', short:'Leaders',    icon:'🏆', w:420, h:520, cat:'Games',      desc:'Global high scores',           html: buildLeaderboard },
+  market:   { title: 'Marketplace',    short:'Market',     icon:'🏪', w:520, h:560, cat:'Work',       desc:'Buy & sell files with other users using Sparks', html: buildMarket },
   animator: { title: 'Max Animator',   short:'Animator',   icon:'🎞️', w:820, h:600, cat:'Creativity', desc:'Frame animation with movable shapes, text & .pic images', html: buildAnimator },
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   camera:   { title: 'Photo Booth',    short:'Camera',     icon:'📷', w:640, h:560, cat:'Creativity', desc:'Snap with filters, open images, import & save .pic', html: buildCamera },
@@ -4844,6 +4874,14 @@ async function connectAppSocket() {
   appSocket.on('dm:read', d => { if (windows['messages'] && msgActiveUser === d?.by) msgLoadThread(msgActiveUser, true); });
   appSocket.on('dm:react', () => { if (windows['messages'] && msgActiveUser) msgLoadThread(msgActiveUser, true); });
   appSocket.on('feed', () => { if (windows['social']) socialLoad(); });
+  appSocket.on('market', () => { if (windows['market']) marketLoad(); });
+  // Someone bought one of your listings — keep Max Clicker's in-memory balance in
+  // sync so its own autosave doesn't overwrite the server credit with a stale value.
+  appSocket.on('market:sold', d => {
+    if (ckState) { ckState.points += d.price; ckSave(); if (windows['clicker']) ckRefresh(); }
+    notify('🏪', 'Item sold!', `@${d.buyer} bought your ${d.fileName} for ${d.price} ⚡`);
+    if (windows['market']) { marketRefreshBalance(); marketLoad(); }
+  });
   // Superadmin flipped this tester's test mode → update live, no refresh needed.
   appSocket.on('testmode', d => {
     if (!currentUser) return;
@@ -5470,6 +5508,94 @@ async function lbLoad() {
 function initLeaderboard() { lbLoad(); }
 // Fire-and-forget best-score submission — called from each game's game-over path.
 function submitScore(game, score) { if (serverOnline && score > 0) apiFetch('/api/scores/' + game, { method: 'POST', body: JSON.stringify({ score }) }); }
+
+// ── MARKETPLACE — sell real MaxDrive files to other users for Sparks. Buying moves
+// the file (not a copy) into the buyer's Purchases folder, so it leaves the seller's
+// drive for good — a real trade, not a duplicate. ────────────────────────────────
+let mktBalance = 0;
+function buildMarket() {
+  return `<div class="mkt-wrap">
+    <div class="mkt-head">
+      <div class="mkt-balance">⚡ <span id="mkt-balance">0</span> Sparks</div>
+      <button class="mkt-sell-btn" onclick="marketOpenSell()">＋ Sell a file</button>
+    </div>
+    <div class="mkt-list" id="mkt-list"></div>
+  </div>
+  <div class="mkt-modal" id="mkt-sell-modal" onclick="if(event.target===this)marketCloseSell()">
+    <div class="mkt-modal-card">
+      <h3>Sell a file</h3>
+      <select id="mkt-file-select"></select>
+      <input id="mkt-price" type="number" min="1" step="1" placeholder="Price in Sparks ⚡">
+      <textarea id="mkt-desc" class="mos-check" placeholder="Description (optional)"></textarea>
+      <div class="mkt-modal-actions">
+        <button onclick="marketCloseSell()">Cancel</button>
+        <button class="primary" onclick="marketSubmitSell()">List for sale</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function marketRefreshBalance() {
+  const res = await apiFetch('/api/me/data/clicker');
+  mktBalance = (res && !res.error && res.value?.points) || 0;
+  const el = document.getElementById('mkt-balance'); if (el) el.textContent = ckFmt(mktBalance);
+}
+async function marketLoad() {
+  const el = document.getElementById('mkt-list'); if (!el) return;
+  el.innerHTML = '<div class="mkt-empty">Loading…</div>';
+  const list = await apiFetch('/api/market');
+  if (!Array.isArray(list)) { el.innerHTML = '<div class="mkt-empty">Marketplace needs a server connection.</div>'; return; }
+  if (!list.length) { el.innerHTML = '<div class="mkt-empty">No listings yet — be the first to sell something!</div>'; return; }
+  el.innerHTML = list.map(l => {
+    const mine = l.seller === currentUser?.username;
+    return `<div class="mkt-card">
+      <div class="mkt-card-icon">📄</div>
+      <div class="mkt-card-info">
+        <div class="mkt-card-name">${escapeHtml(l.fileName)}</div>
+        <div class="mkt-card-sub">by @${escapeHtml(l.seller)}${l.desc ? ' — ' + escapeHtml(l.desc) : ''}</div>
+      </div>
+      <div class="mkt-card-price">${l.price.toLocaleString()} ⚡</div>
+      ${mine
+        ? `<button class="mkt-cancel" onclick="marketCancel('${l.id}')">Cancel</button>`
+        : `<button class="mkt-buy" onclick="marketBuy('${l.id}')">Buy</button>`}
+    </div>`;
+  }).join('');
+}
+function initMarket() { marketRefreshBalance(); marketLoad(); }
+async function marketOpenSell() {
+  const files = await apiFetch('/api/files');
+  const sel = document.getElementById('mkt-file-select');
+  if (!Array.isArray(files) || !files.length) { notify('🏪', 'No files to sell', 'Create something in Max Docs, Paint, etc. first.'); return; }
+  sel.innerHTML = files.map(f => `<option value="${escapeHtml(f.path)}">${escapeHtml(f.name)}</option>`).join('');
+  document.getElementById('mkt-sell-modal').classList.add('open');
+}
+function marketCloseSell() { document.getElementById('mkt-sell-modal').classList.remove('open'); }
+async function marketSubmitSell() {
+  const path = document.getElementById('mkt-file-select').value;
+  const price = parseInt(document.getElementById('mkt-price').value, 10);
+  const desc = document.getElementById('mkt-desc').value.trim();
+  if (!path) { notify('🏪', 'Pick a file', 'Choose a file to sell first.'); return; }
+  if (!price || price < 1) { notify('🏪', 'Set a price', 'Enter a price of at least 1 Spark.'); return; }
+  if (mosGuard(desc)) return;
+  const res = await apiFetch('/api/market', { method: 'POST', body: JSON.stringify({ path, price, desc }) });
+  if (res.error) { notify('🏪', 'Could not list it', res.error); return; }
+  marketCloseSell();
+  notify('🏪', 'Listed for sale', `${res.fileName} — ${res.price} ⚡`);
+  marketLoad();
+}
+async function marketBuy(id) {
+  const res = await apiFetch('/api/market/' + id + '/buy', { method: 'POST' });
+  if (res.error) { notify('🏪', 'Could not buy it', res.error); return; }
+  notify('🏪', 'Purchased!', `${res.name} landed in your Purchases folder for ${res.price} ⚡`);
+  mktBalance -= res.price;
+  const el = document.getElementById('mkt-balance'); if (el) el.textContent = ckFmt(mktBalance);
+  if (ckState) { ckState.points -= res.price; ckSave(); if (windows['clicker']) ckRefresh(); }
+  marketLoad();
+}
+async function marketCancel(id) {
+  const res = await apiFetch('/api/market/' + id, { method: 'DELETE' });
+  if (res.error) { notify('🏪', 'Could not cancel', res.error); return; }
+  marketLoad();
+}
 
 // ── MAX ANIMATOR — flipbook + movable elements + .pic images ──────────────────
 let anFrames = [], anCur = 0, anColor = '#ffffff', anSize = 4, anTool = 'pen', anPlay = null, anFps = 8;
@@ -8479,7 +8605,7 @@ const appInitHooks = {
   browser: initBrowser, makeyourownwebsite: initStudio, school: initSchool,
   maxdrive: initDrive, sheets: initSheets, forms: initForms, admin: initAdmin, adminwatch: initAdminWatch,
   board: initBoard, social: initSocial,
-  wordle: initWordle, clicker: initClicker, leaderboard: initLeaderboard,
+  wordle: initWordle, clicker: initClicker, leaderboard: initLeaderboard, market: initMarket,
 };
 </script>
 </body>

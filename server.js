@@ -193,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v40';
+const CACHE = 'maxos-shell-v41';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -413,6 +413,19 @@ const WordleAttemptSchema = new mongoose.Schema({
 WordleAttemptSchema.index({ username: 1, date: 1 }, { unique: true });
 const WordleAttempt = mongoose.model('WordleAttempt', WordleAttemptSchema);
 
+// Marketplace — sell a real file for Sparks. Buying moves the File doc itself
+// (new userId/path/parent) into the buyer's Purchases folder; it's a transfer of
+// ownership, not a copy, so it leaves the seller's MaxDrive.
+const MarketListingSchema = new mongoose.Schema({
+  sellerId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  sellerUsername: { type: String, required: true },
+  filePath:       { type: String, required: true }, // path in the seller's drive at listing time
+  fileName:       { type: String, required: true },
+  price:          { type: Number, required: true, min: 1 },
+  desc:           { type: String, default: '' },
+}, { timestamps: true });
+const MarketListing = mongoose.model('MarketListing', MarketListingSchema);
+
 const serializeClass = (c, forTeacher) => ({ id: c._id.toString(), name: c.name, code: c.code, teacher: c.teacher, students: c.students || [], allowedApps: c.allowedApps || [], ...(forTeacher ? { flags: (c.flags || []).slice(-30).reverse() } : {}) });
 // A user's school state: classes they teach, the class they're a student in, and
 // the resulting restrictions. A teacher is never restricted.
@@ -522,7 +535,7 @@ const RESERVED_APP_IDS = new Set(['files', 'maxdrive', 'appstore', 'messages', '
   'snake', 'g2048', 'ttt', 'memory', 'notes', 'pomodoro', 'weather', 'converter', 'otp', 'dice', 'wordle',
   'clicker', 'leaderboard', 'animator', 'video', 'camera', 'reminders', 'jumpworld', 'minecraft', 'mines', 'colors',
   'tetris', 'breakout', 'chess', 'life', 'piano', 'beats', 'fractal', 'markdown', 'codepen', 'typing', 'wiki', 'maps',
-  'chat', 'board', 'social', 'makeyourownwebsite']);
+  'chat', 'board', 'social', 'makeyourownwebsite', 'market']);
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
 async function uniqueSlug(base) {
   let id = base, n = 1;
@@ -1477,17 +1490,19 @@ app.delete('/api/apps/:id', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Make sure a user's "Shared with me" folder exists (idempotent — also used to
-// retroactively add the folder to accounts created before it existed).
-async function ensureSharedFolder(userId, username) {
-  const sharedDir = `/home/${username}/Shared with me`;
+// Make sure a top-level named folder exists in a user's drive (idempotent).
+async function ensureNamedFolder(userId, username, folderName) {
+  const dir = `/home/${username}/${folderName}`;
   await File.updateOne(
-    { userId, path: sharedDir },
-    { $setOnInsert: { userId, path: sharedDir, name: 'Shared with me', type: 'directory', parent: `/home/${username}` } },
+    { userId, path: dir },
+    { $setOnInsert: { userId, path: dir, name: folderName, type: 'directory', parent: `/home/${username}` } },
     { upsert: true }
   );
-  return sharedDir;
+  return dir;
 }
+// Make sure a user's "Shared with me" folder exists (idempotent — also used to
+// retroactively add the folder to accounts created before it existed).
+async function ensureSharedFolder(userId, username) { return ensureNamedFolder(userId, username, 'Shared with me'); }
 
 // Add a shared doc to recipient's MaxDrive
 async function addSharedToUserDrive(userId, type, title, content, fromUser) {
@@ -1713,6 +1728,82 @@ app.delete('/api/rm', auth, async (req, res) => {
     await File.deleteMany({ userId: req.user.id, path: new RegExp(`^${escaped}(/|$)`) });
     await File.deleteOne({ userId: req.user.id, path: p });
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Marketplace — sell real files for Sparks ──────────────────────────────────
+const serializeListing = l => ({ id: l._id, seller: l.sellerUsername, fileName: l.fileName, price: l.price, desc: l.desc, at: l.createdAt });
+app.get('/api/market', auth, async (req, res) => {
+  try {
+    const list = await MarketListing.find().sort({ createdAt: -1 }).limit(200);
+    res.json(list.map(serializeListing));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/market', auth, async (req, res) => {
+  try {
+    const { path, price, desc } = req.body;
+    const p = Math.floor(Number(price));
+    if (!Number.isFinite(p) || p < 1) return res.status(400).json({ error: 'Price must be a positive number of Sparks' });
+    const cleanDesc = String(desc || '').trim().slice(0, 140);
+    if (isExplicit(cleanDesc)) return res.status(400).json({ error: 'Please keep it friendly — that description was blocked.' });
+    const file = await File.findOne({ userId: req.user.id, path, type: 'file' });
+    if (!file) return res.status(404).json({ error: 'File not found' });
+    if (await MarketListing.findOne({ sellerId: req.user.id, filePath: path })) return res.status(409).json({ error: 'That file is already listed' });
+    const listing = await MarketListing.create({ sellerId: req.user.id, sellerUsername: req.user.username, filePath: path, fileName: file.name, price: p, desc: cleanDesc });
+    io.emit('market'); // let everyone's open Marketplace window know to refresh
+    res.json(serializeListing(listing));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/market/:id', auth, async (req, res) => {
+  try {
+    const listing = await MarketListing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Not found' });
+    if (listing.sellerId.toString() !== req.user.id) return res.status(403).json({ error: 'Not your listing' });
+    await listing.deleteOne();
+    io.emit('market');
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/market/:id/buy', auth, async (req, res) => {
+  try {
+    const listing = await MarketListing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ error: 'Listing not found' });
+    if (listing.sellerId.toString() === req.user.id) return res.status(400).json({ error: "You can't buy your own listing" });
+    const file = await File.findOne({ userId: listing.sellerId, path: listing.filePath, type: 'file' });
+    if (!file) { await listing.deleteOne(); io.emit('market'); return res.status(410).json({ error: 'That item is no longer available' }); }
+    // Atomic check-and-deduct on the buyer — guards against double-spend races
+    const deducted = await User.updateOne(
+      { _id: req.user.id, 'appData.clicker.points': { $gte: listing.price } },
+      { $inc: { 'appData.clicker.points': -listing.price } }
+    );
+    if (deducted.matchedCount === 0) return res.status(400).json({ error: 'Not enough Sparks' });
+    const buyer = await User.findById(req.user.id);
+    const purchasesDir = await ensureNamedFolder(buyer._id, buyer.username, 'Purchases');
+    let targetName = file.name, targetPath = `${purchasesDir}/${targetName}`, n = 1;
+    while (await File.findOne({ userId: buyer._id, path: targetPath })) {
+      n++;
+      const dot = file.name.lastIndexOf('.');
+      targetName = dot > 0 ? `${file.name.slice(0, dot)} (${n})${file.name.slice(dot)}` : `${file.name} (${n})`;
+      targetPath = `${purchasesDir}/${targetName}`;
+    }
+    // Re-match seller ownership on the move — guards against the file changing hands
+    // in the moment between the existence check above and this update.
+    const moved = await File.findOneAndUpdate(
+      { _id: file._id, userId: listing.sellerId },
+      { userId: buyer._id, path: targetPath, name: targetName, parent: purchasesDir },
+      { new: true }
+    );
+    if (!moved) {
+      await User.updateOne({ _id: req.user.id }, { $inc: { 'appData.clicker.points': listing.price } }); // refund
+      await listing.deleteOne();
+      io.emit('market');
+      return res.status(410).json({ error: 'That item is no longer available — refunded' });
+    }
+    await User.updateOne({ _id: listing.sellerId }, { $inc: { 'appData.clicker.points': listing.price } });
+    await listing.deleteOne();
+    io.to('user:' + listing.sellerUsername).emit('market:sold', { fileName: targetName, price: listing.price, buyer: buyer.username });
+    io.emit('market');
+    res.json({ ok: true, name: targetName, path: targetPath, price: listing.price });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
