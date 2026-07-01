@@ -7844,8 +7844,19 @@ async function openShared(id) {
 }
 
 // ══ MAX CHAT — embeds the external messaging site ════════════════════════════
+const CHAT_SITE_URL = 'https://maxvbuda.github.io/messaging-website';
 function buildChat() {
-  return `<iframe class="custom-frame" id="chat-frame" src="https://maxvbuda.github.io/messaging-website" allow="camera; microphone"></iframe>`;
+  return `<div style="display:flex;flex-direction:column;height:100%">
+    <div class="editor-toolbar">
+      <button onclick="chatFrameGo('${CHAT_SITE_URL}')">🏠 Home</button>
+      <button onclick="chatFrameGo('${CHAT_SITE_URL}/admin')">🛡️ Admin</button>
+    </div>
+    <iframe class="custom-frame" id="chat-frame" src="${CHAT_SITE_URL}" allow="camera; microphone" style="flex:1"></iframe>
+  </div>`;
+}
+function chatFrameGo(url) {
+  const f = document.getElementById('chat-frame');
+  if (f) f.src = url;
 }
 
 // ══ MAX BOARD — Trello-style kanban ═══════════════════════════════════════════
