@@ -7559,7 +7559,13 @@ async function loadCustomApps() {
   // drop previously-registered customs, then re-add
   Object.keys(customApps).forEach(id => { if (apps[id]) delete apps[id]; });
   customApps = {};
-  list.forEach(def => { customApps[def.id] = def; registerCustomApp(def); });
+  // A published community app's id should never shadow a built-in app (this is
+  // exactly how the old published "Clicker" MaxScript app broke Max Clicker) — the
+  // server now blocks this at publish time too, but skip here as a second guard.
+  list.forEach(def => {
+    if (apps[def.id] && !apps[def.id].custom) { console.warn('Skipped community app "' + def.id + '" — id collides with a built-in app'); return; }
+    customApps[def.id] = def; registerCustomApp(def);
+  });
   renderDesktop(); renderStartApps();
   if (windows['appstore']) renderStoreGrid();
   if (windows['makeyourownwebsite']) studioRenderList();

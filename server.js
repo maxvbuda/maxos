@@ -193,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v36';
+const CACHE = 'maxos-shell-v37';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -514,8 +514,21 @@ async function recordSpamStrike(username) {
 const clearSpamStrikes = (username) => spamStrikes.delete(username);
 
 const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.html, css: d.css, js: d.js, lang: d.lang, author: d.authorName, installs: d.installs, updatedAt: d.updatedAt });
+// Built-in app ids from the client's `apps` registry in os.html — a published community
+// app can never be given one of these, since the client would silently let the custom
+// app's registerCustomApp() overwrite the built-in one under the same key.
+const RESERVED_APP_IDS = new Set(['files', 'maxdrive', 'appstore', 'messages', 'editor', 'sheets', 'forms', 'terminal',
+  'browser', 'settings', 'admin', 'school', 'adminwatch', 'calc', 'paint', 'music', 'clock', 'calendar', 'sysmon',
+  'snake', 'g2048', 'ttt', 'memory', 'notes', 'pomodoro', 'weather', 'converter', 'otp', 'dice', 'maxcoin', 'wordle',
+  'clicker', 'leaderboard', 'animator', 'video', 'camera', 'reminders', 'jumpworld', 'minecraft', 'mines', 'colors',
+  'tetris', 'breakout', 'chess', 'life', 'piano', 'beats', 'fractal', 'markdown', 'codepen', 'typing', 'wiki', 'maps',
+  'chat', 'board', 'social', 'makeyourownwebsite']);
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
-async function uniqueSlug(base) { let id = base, n = 1; while (await AppModel.findOne({ id })) id = base + (++n); return id; }
+async function uniqueSlug(base) {
+  let id = base, n = 1;
+  while (RESERVED_APP_IDS.has(id) || await AppModel.findOne({ id })) id = base + (++n);
+  return id;
+}
 
 // ── Seed user filesystem ──────────────────────────────────────────────────────
 async function seedUser(userId, username) {
@@ -2258,6 +2271,18 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
       const r = await IndexPage.updateMany({ lang: { $exists: false } }, { $set: { lang: 'en' } });
       if (r.modifiedCount) console.log(`🌐 MaxSearch: tagged ${r.modifiedCount} existing pages as 'en'`);
     } catch (e) { console.log('MaxSearch index sync skipped:', e.message); }
+    // Migrate: rename any published community app whose id collides with a built-in
+    // app id — registerCustomApp() on the client silently overwrites the built-in app
+    // otherwise (this is how the old "Clicker" MaxScript app broke Max Clicker).
+    try {
+      const clashing = await AppModel.find({ id: { $in: [...RESERVED_APP_IDS] } });
+      for (const doc of clashing) {
+        const renamed = await uniqueSlug(doc.id + 'app');
+        console.log(`🔧 Renaming published app '${doc.id}' → '${renamed}' (collided with a built-in app id)`);
+        doc.id = renamed;
+        await doc.save();
+      }
+    } catch (e) { console.log('App id collision migration skipped:', e.message); }
     // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
     // otherwise promote the oldest account (the owner).
     try {
