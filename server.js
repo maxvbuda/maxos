@@ -193,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v37';
+const CACHE = 'maxos-shell-v40';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -225,7 +225,7 @@ const UserSchema = new mongoose.Schema({
   password:    { type: String, required: true },
   displayName: { type: String, default: '' },
   installed:   { type: [String], default: ['calc', 'music', 'snake', 'notes'] },
-  appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (MaxCoin wallet, etc.)
+  appData:     { type: mongoose.Schema.Types.Mixed, default: {} }, // per-user KV store (Clicker state, app prefs, etc.)
   suspended:   { type: Boolean, default: false },
   suspicious:  { type: Boolean, default: false },
   signupIP:    { type: String, default: '' }, // captured at registration (abuse moderation, superadmin-only)
@@ -519,7 +519,7 @@ const serializeApp = d => ({ id: d.id, title: d.title, icon: d.icon, html: d.htm
 // app's registerCustomApp() overwrite the built-in one under the same key.
 const RESERVED_APP_IDS = new Set(['files', 'maxdrive', 'appstore', 'messages', 'editor', 'sheets', 'forms', 'terminal',
   'browser', 'settings', 'admin', 'school', 'adminwatch', 'calc', 'paint', 'music', 'clock', 'calendar', 'sysmon',
-  'snake', 'g2048', 'ttt', 'memory', 'notes', 'pomodoro', 'weather', 'converter', 'otp', 'dice', 'maxcoin', 'wordle',
+  'snake', 'g2048', 'ttt', 'memory', 'notes', 'pomodoro', 'weather', 'converter', 'otp', 'dice', 'wordle',
   'clicker', 'leaderboard', 'animator', 'video', 'camera', 'reminders', 'jumpworld', 'minecraft', 'mines', 'colors',
   'tetris', 'breakout', 'chess', 'life', 'piano', 'beats', 'fractal', 'markdown', 'codepen', 'typing', 'wiki', 'maps',
   'chat', 'board', 'social', 'makeyourownwebsite']);
@@ -801,22 +801,17 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
-// Bumps the daily login streak once per calendar day and credits a small MaxCoin
-// bonus that scales with streak length. Returns { count, justAwarded } — justAwarded
-// is only nonzero on the request that actually crossed into a new day, so the client
-// shows the "streak! +coins" notification exactly once per day, not on every poll.
+// Bumps the daily login streak once per calendar day. Returns { count, justAwarded } —
+// justAwarded is only true on the request that actually crossed into a new day, so the
+// client shows the "streak!" notification exactly once per day, not on every poll.
 async function applyLoginStreak(user) {
   const today = todayStr();
-  if (user.loginStreak?.lastDate === today) return { count: user.loginStreak.count || 0, justAwarded: 0 };
+  if (user.loginStreak?.lastDate === today) return { count: user.loginStreak.count || 0, justAwarded: false };
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const wasYesterday = user.loginStreak?.lastDate === yesterday;
   const count = wasYesterday ? (user.loginStreak.count || 0) + 1 : 1;
-  const bonus = Math.min(5 + count, 50);
-  await User.updateOne({ _id: user._id }, {
-    $set: { 'loginStreak.count': count, 'loginStreak.lastDate': today },
-    $inc: { 'appData.maxcoin.coins': bonus },
-  });
-  return { count, justAwarded: bonus };
+  await User.updateOne({ _id: user._id }, { $set: { 'loginStreak.count': count, 'loginStreak.lastDate': today } });
+  return { count, justAwarded: true };
 }
 
 app.post('/api/auth/login', async (req, res) => {
@@ -880,7 +875,7 @@ app.put('/api/me/installed', auth, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Per-user app data (KV store in Mongo): MaxCoin wallet, app prefs, etc. ────
+// ── Per-user app data (KV store in Mongo): Clicker state, app prefs, etc. ────
 app.get('/api/me/data/:key', auth, async (req, res) => {
   try { const u = await User.findById(req.user.id).select('appData'); res.json({ value: (u.appData || {})[req.params.key] ?? null }); }
   catch (e) { res.status(500).json({ error: e.message }); }

@@ -579,20 +579,41 @@
   @keyframes diceRoll { 0%{transform:rotate(0) scale(1)} 50%{transform:rotate(180deg) scale(1.2)} 100%{transform:rotate(360deg) scale(1)} }
   .rolling { animation:diceRoll .4s ease; }
 
-  /* MaxCoin */
-  .mc-app { display:flex; flex-direction:column; align-items:center; gap:14px; height:100%; padding:24px 20px; text-align:center; }
-  .mc-title { color:#fff; font-size:20px; font-weight:700; }
-  .mc-bal { font-size:40px; font-weight:800; background:linear-gradient(135deg,#febc2e,#ff9f0a); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-  .mc-rate { color:rgba(255,255,255,.55); font-size:13px; margin-top:-6px; }
-  .mc-mine { margin-top:6px; background:linear-gradient(135deg,#ff9f0a,#febc2e); border:none; color:#3a2a00; font-weight:800; font-size:20px; padding:18px 30px; border-radius:18px; cursor:pointer; box-shadow:0 8px 22px rgba(255,159,10,.35); transition:transform .06s; }
-  .mc-mine:active { transform:scale(.96); }
-  @keyframes mcPop { 0%{transform:scale(1)} 40%{transform:scale(1.08)} 100%{transform:scale(1)} }
-  .mc-mine.pop { animation:mcPop .18s ease; }
-  .mc-row { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
-  .mc-btn { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.14); color:#fff; border-radius:12px; padding:11px 16px; font-size:13px; cursor:pointer; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:2px; }
-  .mc-btn:hover { background:rgba(255,255,255,.18); }
-  .mc-btn small { color:rgba(255,255,255,.45); font-size:10px; font-weight:400; }
-  .mc-note { color:rgba(255,255,255,.6); font-size:12px; margin-top:auto; min-height:16px; }
+  /* Max Clicker */
+  .ck-wrap { display:flex; flex-direction:column; height:100%; padding:16px; gap:10px; color:#fff; position:relative; overflow:hidden; background:radial-gradient(circle at 50% 28%, rgba(255,159,10,.14), transparent 62%); }
+  .ck-stats { text-align:center; position:relative; z-index:2; }
+  .ck-points { font-size:36px; font-weight:800; background:linear-gradient(135deg,#ffe08a,#ff9f0a,#ff5f57); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; text-shadow:0 0 22px rgba(255,159,10,.3); display:inline-block; }
+  .ck-points.bump { animation:ckBump .18s ease; }
+  @keyframes ckBump { 0%{transform:scale(1)} 45%{transform:scale(1.1)} 100%{transform:scale(1)} }
+  .ck-rate { color:rgba(255,255,255,.55); font-size:12px; margin-top:2px; }
+  .ck-tapzone { position:relative; display:flex; align-items:center; justify-content:center; padding:14px 0 18px; }
+  .ck-ring { position:absolute; width:172px; height:172px; border-radius:50%; border:2px dashed rgba(255,190,80,.3); animation:ckSpin 9s linear infinite; }
+  @keyframes ckSpin { to { transform:rotate(360deg); } }
+  .ck-tap { position:relative; width:148px; height:148px; border-radius:50%; border:none; cursor:pointer; background:radial-gradient(circle at 35% 30%, #ffe9ad, #ff9f0a 55%, #ff5f0a 100%); font-size:54px; display:flex; align-items:center; justify-content:center; animation:ckGlow 2.2s ease-in-out infinite; transition:transform .08s; z-index:2; }
+  .ck-tap:active { transform:scale(.92); }
+  @keyframes ckGlow { 0%,100%{ box-shadow:0 0 0 0 rgba(255,159,10,.4), 0 10px 26px rgba(255,120,10,.3);} 50%{ box-shadow:0 0 0 12px rgba(255,159,10,0), 0 10px 36px rgba(255,159,10,.5);} }
+  .ck-float { position:absolute; left:50%; top:38%; transform:translate(-50%,0); font-weight:800; font-size:16px; color:#ffd76a; text-shadow:0 0 8px rgba(255,159,10,.6); pointer-events:none; animation:ckFloat .9s ease-out forwards; z-index:5; white-space:nowrap; }
+  .ck-float.ck-float-sm { font-size:12px; color:rgba(255,215,100,.85); }
+  @keyframes ckFloat { 0%{ opacity:1; transform:translate(-50%,0) scale(1);} 100%{ opacity:0; transform:translate(-50%,-64px) scale(1.1);} }
+  .ck-bots { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; min-height:24px; position:relative; z-index:2; margin-top:-8px; }
+  .ck-bot { font-size:20px; animation:ckBotTap 1s ease-in-out infinite; filter:drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+  @keyframes ckBotTap { 0%,100%{ transform:translateY(0) rotate(0deg);} 40%{ transform:translateY(4px) rotate(-10deg);} 55%{ transform:translateY(1px) rotate(5deg);} 70%{ transform:translateY(0) rotate(0deg);} }
+  .ck-bot-more { font-size:11px; color:rgba(255,255,255,.5); align-self:center; }
+  .ck-section-label { color:rgba(255,255,255,.4); font-size:11px; text-transform:uppercase; letter-spacing:1px; position:relative; z-index:2; }
+  .ck-upgrades { display:flex; flex-direction:column; gap:8px; overflow-y:auto; position:relative; z-index:2; }
+  .ck-card { display:flex; align-items:center; gap:10px; width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:9px 12px; cursor:pointer; transition:background .12s, transform .08s, border-color .12s; text-align:left; color:#fff; font-family:inherit; }
+  .ck-card:hover:not(:disabled) { background:rgba(255,255,255,.11); }
+  .ck-card:active:not(:disabled) { transform:scale(.98); }
+  .ck-card:disabled { cursor:default; opacity:.5; }
+  .ck-card.afford { border-color:rgba(255,190,80,.5); animation:ckCardPulse 1.8s ease-in-out infinite; }
+  @keyframes ckCardPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(255,159,10,0);} 50%{ box-shadow:0 0 0 4px rgba(255,159,10,.14);} }
+  .ck-card-icon { width:36px; height:36px; border-radius:10px; background:rgba(255,159,10,.18); display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  .ck-card-info { flex:1; min-width:0; }
+  .ck-card-name { font-size:13px; font-weight:600; }
+  .ck-card-sub { font-size:11px; color:rgba(255,255,255,.4); }
+  .ck-card-cost { font-size:12px; font-weight:700; color:#ffd76a; white-space:nowrap; }
+  .ck-offline { background:linear-gradient(135deg,rgba(100,180,255,.18),rgba(150,120,255,.12)); border:1px solid rgba(140,170,255,.35); border-radius:12px; padding:12px; font-size:12px; text-align:center; position:relative; z-index:2; }
+  .ck-offline button { margin-top:8px; background:linear-gradient(135deg,#64b4ff,#8a7bff); border:none; color:#fff; border-radius:8px; padding:7px 18px; font-size:12px; font-weight:700; cursor:pointer; }
 
   /* Max Wordle */
   .wd-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; height:100%; padding:14px; }
@@ -1296,7 +1317,7 @@ async function authSubmit() {
 // calendar day, so this never double-fires on repeated /api/auth/me polls.
 function notifyLoginStreak(streak) {
   if (!streak || !streak.justAwarded) return;
-  setTimeout(() => notify('🔥', `${streak.count}-day streak!`, `+${streak.justAwarded} MaxCoin for coming back today`), 1200);
+  setTimeout(() => notify('🔥', `${streak.count}-day streak!`, 'Nice work coming back today'), 1200);
 }
 
 // Re-send the email-verification link to the signed-in user.
@@ -2229,7 +2250,6 @@ const apps = {
   converter:{ title: 'Unit Converter', short:'Converter',  icon:'📐', w:360, h:420, cat:'Utilities',  desc:'Length, weight, temp & more', html: buildConverter },
   otp:      { title: 'Secret Pad',     short:'Secret Pad', icon:'🔐', w:460, h:560, cat:'Utilities',  desc:'Unbreakable one-time-pad cipher', html: buildOTP },
   dice:     { title: 'Dice & Coin',    short:'Dice',       icon:'🎲', w:340, h:420, cat:'Games',      desc:'Roll dice, flip a coin',      html: buildDice },
-  maxcoin:  { title: 'MaxCoin',        short:'MaxCoin',    icon:'🪙', w:380, h:480, cat:'Games',      desc:'Mine & spend pretend crypto',  html: buildMaxcoin },
   wordle:   { title: 'Max Wordle',     short:'Wordle',     icon:'🟩', w:380, h:560, cat:'Games',      desc:'Daily 5-letter word puzzle',   html: buildWordle },
   clicker:  { title: 'Max Clicker',    short:'Clicker',    icon:'⚡', w:420, h:580, cat:'Games',      desc:'Idle clicker — check in daily', html: buildClicker },
   leaderboard:{ title: 'Leaderboards', short:'Leaders',    icon:'🏆', w:420, h:520, cat:'Games',      desc:'Global high scores',           html: buildLeaderboard },
@@ -5196,62 +5216,6 @@ function flipCoin() {
   setTimeout(() => { d.textContent = heads ? '🪙' : '🪙'; r.textContent = heads ? 'Heads!' : 'Tails!'; }, 200);
 }
 
-// ── MAXCOIN — a fake crypto wallet/miner (pretend coins, real fun) ────────────
-let mcCoins = 0, mcRate = 1, mcSaveTimer = null;
-const MC_MINE = 0.01, MC_UPGRADE = 0.10; // earn 0.01 MXC per click; first upgrade costs 0.10
-function mcKey() { return 'maxos_maxcoin_' + (currentUser?.username || 'guest'); }
-function mcFmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
-function buildMaxcoin() {
-  // optimistic restore from localStorage; authoritative MongoDB load happens in init
-  try { const s = JSON.parse(localStorage.getItem(mcKey()) || '{}'); mcCoins = +s.coins || 0; mcRate = +s.rate || 1; } catch (e) { mcCoins = 0; mcRate = 1; }
-  return `<div class="mc-app">
-    <div class="mc-title">🪙 MaxCoin Wallet</div>
-    <div class="mc-bal" id="mc-bal">${mcFmt(mcCoins)} MXC</div>
-    <div class="mc-rate" id="mc-rate">Mining power: ${mcFmt(MC_MINE * mcRate)} / click</div>
-    <button class="mc-mine" id="mc-mine">⛏️ Mine MaxCoin</button>
-    <div class="mc-row">
-      <button class="mc-btn" id="mc-up">⚡ Upgrade rig<small>cost ${mcFmt(MC_UPGRADE)} MXC</small></button>
-      <button class="mc-btn" id="mc-cash">💰 Cash out</button>
-    </div>
-    <div class="mc-note" id="mc-note">Tip: it's all pretend — worth exactly $0.00 😄</div>
-  </div>`;
-}
-function mcSave() {
-  const data = { coins: mcCoins, rate: mcRate };
-  try { localStorage.setItem(mcKey(), JSON.stringify(data)); } catch (e) {}
-  clearTimeout(mcSaveTimer); // debounce the Mongo write so rapid mining doesn't spam the server
-  mcSaveTimer = setTimeout(() => apiFetch('/api/me/data/maxcoin', { method: 'PUT', body: JSON.stringify({ value: data }) }), 600);
-}
-function mcRefresh() {
-  const b = document.getElementById('mc-bal'), r = document.getElementById('mc-rate');
-  if (b) b.textContent = mcFmt(mcCoins) + ' MXC';
-  if (r) r.textContent = 'Mining power: ' + mcFmt(MC_MINE * mcRate) + ' / click';
-}
-function mcNote(msg) { const n = document.getElementById('mc-note'); if (n) n.textContent = msg; }
-function initMaxcoin() {
-  mcRefresh();
-  // Load the authoritative wallet from MongoDB (don't block button wiring on it)
-  apiFetch('/api/me/data/maxcoin').then(res => {
-    if (res && !res.error && res.value) { mcCoins = +res.value.coins || 0; mcRate = +res.value.rate || 1; try { localStorage.setItem(mcKey(), JSON.stringify({ coins: mcCoins, rate: mcRate })); } catch (e) {} mcRefresh(); }
-  });
-  const mine = document.getElementById('mc-mine'); if (!mine) return;
-  mine.onclick = () => {
-    mcCoins = Math.round((mcCoins + MC_MINE * mcRate) * 100) / 100; // round to cents to avoid float drift
-    mcSave(); mcRefresh();
-    mine.classList.remove('pop'); void mine.offsetWidth; mine.classList.add('pop');
-  };
-  document.getElementById('mc-up').onclick = () => {
-    if (mcCoins < MC_UPGRADE) { mcNote('Need ' + mcFmt(MC_UPGRADE) + ' MXC to upgrade — keep mining! ⛏️'); return; }
-    mcCoins = Math.round((mcCoins - MC_UPGRADE) * 100) / 100; mcRate += 1; mcSave(); mcRefresh();
-    mcNote('Rig upgraded! Now mining ' + mcFmt(MC_MINE * mcRate) + ' / click ⚡');
-  };
-  document.getElementById('mc-cash').onclick = () => {
-    if (mcCoins <= 0) { mcNote('Your wallet is empty. Mine some MaxCoin first!'); return; }
-    mcNote('Cashed out ' + mcFmt(mcCoins) + ' MXC for $0.00 (it is fake) 😂');
-    mcCoins = 0; mcSave(); mcRefresh();
-  };
-}
-
 // ── MAX WORDLE — daily 5-letter word puzzle, same word for everyone each day ───
 let wordleState = null; // { date, guesses, feedback, solved, done, maxGuesses, wordLength, streak }
 const WORDLE_KEYROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
@@ -5351,37 +5315,72 @@ const CK_UPGRADES = [
   { id: 'satellite', name: 'Satellite',  icon: '🛰️', baseCost: 10000, perSec: 50 },
 ];
 const CK_OFFLINE_CAP_MS = 24 * 60 * 60 * 1000;
-let ckState = null, ckPendingOffline = 0, ckTickTimer = null, ckSaveTimer = null, ckTicksSinceSave = 0;
+let ckState = null, ckPendingOffline = 0, ckTickTimer = null, ckSaveTimer = null, ckTicksSinceSave = 0, ckTicksSinceFloat = 0;
 function buildClicker() {
-  return `<div style="display:flex;flex-direction:column;height:100%;padding:14px;gap:10px;color:#fff;font-family:inherit">
+  return `<div class="ck-wrap">
     <div id="ck-offline-banner"></div>
-    <div style="text-align:center">
-      <div style="font-size:30px;font-weight:800" id="ck-points">0</div>
-      <div style="color:rgba(255,255,255,.5);font-size:12px" id="ck-rate">0 / sec</div>
+    <div class="ck-stats">
+      <div class="ck-points" id="ck-points">0 ⚡</div>
+      <div class="ck-rate" id="ck-rate">0 / sec</div>
     </div>
-    <button id="ck-tap" style="background:linear-gradient(135deg,#febc2e,#ff9f0a);border:none;color:#fff;border-radius:14px;padding:20px;font-size:18px;font-weight:700;cursor:pointer">⚡ Tap for a Spark</button>
-    <div style="color:rgba(255,255,255,.5);font-size:11px;margin-top:4px">Upgrades</div>
-    <div id="ck-upgrades" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto"></div>
+    <div class="ck-tapzone" id="ck-tapzone">
+      <div class="ck-ring"></div>
+      <button class="ck-tap" id="ck-tap">⚡</button>
+    </div>
+    <div class="ck-bots" id="ck-bots"></div>
+    <div class="ck-section-label">Upgrades</div>
+    <div class="ck-upgrades" id="ck-upgrades"></div>
   </div>`;
 }
 function ckCost(u) { return Math.ceil(u.baseCost * Math.pow(1.15, ckState.upgrades[u.id] || 0)); }
 function ckPerSecond() { return CK_UPGRADES.reduce((sum, u) => sum + (ckState.upgrades[u.id] || 0) * u.perSec, 0); }
 function ckFmt(n) { return n >= 1000 ? Math.floor(n).toLocaleString() : (Math.round(n * 10) / 10).toString(); }
+// A little "+1 ⚡" (or similar) rises from the tap zone and fades — the visual payoff
+// that makes each tap/tick feel like it actually did something.
+function ckFloatText(text, small) {
+  const zone = document.getElementById('ck-tapzone'); if (!zone) return;
+  const el = document.createElement('div');
+  el.className = 'ck-float' + (small ? ' ck-float-sm' : '');
+  el.textContent = text;
+  el.style.left = (50 + (Math.random() * 30 - 15)) + '%';
+  zone.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
 function ckRenderUpgrades() {
   const el = document.getElementById('ck-upgrades'); if (!el) return;
   el.innerHTML = CK_UPGRADES.map(u => {
     const cost = ckCost(u), owned = ckState.upgrades[u.id] || 0, afford = ckState.points >= cost;
-    return `<button onclick="ckBuy('${u.id}')" ${afford ? '' : 'disabled'} style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,${afford ? '.1' : '.04'});border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;color:#fff;cursor:${afford ? 'pointer' : 'default'};opacity:${afford ? '1' : '.55'}">
-      <span>${u.icon} ${u.name} <span style="color:rgba(255,255,255,.4);font-size:11px">×${owned}</span></span>
-      <span style="font-size:12px">${ckFmt(cost)} ⚡</span>
+    return `<button class="ck-card${afford ? ' afford' : ''}" onclick="ckBuy('${u.id}')" ${afford ? '' : 'disabled'}>
+      <div class="ck-card-icon">${u.icon}</div>
+      <div class="ck-card-info">
+        <div class="ck-card-name">${u.name}</div>
+        <div class="ck-card-sub">×${owned} owned · +${ckFmt(u.perSec)}/sec each</div>
+      </div>
+      <div class="ck-card-cost">${ckFmt(cost)} ⚡</div>
     </button>`;
   }).join('');
+}
+let ckBotsShown = -1; // last rendered Click Bot count — skip re-render when unchanged so the
+                       // tap animation doesn't restart from frame zero on every 1s tick
+function ckRenderBots() {
+  const zone = document.getElementById('ck-bots'); if (!zone) return;
+  const owned = ckState.upgrades.bot || 0;
+  if (owned === ckBotsShown) return;
+  ckBotsShown = owned;
+  const shown = Math.min(owned, 6);
+  zone.innerHTML = Array.from({ length: shown }, (_, i) => `<div class="ck-bot" style="animation-delay:${(i * 0.15).toFixed(2)}s">🤖</div>`).join('')
+    + (owned > shown ? `<div class="ck-bot-more">+${owned - shown}</div>` : '');
 }
 function ckRefresh() {
   const p = document.getElementById('ck-points'), r = document.getElementById('ck-rate');
   if (p) p.textContent = ckFmt(ckState.points) + ' ⚡';
   if (r) r.textContent = ckFmt(ckPerSecond()) + ' / sec';
+  ckRenderBots();
   ckRenderUpgrades();
+}
+function ckBump() {
+  const p = document.getElementById('ck-points'); if (!p) return;
+  p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump');
 }
 function ckSave() {
   clearTimeout(ckSaveTimer);
@@ -5393,12 +5392,15 @@ function ckBuy(id) {
   if (ckState.points < cost) return;
   ckState.points -= cost;
   ckState.upgrades[id] = (ckState.upgrades[id] || 0) + 1;
-  ckRefresh(); ckSave();
+  ckRefresh(); ckBump(); ckSave();
 }
 function ckTick() {
   ckState.points += ckPerSecond();
   ckState.lastCollectedAt = Date.now();
   ckRefresh();
+  // A small ambient float every few seconds shows passive income is actually
+  // flowing, without spamming a new DOM particle on every single tick.
+  if (ckPerSecond() > 0 && ++ckTicksSinceFloat >= 4) { ckTicksSinceFloat = 0; ckFloatText('+' + ckFmt(ckPerSecond() * 4) + ' ⚡', true); }
   if (++ckTicksSinceSave >= 5) { ckTicksSinceSave = 0; ckSave(); }
 }
 function ckStartTicking() {
@@ -5410,11 +5412,12 @@ function ckCollectOffline() {
   ckPendingOffline = 0;
   ckState.lastCollectedAt = Date.now();
   const banner = document.getElementById('ck-offline-banner'); if (banner) banner.innerHTML = '';
-  ckRefresh(); ckSave(); ckStartTicking();
+  ckRefresh(); ckBump(); ckSave(); ckStartTicking();
 }
 async function initClicker() {
   clearInterval(ckTickTimer);
-  document.getElementById('ck-tap').onclick = () => { ckState.points += 1; ckRefresh(); ckSave(); };
+  ckBotsShown = -1; // force the bot row to (re-)render on this fresh mount
+  document.getElementById('ck-tap').onclick = () => { ckState.points += 1; ckRefresh(); ckBump(); ckFloatText('+1 ⚡'); ckSave(); };
   const res = await apiFetch('/api/me/data/clicker');
   const loaded = (res && !res.error && res.value) ? res.value : null;
   ckState = loaded || { points: 0, upgrades: {}, lastCollectedAt: Date.now() };
@@ -5425,9 +5428,9 @@ async function initClicker() {
     const capped = Math.min(elapsed, CK_OFFLINE_CAP_MS);
     ckPendingOffline = capped / 1000 * ckPerSecond();
     const cappedNote = elapsed > CK_OFFLINE_CAP_MS ? ' (capped at 24h — check in daily to not miss out!)' : '';
-    if (banner) banner.innerHTML = `<div style="background:rgba(100,180,255,.15);border:1px solid rgba(100,180,255,.35);border-radius:10px;padding:10px 12px;font-size:12px;text-align:center">
+    if (banner) banner.innerHTML = `<div class="ck-offline">
       While you were away you earned <b>${ckFmt(ckPendingOffline)} ⚡</b>${cappedNote}<br>
-      <button onclick="ckCollectOffline()" style="margin-top:8px;background:#64b4ff;border:none;color:#fff;border-radius:8px;padding:6px 16px;font-size:12px;font-weight:600;cursor:pointer">Collect</button>
+      <button onclick="ckCollectOffline()">Collect</button>
     </div>`;
     ckRefresh();
   } else {
@@ -8467,7 +8470,7 @@ const appInitHooks = {
   calendar: initCalendar, music: initMusic, appstore: initStore, messages: initMessages,
   g2048: initG2048, ttt: initTTT, memory: initMemory, notes: initNotes,
   pomodoro: initPomodoro, weather: initWeather, converter: initConverter,
-  dice: () => {}, colors: initColors, maxcoin: initMaxcoin, otp: initOTP,
+  dice: () => {}, colors: initColors, otp: initOTP,
   animator: initAnimator, video: initVideo,
   camera: initCamera, reminders: initReminders, jumpworld: initJump, mines: initMines,
   tetris: initTetris, breakout: initBreakout, life: initLife, piano: () => {},
