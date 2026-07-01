@@ -2554,23 +2554,33 @@ function addTaskbarBtn(id) {
 }
 
 // ── Drag ────────────────────────────────────────────────────────────────────
+// Pointer Capture (not plain mousemove/mouseup) so drag/resize keeps tracking the
+// handle even when the cursor passes over an iframe (Minecraft, Browser, Chat, …) —
+// an iframe's own document swallows mouseup, so a document-level listener never
+// fires and the drag gets stuck "on" forever. Capture routes events to the handle
+// regardless of what's underneath, and releases the moment the button comes up.
 function makeDraggable(id) {
   if (deviceMode === 'ipad') return; // no dragging on iPad
   const tb = document.getElementById('tb-' + id);
   const win = document.getElementById('win-' + id);
-  let ox, oy;
-  tb.addEventListener('mousedown', e => {
+  let ox, oy, dragging = false;
+  tb.addEventListener('pointerdown', e => {
     if (e.target.classList.contains('win-btn')) return;
     focusWindow(id);
     ox = e.clientX - win.offsetLeft;
     oy = e.clientY - win.offsetTop;
-    const move = ev => {
-      win.style.left = Math.max(0, ev.clientX - ox) + 'px';
-      win.style.top  = Math.max(0, Math.min(ev.clientY - oy, window.innerHeight - 48 - 38)) + 'px';
-    };
-    const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
-    addEventListener('mousemove', move); addEventListener('mouseup', up);
+    dragging = true;
+    tb.setPointerCapture(e.pointerId);
   });
+  tb.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    win.style.left = Math.max(0, e.clientX - ox) + 'px';
+    win.style.top  = Math.max(0, Math.min(e.clientY - oy, window.innerHeight - 48 - 38)) + 'px';
+  });
+  const stopDrag = () => { dragging = false; };
+  tb.addEventListener('pointerup', stopDrag);
+  tb.addEventListener('pointercancel', stopDrag);
+  tb.addEventListener('lostpointercapture', stopDrag);
   win.addEventListener('mousedown', () => focusWindow(id));
 }
 
@@ -2579,17 +2589,23 @@ function makeResizable(id) {
   if (deviceMode === 'ipad') return; // no resizing on iPad
   const rh = document.getElementById('rh-' + id);
   const win = document.getElementById('win-' + id);
-  rh.addEventListener('mousedown', e => {
+  let sx, sy, sw, sh, resizing = false;
+  rh.addEventListener('pointerdown', e => {
     e.preventDefault();
-    const sx = e.clientX, sy = e.clientY;
-    const sw = win.offsetWidth, sh = win.offsetHeight;
-    const move = ev => {
-      win.style.width  = Math.max(300, sw + ev.clientX - sx) + 'px';
-      win.style.height = Math.max(200, sh + ev.clientY - sy) + 'px';
-    };
-    const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); };
-    addEventListener('mousemove', move); addEventListener('mouseup', up);
+    sx = e.clientX; sy = e.clientY;
+    sw = win.offsetWidth; sh = win.offsetHeight;
+    resizing = true;
+    rh.setPointerCapture(e.pointerId);
   });
+  rh.addEventListener('pointermove', e => {
+    if (!resizing) return;
+    win.style.width  = Math.max(300, sw + e.clientX - sx) + 'px';
+    win.style.height = Math.max(200, sh + e.clientY - sy) + 'px';
+  });
+  const stopResize = () => { resizing = false; };
+  rh.addEventListener('pointerup', stopResize);
+  rh.addEventListener('pointercancel', stopResize);
+  rh.addEventListener('lostpointercapture', stopResize);
 }
 
 // ── File Manager ─────────────────────────────────────────────────────────────
