@@ -2163,6 +2163,37 @@ function dismissNotif(el) {
   setTimeout(() => el.remove(), 380);
 }
 
+// Drop-in replacement for window.prompt() — native prompt()/confirm()/alert() are
+// unreliable inside the Electron desktop build (often silently return null/false
+// instead of showing anything), which made things like MaxDrive's "New" menu appear
+// to do nothing at all. This is pure DOM/CSS, so it works the same everywhere.
+function customPrompt(title, defaultValue) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div'); ov.className = 'drive-modal';
+    ov.innerHTML = `<div class="drive-box" style="width:340px">
+      <div class="drive-head">${escapeHtml(title)}</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+        <input id="cp-input" type="text" value="${escapeHtml(defaultValue || '')}" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:9px 12px;font-size:13px;outline:none">
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="gbtn" id="cp-cancel">Cancel</button>
+          <button class="gbtn" id="cp-ok" style="background:linear-gradient(135deg,#64b4ff,#bf5af2)">OK</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector('#cp-input');
+    const finish = value => { ov.remove(); resolve(value); };
+    ov.querySelector('#cp-ok').onclick = () => finish(input.value.trim() || null);
+    ov.querySelector('#cp-cancel').onclick = () => finish(null);
+    ov.onclick = e => { if (e.target === ov) finish(null); };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') finish(input.value.trim() || null);
+      else if (e.key === 'Escape') finish(null);
+    });
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+  });
+}
+
 // ── Context menu ─────────────────────────────────────────────────────────────
 const ctxMenu = document.getElementById('ctx-menu');
 document.getElementById('desktop').addEventListener('contextmenu', e => {
@@ -7902,7 +7933,7 @@ async function driveNew(kind) {
   document.getElementById('drive-menu')?.classList.remove('open');
   const map = { doc: ['Untitled Doc', '.docs', 'editor'], md: ['Untitled', '.md', 'markdown'], sheet: ['Untitled Sheet', '.sheet', 'sheets'], form: ['Untitled Form', '.forms', 'forms'], board: ['Untitled Board', '.board', 'board'] };
   const [defName, ext, app] = map[kind];
-  let name = prompt('Name your new ' + kind + ':', defName); if (!name) return;
+  let name = await customPrompt('Name your new ' + kind + ':', defName); if (!name) return;
   if (!name.includes('.')) name += ext;
   const path = driveCwd + '/' + name;
   await fsTouch(path, name, driveCwd);
@@ -7914,7 +7945,7 @@ async function driveNew(kind) {
 }
 async function driveNewFolder() {
   document.getElementById('drive-menu')?.classList.remove('open');
-  const name = prompt('Folder name:'); if (!name) return;
+  const name = await customPrompt('Folder name:'); if (!name) return;
   await fsMkdir(driveCwd + '/' + name, name, driveCwd);
   driveLoad();
 }
