@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Max vs Andy Baseball Series Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f3f6fb;
+      color: #142033;
+    }
+
+    header {
+      background: #102a43;
+      color: white;
+      padding: 24px;
+      border-bottom: 5px solid #2f80ed;
+    }
+
+    header h1 { margin: 0; font-size: 34px; }
+    header p { margin-bottom: 0; color: #c9d8e8; }
+
+    .page {
+      max-width: 1350px;
+      margin: auto;
+      padding: 22px;
+    }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #d8e2ef;
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 24px rgba(16, 42, 67, 0.08);
+    }
+
+    .card h2, .card h3 { margin-top: 0; }
+
+    .big-number {
+      font-size: 42px;
+      font-weight: 900;
+      color: #102a43;
+    }
+
+    .muted {
+      color: #65758b;
+      font-size: 14px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      background: white;
+      border: 1px solid #d8e2ef;
+      border-radius: 18px;
+      box-shadow: 0 10px 24px rgba(16, 42, 67, 0.08);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1050px;
+    }
+
+    th {
+      background: #102a43;
+      color: white;
+      padding: 12px;
+      text-align: left;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    td {
+      border-bottom: 1px solid #e6edf5;
+      padding: 8px;
+      vertical-align: middle;
+    }
+
+    tr:hover td { background: #f8fbff; }
+
+    .game-label {
+      font-weight: 800;
+      color: #102a43;
+      white-space: nowrap;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid #c9d6e5;
+      border-radius: 10px;
+      padding: 9px;
+      font-size: 14px;
+      background: white;
+      color: #142033;
+    }
+
+    input[type="number"] { min-width: 72px; }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 10px 14px;
+      background: #2f80ed;
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    button:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    button.gray { background: #64748b; }
+    button.green { background: #16a34a; }
+    button.red { background: #dc2626; }
+    button.small { padding: 8px 10px; font-size: 13px; }
+
+    .bonus-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .bonus-box {
+      background: white;
+      border: 1px solid #d8e2ef;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 24px rgba(16, 42, 67, 0.08);
+    }
+
+    .bonus-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .spent-text {
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .completed { background: #dcfce7; color: #166534; }
+    .pending { background: #fef3c7; color: #92400e; }
+    .blank { background: #e2e8f0; color: #475569; }
+
+    .winner-max { color: #2563eb; font-weight: 900; }
+    .winner-andy { color: #dc2626; font-weight: 900; }
+
+    .winner-cell {
+      position: relative;
+      min-width: 120px;
+    }
+
+    .winner-arrow {
+      position: absolute;
+      right: -28px;
+      color: #2f80ed;
+      font-size: 28px;
+      font-weight: 900;
+      z-index: 2;
+      pointer-events: none;
+      font-family: Georgia, serif;
+    }
+
+    .winner-arrow.curve-down {
+      top: 8px;
+      transform: rotate(28deg);
+    }
+
+    .winner-arrow.curve-up {
+      bottom: 8px;
+      transform: rotate(-28deg);
+    }
+
+    .series-won-cell {
+      text-align: center;
+      background: #f8fbff;
+      min-width: 145px;
+      border-left: 3px solid #2f80ed;
+      vertical-align: middle;
+    }
+
+    .series-won-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-height: 82px;
+    }
+
+    .mini-scoreboard {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .player-card {
+      border-radius: 16px;
+      padding: 14px;
+      background: #f8fbff;
+      border: 1px solid #d8e2ef;
+    }
+
+    .player-name {
+      color: #65758b;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .saved-message {
+      display: none;
+      color: #166534;
+      font-weight: 800;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 850px) {
+      .top-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Max vs Andy Baseball Series</h1>
+    <p>Track each game, score, status, batting player, ghost runners, outs, winner, best-of-3 series blocks, and points. Each series win is worth 3 points, and bonus points can be spent into the current game score.</p>
+  </header>
+
+  <main class="page">
+    <section class="top-grid">
+      <div class="card">
+        <h2>Series Score</h2>
+        <div class="mini-scoreboard">
+          <div class="player-card">
+            <div class="player-name">Max</div>
+            <div class="big-number" id="maxPoints">0</div>
+            <div class="muted">points</div>
+            <div class="muted"><span id="maxWins">0</span> games won · <span id="maxSeriesWins">0</span> series won</div>
+          </div>
+          <div class="player-card">
+            <div class="player-name">Andy</div>
+            <div class="big-number" id="andyPoints">0</div>
+            <div class="muted">points</div>
+            <div class="muted"><span id="andyWins">0</span> games won · <span id="andySeriesWins">0</span> series won</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Series Leader</h2>
+        <div class="big-number" id="seriesLeader">N/A</div>
+        <div class="muted" id="seriesDetail">No completed games yet.</div>
+      </div>
+
+      <div class="card">
+        <h2>Current Game</h2>
+        <div class="big-number" id="currentGame">Game 1</div>
+        <div class="muted" id="currentGameDetail">Ready to start.</div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <button onclick="saveData()">Save to MongoDB</button>
+      <button class="gray" onclick="loadData()">Load from MongoDB</button>
+      <button class="green" onclick="autoFillWinners()">Auto-Fill Winners</button>
+      <button class="red" onclick="resetData()">Reset</button>
+      <span class="saved-message" id="savedMessage">Saved!</span>
+    </div>
+
+    <section class="bonus-panel">
+      <div class="bonus-box">
+        <h3>Max Bonus Points</h3>
+        <div class="big-number" id="maxAvailablePoints">0</div>
+        <div class="muted">available to add to the current game</div>
+        <div class="bonus-controls">
+          <input id="maxSpendInput" type="number" min="1" value="1">
+          <button class="small" onclick="spendBonusPoints('Max')">Add to Max score</button>
+        </div>
+        <div class="spent-text">Spent: <span id="maxSpentPoints">0</span></div>
+      </div>
+
+      <div class="bonus-box">
+        <h3>Andy Bonus Points</h3>
+        <div class="big-number" id="andyAvailablePoints">0</div>
+        <div class="muted">available to add to the current game</div>
+        <div class="bonus-controls">
+          <input id="andySpendInput" type="number" min="1" value="1">
+          <button class="small" onclick="spendBonusPoints('Andy')">Add to Andy score</button>
+        </div>
+        <div class="spent-text">Spent: <span id="andySpentPoints">0</span></div>
+      </div>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Series</th>
+            <th>Game</th>
+            <th>Score: Max</th>
+            <th>Score: Andy</th>
+            <th>Status</th>
+            <th>Batting</th>
+            <th>Ghost runners</th>
+            <th>Outs</th>
+            <th>Winner</th>
+            <th>Series won</th>
+          </tr>
+        </thead>
+        <tbody id="gameRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const totalGames = 15;
+
+    function getSeriesNumber(gameNumber) {
+      return Math.ceil(gameNumber / 3);
+    }
+
+    function isFirstGameInSeries(gameNumber) {
+      return (gameNumber - 1) % 3 === 0;
+    }
+
+    function getGamesInSeries(seriesNumber) {
+      return games.filter(game => getSeriesNumber(game.game) === seriesNumber);
+    }
+
+    function getSeriesWinner(seriesNumber) {
+      return getSeriesResult(seriesNumber).winner;
+    }
+
+    function getSeriesResult(seriesNumber) {
+      const seriesGames = getGamesInSeries(seriesNumber);
+      const maxWinningGames = seriesGames.filter(game => game.winner === "Max");
+      const andyWinningGames = seriesGames.filter(game => game.winner === "Andy");
+
+      if (maxWinningGames.length >= 2) {
+        return {
+          winner: "Max",
+          winningGameNumbers: maxWinningGames.slice(0, 2).map(game => game.game)
+        };
+      }
+
+      if (andyWinningGames.length >= 2) {
+        return {
+          winner: "Andy",
+          winningGameNumbers: andyWinningGames.slice(0, 2).map(game => game.game)
+        };
+      }
+
+      return {
+        winner: "N/A",
+        winningGameNumbers: []
+      };
+    }
+
+    function shouldShowSeriesWonCell(gameNumber, seriesResult) {
+      return seriesResult.winningGameNumbers.length === 2 && gameNumber === seriesResult.winningGameNumbers[0];
+    }
+
+    function shouldShowCurvedArrow(gameNumber, seriesResult) {
+      return seriesResult.winningGameNumbers.includes(gameNumber);
+    }
+
+    function getArrowClass(gameNumber, seriesResult) {
+      if (gameNumber === seriesResult.winningGameNumbers[0]) return "curve-down";
+      if (gameNumber === seriesResult.winningGameNumbers[1]) return "curve-up";
+      return "";
+    }
+
+    const startingGames = [
+      {
+        game: 1,
+        maxScore: 20,
+        andyScore: 1,
+        status: "Completed",
+        batting: "N/A",
+        ghostRunners: "N/A",
+        outs: "N/A",
+        winner: "Max",
+        seriesWon: ""
+      },
+      {
+        game: 2,
+        maxScore: 20,
+        andyScore: 0,
+        status: "Completed",
+        batting: "N/A",
+        ghostRunners: "N/A",
+        outs: "N/A",
+        winner: "Max",
+        seriesWon: ""
+      },
+      {
+        game: 3,
+        maxScore: 11,
+        andyScore: 0,
+        status: "Pending",
+        batting: "Max",
+        ghostRunners: "2nd",
+        outs: "0",
+        winner: "N/A",
+        seriesWon: ""
+      }
+    ];
+
+    let games = createGames();
+    let spentPoints = { Max: 0, Andy: 0 };
+
+    function createGames() {
+      const list = [];
+
+      for (let i = 1; i <= totalGames; i++) {
+        const existing = startingGames.find(game => game.game === i);
+
+        if (existing) {
+          list.push({ ...existing });
+        } else {
+          list.push({
+            game: i,
+            maxScore: "",
+            andyScore: "",
+            status: "",
+            batting: "",
+            ghostRunners: "",
+            outs: "",
+            winner: "",
+            seriesWon: ""
+          });
+        }
+      }
+
+      return list;
+    }
+
+    function render() {
+      renderRows();
+      renderSummary();
+      renderBonusPanel();
+    }
+
+    function getCurrentGameIndex() {
+      const index = games.findIndex(game => game.status === "Pending" || game.status === "Paused");
+      if (index !== -1) return index;
+
+      const emptyIndex = games.findIndex(game => game.status === "");
+      if (emptyIndex !== -1) return emptyIndex;
+
+      return games.length - 1;
+    }
+
+    function renderRows() {
+      const tbody = document.getElementById("gameRows");
+
+      tbody.innerHTML = games.map((game, index) => {
+        const statusClass = game.status === "Completed" ? "completed" : game.status === "Pending" ? "pending" : "blank";
+        const winnerClass = game.winner === "Max" ? "winner-max" : game.winner === "Andy" ? "winner-andy" : "";
+        const seriesNumber = getSeriesNumber(game.game);
+        const seriesResult = getSeriesResult(seriesNumber);
+        const seriesWinner = seriesResult.winner;
+        const seriesWinnerClass = seriesWinner === "Max" ? "winner-max" : seriesWinner === "Andy" ? "winner-andy" : "";
+        const seriesCell = isFirstGameInSeries(game.game)
+          ? `<td class="game-label" rowspan="3">Series ${seriesNumber}<br><span class="muted">Best of 3</span></td>`
+          : "";
+
+        return `
+          <tr>
+            ${seriesCell}
+            <td class="game-label">Game ${game.game}</td>
+            <td><input type="number" min="0" value="${game.maxScore}" onchange="updateGame(${index}, 'maxScore', this.value)"></td>
+            <td><input type="number" min="0" value="${game.andyScore}" onchange="updateGame(${index}, 'andyScore', this.value)"></td>
+            <td>
+              <select onchange="updateGame(${index}, 'status', this.value)">
+                <option value="" ${game.status === "" ? "selected" : ""}></option>
+                <option value="Pending" ${game.status === "Pending" ? "selected" : ""}>Pending</option>
+                <option value="Completed" ${game.status === "Completed" ? "selected" : ""}>Completed</option>
+                <option value="Paused" ${game.status === "Paused" ? "selected" : ""}>Paused</option>
+              </select>
+              <span class="status-pill ${statusClass}">${game.status || "Empty"}</span>
+            </td>
+            <td>
+              <select onchange="updateGame(${index}, 'batting', this.value)">
+                ${optionHTML(game.batting, ["", "Max", "Andy", "N/A"])}
+              </select>
+            </td>
+            <td>
+              <select onchange="updateGame(${index}, 'ghostRunners', this.value)">
+                ${optionHTML(game.ghostRunners, ["", "None", "1st", "2nd", "3rd", "1st & 2nd", "1st & 3rd", "2nd & 3rd", "Loaded", "N/A"])}
+              </select>
+            </td>
+            <td>
+              <select onchange="updateGame(${index}, 'outs', this.value)">
+                ${optionHTML(game.outs, ["", "0", "1", "2", "3", "N/A"])}
+              </select>
+            </td>
+            <td class="winner-cell">
+              <select class="${winnerClass}" onchange="updateGame(${index}, 'winner', this.value)">
+                ${optionHTML(game.winner, ["", "Max", "Andy", "N/A"])}
+              </select>
+              ${shouldShowCurvedArrow(game.game, seriesResult) ? `<span class="winner-arrow ${getArrowClass(game.game, seriesResult)}">↪</span>` : ""}
+            </td>
+            ${shouldShowSeriesWonCell(game.game, seriesResult) ? `
+              <td rowspan="2" class="series-won-cell">
+                <div class="series-won-box">
+                  <strong class="${seriesWinnerClass}">${seriesWinner}</strong>
+                  <div class="muted">Auto-calculated</div>
+                  <div class="muted">+3 points</div>
+                </div>
+              </td>
+            ` : ""}
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function optionHTML(currentValue, values) {
+      return values.map(value => `<option value="${value}" ${String(currentValue) === String(value) ? "selected" : ""}>${value}</option>`).join("");
+    }
+
+    function updateGame(index, key, value) {
+      games[index][key] = value;
+
+      if (key === "maxScore" || key === "andyScore") {
+        const max = Number(games[index].maxScore);
+        const andy = Number(games[index].andyScore);
+
+        if (games[index].status === "Completed" && games[index].maxScore !== "" && games[index].andyScore !== "") {
+          games[index].winner = max > andy ? "Max" : andy > max ? "Andy" : "N/A";
+        }
+      }
+
+      if (key === "status" && value === "Completed") {
+        const max = Number(games[index].maxScore);
+        const andy = Number(games[index].andyScore);
+
+        if (games[index].maxScore !== "" && games[index].andyScore !== "") {
+          games[index].winner = max > andy ? "Max" : andy > max ? "Andy" : "N/A";
+        }
+
+        games[index].batting = "N/A";
+        games[index].ghostRunners = "N/A";
+        games[index].outs = "N/A";
+      }
+
+      render();
+    }
+
+    function renderSummary() {
+      const maxWins = games.filter(game => game.winner === "Max").length;
+      const andyWins = games.filter(game => game.winner === "Andy").length;
+      const maxSeriesWins = [1, 2, 3, 4, 5].filter(series => getSeriesWinner(series) === "Max").length;
+      const andySeriesWins = [1, 2, 3, 4, 5].filter(series => getSeriesWinner(series) === "Andy").length;
+
+      const maxPoints = Math.max(0, maxSeriesWins * 3 - spentPoints.Max);
+      const andyPoints = Math.max(0, andySeriesWins * 3 - spentPoints.Andy);
+
+      document.getElementById("maxWins").textContent = maxWins;
+      document.getElementById("andyWins").textContent = andyWins;
+      document.getElementById("maxSeriesWins").textContent = maxSeriesWins;
+      document.getElementById("andySeriesWins").textContent = andySeriesWins;
+      document.getElementById("maxPoints").textContent = maxPoints;
+      document.getElementById("andyPoints").textContent = andyPoints;
+
+      let leader = "N/A";
+      let detail = "Series is tied or no completed games yet.";
+
+      if (maxWins > andyWins) {
+        leader = "Max";
+        detail = `Max leads ${maxPoints}-${andyPoints} in unused bonus points, ${maxWins}-${andyWins} in games, and ${maxSeriesWins}-${andySeriesWins} in series.`;
+      } else if (andyWins > maxWins) {
+        leader = "Andy";
+        detail = `Andy leads ${andyPoints}-${maxPoints} in unused bonus points, ${andyWins}-${maxWins} in games, and ${andySeriesWins}-${maxSeriesWins} in series.`;
+      }
+
+      document.getElementById("seriesLeader").textContent = leader;
+      document.getElementById("seriesDetail").textContent = detail;
+
+      const current = games.find(game => game.status === "Pending" || game.status === "Paused") || games.find(game => game.status === "") || games[games.length - 1];
+      document.getElementById("currentGame").textContent = `Game ${current.game}`;
+      document.getElementById("currentGameDetail").textContent = `${current.status || "Not started"} — Max ${current.maxScore || 0}, Andy ${current.andyScore || 0}`;
+    }
+
+    function autoFillWinners() {
+      games = games.map(game => {
+        if (game.status !== "Completed") return game;
+        if (game.maxScore === "" || game.andyScore === "") return game;
+
+        const max = Number(game.maxScore);
+        const andy = Number(game.andyScore);
+        return {
+          ...game,
+          winner: max > andy ? "Max" : andy > max ? "Andy" : "N/A",
+          batting: "N/A",
+          ghostRunners: "N/A",
+          outs: "N/A"
+        };
+      });
+
+      render();
+    }
+
+    function renderBonusPanel() {
+      const maxSeriesWins = [1, 2, 3, 4, 5].filter(series => getSeriesWinner(series) === "Max").length;
+      const andySeriesWins = [1, 2, 3, 4, 5].filter(series => getSeriesWinner(series) === "Andy").length;
+      const maxTotalPoints = maxSeriesWins * 3;
+      const andyTotalPoints = andySeriesWins * 3;
+      const maxAvailable = Math.max(0, maxTotalPoints - spentPoints.Max);
+      const andyAvailable = Math.max(0, andyTotalPoints - spentPoints.Andy);
+
+      document.getElementById("maxAvailablePoints").textContent = maxAvailable;
+      document.getElementById("andyAvailablePoints").textContent = andyAvailable;
+      document.getElementById("maxSpentPoints").textContent = spentPoints.Max;
+      document.getElementById("andySpentPoints").textContent = spentPoints.Andy;
+    }
+
+    function spendBonusPoints(player) {
+      const inputId = player === "Max" ? "maxSpendInput" : "andySpendInput";
+      const scoreKey = player === "Max" ? "maxScore" : "andyScore";
+      const amount = Math.max(1, Number(document.getElementById(inputId).value || 1));
+
+      const seriesWins = [1, 2, 3, 4, 5].filter(series => getSeriesWinner(series) === player).length;
+      const totalPoints = seriesWins * 3;
+      const available = Math.max(0, totalPoints - spentPoints[player]);
+
+      if (available <= 0) {
+        alert(`${player} has no bonus points available.`);
+        return;
+      }
+
+      if (amount > available) {
+        alert(`${player} only has ${available} bonus point${available === 1 ? "" : "s"} available.`);
+        return;
+      }
+
+      const currentIndex = getCurrentGameIndex();
+      const currentGame = games[currentIndex];
+      const currentScore = Number(currentGame[scoreKey] || 0);
+
+      games[currentIndex] = {
+        ...currentGame,
+        [scoreKey]: currentScore + amount,
+        status: currentGame.status || "Pending"
+      };
+
+      spentPoints[player] += amount;
+      render();
+    }
+
+    async function saveData() {
+      try {
+        const response = await fetch("/api/tracker", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            games,
+            spentPoints
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("Save failed");
+        }
+
+        const message = document.getElementById("savedMessage");
+        message.style.display = "inline";
+        setTimeout(() => message.style.display = "none", 1200);
+      } catch (error) {
+        alert("Could not save to MongoDB.");
+        console.error(error);
+      }
+    }
+
+    async function loadData() {
+      try {
+        const response = await fetch("/api/tracker");
+
+        if (!response.ok) {
+          throw new Error("Load failed");
+        }
+
+        const data = await response.json();
+
+        games = data.games;
+        spentPoints = data.spentPoints || {
+          Max: 0,
+          Andy: 0
+        };
+
+        render();
+      } catch (error) {
+        alert("Could not load from MongoDB.");
+        console.error(error);
+      }
+    }
+
+    async function resetData() {
+      if (!confirm("Reset all games?")) return;
+
+      try {
+        const response = await fetch("/api/reset", {
+          method: "POST"
+        });
+
+        if (!response.ok) {
+          throw new Error("Reset failed");
+        }
+
+        const data = await response.json();
+
+        games = data.games;
+        spentPoints = data.spentPoints || {
+          Max: 0,
+          Andy: 0
+        };
+
+        render();
+      } catch (error) {
+        alert("Could not reset MongoDB data.");
+        console.error(error);
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
