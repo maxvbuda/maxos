@@ -1963,7 +1963,7 @@ function historyOpen(kind) {
 }
 // Prompt for a name and save into MaxDrive; returns the saved path (or null)
 async function driveSaveAs(suggested, content) {
-  let name = prompt('Save to MaxDrive as:', suggested);
+  let name = await customPrompt('Save to MaxDrive as:', suggested);
   if (!name) return null;
   name = name.trim();
   // If the user typed a name without an extension, keep the suggested one
@@ -2191,6 +2191,31 @@ function customPrompt(title, defaultValue) {
       else if (e.key === 'Escape') finish(null);
     });
     setTimeout(() => { input.focus(); input.select(); }, 30);
+  });
+}
+// Drop-in replacement for window.confirm() — same reliability problem as prompt().
+// opts: { title, okText, danger } — danger styles the OK button red for destructive actions.
+function customConfirm(message, opts = {}) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div'); ov.className = 'drive-modal';
+    ov.innerHTML = `<div class="drive-box" style="width:360px">
+      <div class="drive-head">${escapeHtml(opts.title || 'Confirm')}</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+        <div style="color:rgba(255,255,255,.8);font-size:13px;white-space:pre-line;line-height:1.5">${escapeHtml(message)}</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="gbtn" id="cc-cancel">Cancel</button>
+          <button class="gbtn" id="cc-ok" style="background:${opts.danger ? 'rgba(255,95,87,.85)' : 'linear-gradient(135deg,#64b4ff,#bf5af2)'}">${escapeHtml(opts.okText || 'OK')}</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    const finish = value => { ov.remove(); document.removeEventListener('keydown', onKey); resolve(value); };
+    const onKey = e => { if (e.key === 'Escape') finish(false); };
+    ov.querySelector('#cc-ok').onclick = () => finish(true);
+    ov.querySelector('#cc-cancel').onclick = () => finish(false);
+    ov.onclick = e => { if (e.target === ov) finish(false); };
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => ov.querySelector('#cc-ok').focus(), 30);
   });
 }
 
@@ -2601,7 +2626,7 @@ function mcBlockedFromOpening() {
 // Out of time → offer to ask the superadmin for more.
 async function mcAskMoreTime() {
   if (mcRequested) { notify('⛏️', 'Request pending', 'You already asked for more time — waiting on the superadmin.'); return; }
-  if (!confirm('You’ve used your Minecraft time for this week.\n\nAsk the superadmin for more time?')) return;
+  if (!await customConfirm('You’ve used your Minecraft time for this week.\n\nAsk the superadmin for more time?')) return;
   const r = await apiFetch('/api/minecraft/request-more', { method: 'POST', body: '{}' });
   if (r && !r.error) { mcRequested = true; notify('⛏️', 'Request sent', 'Asked the superadmin for more time. 🤞'); }
   else notify('⛏️', 'Couldn’t send', (r && r.error) || 'Try again later.');
@@ -2835,7 +2860,7 @@ function editorSetContent(content, asHtml) {
 const editorIsRich = name => /\.(docs|html?)$/i.test(name || '');
 function docCmd(cmd, val) { document.getElementById('editor-area')?.focus(); document.execCommand(cmd, false, val); autosaveMark('editor'); }
 function docBlock(tag) { docCmd('formatBlock', tag); }
-function docLink() { const u = prompt('Link URL:', 'https://'); if (u) docCmd('createLink', u); }
+async function docLink() { const u = await customPrompt('Link URL:', 'https://'); if (u) docCmd('createLink', u); }
 
 async function editorOpenFile(path, name) {
   editorCurrentPath = path; sharedDocId = null;
@@ -3591,7 +3616,7 @@ async function ebGrowIndex() {
   ebRefreshHomeStats();
 }
 async function ebResetIndex() {
-  if (!confirm('Clear the entire MaxOS search index?')) return;
+  if (!await customConfirm('Clear the entire MaxOS search index?', { danger: true })) return;
   const r = await apiFetch('/api/search/reset', { method: 'POST' });
   if (r && !r.error) notify('🔍', 'MaxSearch', 'Index cleared.');
   else notify('🔍', 'MaxSearch', (r && r.error) || 'Reset failed.');
@@ -5901,7 +5926,7 @@ function initAnimator() {
   const f = document.getElementById('an-pic-file');
   if (f) f.onchange = e => { const file = e.target.files?.[0]; if (file) anHandlePicFile(file); e.target.value = ''; };
   const xy = e => { const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * (AN_W / r.width), (t.clientY - r.top) * (AN_H / r.height)]; };
-  const start = e => {
+  const start = async e => {
     e.preventDefault();
     const [x, y] = xy(e);
     if (anTool === 'pen' || anTool === 'eraser') {
@@ -5916,7 +5941,7 @@ function initAnimator() {
     }
     if (anTool === 'rect' || anTool === 'circle') { anShapeStart = { x, y }; anDrag = { preview: true }; return; }
     if (anTool === 'text') {
-      const text = prompt('Text:', 'Hello');
+      const text = await customPrompt('Text:', 'Hello');
       if (text) { anCurFrame().elements.push({ id: anId(), type: 'text', x, y, text, color: anColor, size: 20 }); anCommit(); anDraw(); anRenderStrip(); }
     }
   };
@@ -6641,8 +6666,8 @@ async function schoolAdd(id) {
   else notify('🏫', 'Added', '@' + u.toLowerCase().replace(/^@/, '') + ' joined the class');
   initSchool();
 }
-async function schoolDismiss(id, student) { if (!confirm('Dismiss @' + student + ' from the class?')) return; const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [student] }) }); if (!r.error) { notify('🏫', 'Dismissed', '@' + student + ' was removed'); initSchool(); } }
-async function schoolDelete(id) { if (!confirm('Delete this class?')) return; const r = await apiFetch('/api/classes/' + id, { method: 'DELETE' }); if (!r.error) initSchool(); }
+async function schoolDismiss(id, student) { if (!await customConfirm('Dismiss @' + student + ' from the class?')) return; const r = await apiFetch('/api/classes/' + id + '/students', { method: 'PUT', body: JSON.stringify({ remove: [student] }) }); if (!r.error) { notify('🏫', 'Dismissed', '@' + student + ' was removed'); initSchool(); } }
+async function schoolDelete(id) { if (!await customConfirm('Delete this class?', { danger: true })) return; const r = await apiFetch('/api/classes/' + id, { method: 'DELETE' }); if (!r.error) initSchool(); }
 
 // ── School safety monitoring: flag risky student writing, alert the teacher,
 // and start a PostHog session recording (classroom-safety, shown to the student).
@@ -7905,7 +7930,7 @@ async function driveLoad() {
 let driveItems = [];
 async function driveDelete(i) {
   const f = driveItems[i]; if (!f) return;
-  if (!confirm(`Delete "${f.name}"${f.type === 'directory' ? ' and everything inside it' : ''}?`)) return;
+  if (!await customConfirm(`Delete "${f.name}"${f.type === 'directory' ? ' and everything inside it' : ''}?`, { danger: true })) return;
   const r = await fsRm(f.path);
   if (r.error) { notify('🗑️', 'Delete failed', r.error); return; }
   notify('🗑️', 'Deleted', f.name);
@@ -8302,7 +8327,7 @@ function boardRender() {
     <div class="board-add" onclick="boardAdd('${col}')">＋ Add card</div>
   </div>`).join('');
 }
-function boardAdd(col) { const t = prompt('New card:'); if (t && t.trim()) { boardData[col].push(t.trim()); boardRender(); } }
+async function boardAdd(col) { const t = await customPrompt('New card:'); if (t && t.trim()) { boardData[col].push(t.trim()); boardRender(); } }
 function boardDel(col, i) { boardData[col].splice(i, 1); boardRender(); }
 function boardDragStart(col, i) { boardDrag = { col, i }; }
 function boardDrop(col) {
@@ -8406,13 +8431,13 @@ async function socialComment(id, input) {
   if (!r.error) socialLoad();
 }
 async function socialReport(id) {
-  if (!confirm('Report this post to an admin? Use this for mean, scary, or spammy posts (like random gibberish or links).')) return;
+  if (!await customConfirm('Report this post to an admin? Use this for mean, scary, or spammy posts (like random gibberish or links).')) return;
   const r = await apiFetch('/api/posts/' + id + '/report', { method: 'POST', body: JSON.stringify({}) });
   if (r.error) { notify('🚩', 'Could not report', r.error); return; }
   notify('🚩', r.already ? 'Already reported' : 'Reported', 'Thanks! An admin will take a look. 💛');
 }
 async function socialDelete(id) {
-  if (!confirm('Delete this post?')) return;
+  if (!await customConfirm('Delete this post?', { danger: true })) return;
   const r = await apiFetch('/api/posts/' + id, { method: 'DELETE' });
   if (!r.error) { notify('✨', 'Deleted', 'Post removed'); socialLoad(); }
 }
@@ -8611,7 +8636,7 @@ async function adminSuspend(username) {
   adminLoad();
 }
 async function adminDelete(username) {
-  if (!confirm('Permanently delete @' + username + ' and all their files? This cannot be undone.')) return;
+  if (!await customConfirm('Permanently delete @' + username + ' and all their files? This cannot be undone.', { danger: true, okText: 'Delete forever' })) return;
   const r = await apiFetch('/api/admin/users/' + encodeURIComponent(username), { method: 'DELETE' });
   if (r.error) { notify('🛡️', 'Error', r.error); return; }
   notify('🗑️', 'Account deleted', '@' + username + ' has been removed');
