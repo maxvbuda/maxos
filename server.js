@@ -1072,6 +1072,14 @@ app.post('/api/admin/users/:username/grant-time', auth, superadminOnly, async (r
     res.json({ ok: true, addedMinutes: mins });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Superadmin-only: push a scary banner to every connected user, for a "the site
+// is under attack" test-bot demo. The disclaimer is always forced server-side
+// so this can never be used to genuinely deceive anyone.
+app.post('/api/admin/scare-broadcast', auth, superadminOnly, async (req, res) => {
+  const message = String(req.body.message || '').slice(0, 200) || 'Suspicious activity detected!';
+  io.emit('scareAlert', { message, disclaimer: '🤖 This is just a test bot — nothing on MaxOS is actually at risk.' });
+  res.json({ ok: true });
+});
 app.post('/api/admin/users/:username/suspicious', auth, superadminOnly, async (req, res) => {
   try {
     const u = await User.findOne({ username: req.params.username.toLowerCase() });
