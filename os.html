@@ -3743,6 +3743,17 @@ function buildSettings() {
       <div class="setting-row"><label>Notifications</label><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
       <div class="setting-row"><label>Sound effects</label><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
     </div>
+    <h3>Security</h3>
+    <div class="setting-card">
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:8px;padding:14px 0">
+        <label>Change Password</label>
+        <input id="cpw-current" type="password" placeholder="Current password" autocomplete="current-password" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;color:#fff;font-size:13px">
+        <input id="cpw-new" type="password" placeholder="New password" autocomplete="new-password" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;color:#fff;font-size:13px">
+        <input id="cpw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 10px;color:#fff;font-size:13px">
+        <button class="gbtn" onclick="changePassword()" style="align-self:flex-start">Change Password</button>
+        <p id="cpw-msg" style="margin:0;font-size:11px;color:rgba(255,255,255,.4)">Changing your password signs out everywhere else — anyone else using it gets logged out too.</p>
+      </div>
+    </div>
     <h3>Roles &amp; Access</h3>
     <div class="setting-card" id="roles-card">${rolesCardHtml()}</div>
     <h3>About</h3>
@@ -3771,6 +3782,27 @@ async function requestRole(role) {
   localStorage.setItem('maxos_user', JSON.stringify(currentUser));
   notify('✅', 'Request sent', 'An admin will review your ' + role + ' request.');
   const card = document.getElementById('roles-card'); if (card) card.innerHTML = rolesCardHtml();
+}
+async function changePassword() {
+  const currentPassword = document.getElementById('cpw-current').value;
+  const newPassword = document.getElementById('cpw-new').value;
+  const confirm = document.getElementById('cpw-confirm').value;
+  const msg = document.getElementById('cpw-msg');
+  const setMsg = (t, bad) => { if (msg) { msg.textContent = t; msg.style.color = bad ? '#ff8a84' : 'rgba(255,255,255,.4)'; } };
+  if (!currentPassword || !newPassword) { setMsg('Fill in both password fields.', true); return; }
+  if (newPassword.length < 4) { setMsg('New password must be at least 4 characters.', true); return; }
+  if (newPassword !== confirm) { setMsg('New password and confirmation don’t match.', true); return; }
+  const r = await apiFetch('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+  if (r.error) { setMsg(r.error, true); return; }
+  // The server just invalidated every token issued before this one (including any
+  // in someone else's hands) — swap in the fresh token so THIS session keeps working.
+  authToken = r.token;
+  localStorage.setItem('maxos_token', authToken);
+  document.getElementById('cpw-current').value = '';
+  document.getElementById('cpw-new').value = '';
+  document.getElementById('cpw-confirm').value = '';
+  setMsg('Password changed — you’re signed out everywhere else.', false);
+  notify('🔒', 'Password changed', 'Anyone else who had it just got signed out.');
 }
 function setWallpaper(i, el) {
   document.getElementById('desktop').style.background = wallpapers[i];

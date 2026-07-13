@@ -193,7 +193,7 @@ app.get('/sw.js', (req, res) => {
   res.set('Service-Worker-Allowed', '/');
   res.set('Cache-Control', 'no-cache');
   res.send(`
-const CACHE = 'maxos-shell-v43';
+const CACHE = 'maxos-shell-v44';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys()
@@ -246,6 +246,10 @@ const UserSchema = new mongoose.Schema({
   // (server clock, 'YYYY-MM-DD') a streak bonus was credited — checked once per day.
   loginStreak: { count: { type: Number, default: 0 }, lastDate: { type: String, default: '' } },
   testMode: { type: Boolean, default: false }, // testers only: unlimited Minecraft time while on
+  // Bumped on every password change. Embedded in each JWT at issue time so changing
+  // the password immediately invalidates every token issued before it — including
+  // one already in the hands of whoever the password leaked to.
+  tokenVersion: { type: Number, default: 0 },
 }, { timestamps: true });
 
 const FileSchema = new mongoose.Schema({
@@ -578,6 +582,9 @@ async function auth(req, res, next) {
   const user = await User.findById(payload.id);
   if (!user) return res.status(401).json({ error: 'Account no longer exists' });
   if (user.suspended) return res.status(403).json({ error: 'Account suspended' });
+  // Password changed since this token was issued (missing tokenVersion in an older
+  // token is treated as 0, matching a never-changed account) — force a fresh login.
+  if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) return res.status(401).json({ error: 'Invalid or expired token' });
   // Unverified accounts are locked out of the whole account on every request —
   // not just posting — until they click the link in their email.
   if (REQUIRE_EMAIL_VERIFY && user.mustVerifyEmail && !user.emailVerified && !EMAIL_GATE_ALLOWLIST.includes(req.path)) {
@@ -603,7 +610,7 @@ async function optionalAuth(req, res, next) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
       const user = await User.findById(payload.id);
-      if (user && !user.suspended) req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin };
+      if (user && !user.suspended && (payload.tokenVersion || 0) === (user.tokenVersion || 0)) req.user = { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin };
     } catch { /* ignore — treat as anonymous */ }
   }
   next();
@@ -614,8 +621,9 @@ async function socketAuthUser(token) {
   let payload;
   try { payload = jwt.verify(token, JWT_SECRET); }
   catch { return null; }
-  const user = await User.findById(payload.id).select('username displayName suspended admin suspicious');
+  const user = await User.findById(payload.id).select('username displayName suspended admin suspicious tokenVersion');
   if (!user || user.suspended) return null;
+  if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) return null;
   return { id: user._id.toString(), username: user.username, displayName: user.displayName, admin: user.admin, suspicious: user.suspicious };
 }
 
@@ -808,7 +816,7 @@ app.post('/api/auth/register', async (req, res) => {
     const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: ip, lastIP: ip, email: cleanEmail, mustVerifyEmail: REQUIRE_EMAIL_VERIFY });
     await seedUser(user._id, user.username);
     if (REQUIRE_EMAIL_VERIFY) sendVerifyEmail(user).catch(() => {}); // best-effort; account still created
-    const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName, tokenVersion: user.tokenVersion || 0 }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -841,7 +849,7 @@ app.post('/api/auth/login', async (req, res) => {
     await seedUser(user._id, user.username);
     await ensureSharedFolder(user._id, user.username); // retroactive for accounts predating the folder
     const loginStreak = await applyLoginStreak(user);
-    const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName, tokenVersion: user.tokenVersion || 0 }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail, loginStreak });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -853,6 +861,27 @@ app.get('/api/auth/me', auth, async (req, res) => {
   await ensureSharedFolder(u._id, u.username); // retroactive for accounts predating the folder
   const loginStreak = await applyLoginStreak(u);
   res.json({ username: u.username, displayName: u.displayName, admin: u.admin, teacher: u.teacher, adminRequest: u.adminRequest, teacherRequest: u.teacherRequest, suspicious: u.suspicious, installed: u.installed, superadmin: ADMIN_USERS.includes(u.username), tester: isTester(u.username), testMode: !!u.testMode, emailVerified: u.emailVerified, mustVerifyEmail: u.mustVerifyEmail, loginStreak });
+});
+
+// Change password — requires the current password, and bumps tokenVersion so every
+// other token issued before this (including one held by whoever the password leaked
+// to) stops working immediately. A fresh token is returned so this session stays in.
+app.post('/api/auth/change-password', auth, async (req, res) => {
+  try {
+    if (!rateLimit('changepw:' + req.user.username, 6, 10 * 60 * 1000)) return res.status(429).json({ error: 'Too many attempts — try again in a bit.' });
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password required' });
+    if (newPassword.length < 4) return res.status(400).json({ error: 'New password must be at least 4 characters' });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(401).json({ error: 'Account no longer exists' });
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save();
+    const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName, tokenVersion: user.tokenVersion }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ ok: true, token });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Client reports its device LAN IP(s) (discovered via WebRTC). Stored for the
