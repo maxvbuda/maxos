@@ -417,6 +417,20 @@ const WordleAttemptSchema = new mongoose.Schema({
 WordleAttemptSchema.index({ username: 1, date: 1 }, { unique: true });
 const WordleAttempt = mongoose.model('WordleAttempt', WordleAttemptSchema);
 
+// One-off migrations that must run exactly once, ever — not on every boot like the
+// self-limiting ones above. Guarded by a marker doc so a restart can't re-trigger them.
+const MigrationSchema = new mongoose.Schema({ key: { type: String, required: true, unique: true } }, { timestamps: true });
+const Migration = mongoose.model('Migration', MigrationSchema);
+async function runOnce(key, fn) {
+  try {
+    await Migration.create({ key }); // unique index — throws if this key already ran
+  } catch (e) {
+    if (e.code === 11000) return; // already ran
+    throw e;
+  }
+  await fn();
+}
+
 // Marketplace — sell a real file for Sparks. Buying moves the File doc itself
 // (new userId/path/parent) into the buyer's Purchases folder; it's a transfer of
 // ownership, not a copy, so it leaves the seller's MaxDrive.
@@ -813,9 +827,16 @@ app.post('/api/auth/register', async (req, res) => {
     // First registered user (or a baked-in / ADMIN_USERS name) becomes an admin
     const isAdmin = (await User.countDocuments()) === 0 || ADMIN_USERS.includes(username.toLowerCase());
     const ip = clientIp(req);
-    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: ip, lastIP: ip, email: cleanEmail, mustVerifyEmail: REQUIRE_EMAIL_VERIFY });
+    // mustVerifyEmail starts false regardless of the flag — it's only flipped on
+    // below once the verification email is CONFIRMED to have actually sent. If
+    // Resend isn't configured, or no sending domain is verified yet, the account
+    // is never locked behind a link it has no way to receive.
+    const user = await User.create({ username, password: hashed, displayName: displayName || username, admin: isAdmin, signupIP: ip, lastIP: ip, email: cleanEmail, mustVerifyEmail: false });
     await seedUser(user._id, user.username);
-    if (REQUIRE_EMAIL_VERIFY) sendVerifyEmail(user).catch(() => {}); // best-effort; account still created
+    if (REQUIRE_EMAIL_VERIFY) {
+      const sent = await sendVerifyEmail(user);
+      if (sent) { user.mustVerifyEmail = true; await user.save(); }
+    }
     const token = jwt.sign({ id: user._id, username: user.username, displayName: user.displayName, tokenVersion: user.tokenVersion || 0 }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, username: user.username, displayName: user.displayName, admin: user.admin, teacher: user.teacher, adminRequest: user.adminRequest, teacherRequest: user.teacherRequest, suspicious: user.suspicious, installed: user.installed, superadmin: ADMIN_USERS.includes(user.username), tester: isTester(user.username), testMode: !!user.testMode, emailVerified: user.emailVerified, mustVerifyEmail: user.mustVerifyEmail });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2398,6 +2419,18 @@ mongoose.connect(MONGO_URI, { dbName: 'maxos' })
         await doc.save();
       }
     } catch (e) { console.log('App id collision migration skipped:', e.message); }
+    // One-time: free any account currently locked behind email verification — this
+    // used to be set unconditionally at signup regardless of whether the
+    // verification email actually sent, which stranded new users while
+    // REQUIRE_EMAIL_VERIFY was on with no Resend sending domain verified. Runs once
+    // ever (not every boot) — new signups now only get mustVerifyEmail:true once
+    // their email is CONFIRMED sent, so this shouldn't need to run again.
+    try {
+      await runOnce('unstick-email-verify-2026-07', async () => {
+        const r = await User.updateMany({ mustVerifyEmail: true, emailVerified: false }, { mustVerifyEmail: false });
+        if (r.modifiedCount) console.log(`🔧 Freed ${r.modifiedCount} account(s) stranded behind undeliverable email verification`);
+      });
+    } catch (e) { console.log('Email-verify unstick migration skipped:', e.message); }
     // Bootstrap: make sure at least one admin exists. Promote ADMIN_USERS by name,
     // otherwise promote the oldest account (the owner).
     try {
