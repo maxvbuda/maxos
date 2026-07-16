@@ -1218,6 +1218,11 @@ const API = 'https://maxos-1oe3.onrender.com';
 let authToken = localStorage.getItem('maxos_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('maxos_user') || 'null');
 let deviceMode = localStorage.getItem('maxos_device') || 'desktop'; // 'desktop' or 'ipad'
+// True only after the SERVER has confirmed a real session this page load (a genuine
+// /api/auth/me 200, or a genuine login/register response) — never by hiding or
+// deleting UI, since the desktop/dock/taskbar markup exists in the DOM from page
+// load regardless of login state and is only visually covered by #login-screen.
+let sessionVerified = false;
 
 function authHeaders() {
   return authToken ? { 'Authorization': 'Bearer ' + authToken, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -1326,6 +1331,7 @@ async function authSubmit() {
     });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account'; btn.disabled = false; return; }
+    sessionVerified = true; // the server just accepted real credentials — this is the only way in
     authToken = data.token;
     currentUser = { username: data.username, displayName: data.displayName, admin: data.admin, suspicious: !!data.suspicious, superadmin: !!data.superadmin, tester: !!data.tester, testMode: !!data.testMode, emailVerified: !!data.emailVerified, mustVerifyEmail: !!data.mustVerifyEmail };
     if (Array.isArray(data.installed)) { installedApps = data.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
@@ -1439,6 +1445,7 @@ function accountRevoked(msg) {
   stopScreenWatchShare();
   closeScreenWatchSocket();
   localStorage.removeItem('maxos_token'); localStorage.removeItem('maxos_user'); authToken = null;
+  sessionVerified = false;
   // lock the screen immediately
   document.body.innerHTML = `<div style="position:fixed;inset:0;background:#0d0d1a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;font-family:system-ui,sans-serif;z-index:9999999">
     <div style="font-size:60px">🚫</div>
@@ -1589,6 +1596,7 @@ async function checkExistingSession() {
       if (Array.isArray(d.installed)) { installedApps = d.installed; localStorage.setItem('maxos_installed', JSON.stringify(installedApps)); }
       localStorage.setItem('maxos_user', JSON.stringify(currentUser));
       notifyLoginStreak(d.loginStreak);
+      sessionVerified = true; // the server just confirmed this token is real
       return true;
     }
     // The server answered but rejected us (401/403/404) → token invalid or account gone
@@ -1600,8 +1608,10 @@ async function checkExistingSession() {
   } catch {
     // Network error / offline — do NOT log out. Stay signed in using the cached identity.
   }
-  // Offline (or transient server error) but we have a remembered user → boot in offline mode
-  if (currentUser && currentUser.username) return true;
+  // Offline (or transient server error) but we hold a token that was genuinely issued to
+  // us at some point (checked above) and a remembered user → boot in offline mode. This
+  // still requires authToken to be non-null, which a from-scratch visitor never has.
+  if (authToken && currentUser && currentUser.username) { sessionVerified = true; return true; }
   return false;
 }
 
@@ -1616,6 +1626,7 @@ async function initAuth() {
 }
 
 function bootOS() {
+  if (!sessionVerified) return; // defense in depth — see openApp()'s guard for the full explanation
   const boot = document.getElementById('boot');
   boot.style.display = 'flex';
   termCwd = `/home/${currentUser?.username || 'user'}`;
@@ -2459,6 +2470,17 @@ function uninstallApp(id) {
 
 // ── Open / focus window ──────────────────────────────────────────────────────
 function openApp(id) {
+  // #login-screen is a CSS overlay — the desktop/dock/taskbar markup and every app
+  // definition already exist in the DOM/JS regardless of login state, so deleting
+  // that overlay in DevTools (or calling openApp() straight from the console) used
+  // to be enough to use any non-admin app with no session at all. sessionVerified
+  // is only ever set true by a genuine server response (see authSubmit() and
+  // checkExistingSession()), so this can't be defeated by hiding or removing UI.
+  if (!sessionVerified) {
+    const ls = document.getElementById('login-screen');
+    if (ls) ls.style.display = 'flex'; else location.reload(); // element was removed outright — reload restores it
+    return;
+  }
   if (id === 'picturetaker') id = 'camera'; // merged into Photo Booth
   if (!apps[id]) return;
   if (apps[id].adminOnly && !currentUser?.admin) { notify('🛡️', 'Admins only', 'You do not have access to that.'); return; }
