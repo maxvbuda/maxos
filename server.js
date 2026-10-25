@@ -553,7 +553,7 @@ const RESERVED_APP_IDS = new Set(['files', 'maxdrive', 'appstore', 'messages', '
   'snake', 'g2048', 'ttt', 'memory', 'notes', 'pomodoro', 'weather', 'converter', 'otp', 'dice', 'wordle',
   'clicker', 'leaderboard', 'animator', 'video', 'camera', 'reminders', 'jumpworld', 'minecraft', 'mines', 'colors',
   'tetris', 'breakout', 'chess', 'life', 'piano', 'beats', 'fractal', 'markdown', 'codepen', 'typing', 'wiki', 'maps',
-  'chat', 'board', 'social', 'makeyourownwebsite', 'market']);
+  'chat', 'board', 'social', 'makeyourownwebsite', 'market', 'cubeloft']);
 const slugify = t => ((t || 'app').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24) || 'app');
 async function uniqueSlug(base) {
   let id = base, n = 1;
