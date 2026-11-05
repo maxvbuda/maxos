@@ -2313,6 +2313,7 @@ document.addEventListener('click', e => {
 });
 
 // ── App definitions ──────────────────────────────────────────────────────────
+const CUBELOFT_ORIGIN = 'https://cubeloft.onrender.com';
 const apps = {
   // ── Core apps (always on desktop) ──
   files:    { title: 'File Manager',   short:'Files',     icon: '📁', w: 520, h: 380, core:true, html: buildFiles },
@@ -2354,6 +2355,7 @@ const apps = {
   video:    { title: 'Max Video',      short:'Video',      icon:'🎬', w:760, h:560, cat:'Creativity', desc:'Timeline video/slideshow editor', html: buildVideo },
   camera:   { title: 'Photo Booth',    short:'Camera',     icon:'📷', w:640, h:560, cat:'Creativity', desc:'Snap with filters, open images, import & save .pic', html: buildCamera },
   reminders:{ title: 'Reminders',      short:'Reminders',  icon:'✅', w:420, h:520, cat:'Productivity', desc:'To-dos & reminders that sync',  html: buildReminders },
+  cubeloft: { title: 'Cubeloft',       short:'Cubeloft',   icon:'🧱', w:1100, h:700, cat:'Creativity', desc:'Build little 3D dioramas, save them and share with your class — signed in with your maxos account', html: () => `<iframe class="custom-frame" id="cubeloft-frame" src="${CUBELOFT_ORIGIN}/?embed=maxos" allow="fullscreen; clipboard-write" allowfullscreen></iframe>` },
   jumpworld:{ title: 'Jump World',     short:'Jump World', icon:'🧱', w:760, h:560, cat:'Games',      desc:'Build & explore a block world',  html: buildJump },
   minecraft:{ title: 'Minecraft',      short:'Minecraft',  icon:'⛏️', w:900, h:640, cat:'Games',      desc:'3D voxel world — build & explore (VoxelCraft)', html: () => `<iframe class="custom-frame" id="mc-frame" allow="pointer-lock; fullscreen; gamepad; autoplay" allowfullscreen></iframe>` },
   mines:    { title: 'Minesweeper',    short:'Mines',      icon:'💣', w:440, h:520, cat:'Games',      desc:'Classic flag-the-mines puzzle', html: buildMines },
@@ -2680,6 +2682,15 @@ function mcGameHTML() {
   const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
   return new TextDecoder('utf-8').decode(bytes);
 }
+// ── Cubeloft — a separate site shown in a window; it signs people in with their maxos account ──
+// The Cubeloft page asks for the maxos token (only this window, only from the Cubeloft site) and checks it with maxos itself.
+window.addEventListener('message', (e) => {
+  if (e.origin !== CUBELOFT_ORIGIN || !e.data || e.data.type !== 'cubeloft-ready') return;
+  const frame = document.getElementById('cubeloft-frame');
+  if (!frame || e.source !== frame.contentWindow || !authToken) return;
+  e.source.postMessage({ type: 'maxos-token', token: authToken }, CUBELOFT_ORIGIN);
+});
+
 function mcLoadFrame() { const f = document.getElementById('mc-frame'); if (f && !f.getAttribute('srcdoc')) f.srcdoc = mcGameHTML(); }
 
 // ── Tester panel — bottom bar for testers: test-mode toggle + problem reports ──────
